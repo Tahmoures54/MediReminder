@@ -1,0 +1,80 @@
+name: Build Signed APK (No local tools needed)
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:   # برای اجرای دستی
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: دریافت کد
+        uses: actions/checkout@v4
+
+      - name: نصب Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: ساخت برنامهٔ وب
+        run: |
+          npm ci
+          npm run build
+
+      - name: تنظیم Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: نصب Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: نصب Capacitor CLI
+        run: npm install -g @capacitor/cli @capacitor/core @capacitor/android
+
+      - name: افزودن پلتفرم Android و همگام‌سازی
+        run: |
+          npx cap add android
+          npx cap sync
+
+      - name: ساخت کی‌استور جدید (بدون نیاز به سیستم شما)
+        run: |
+          keytool -genkey -v \
+            -keystore release.keystore \
+            -alias upload \
+            -keyalg RSA \
+            -keysize 2048 \
+            -validity 10000 \
+            -storepass android \
+            -keypass android \
+            -dname "CN=MediReminder, OU=Dev, O=Charity, L=City, S=State, C=IR"
+
+      - name: ساخت APK بدون امضا
+        run: |
+          cd android
+          ./gradlew assembleRelease
+
+      - name: امضای APK
+        run: |
+          $ANDROID_SDK_ROOT/build-tools/latest/apksigner sign \
+            --ks release.keystore \
+            --ks-pass pass:android \
+            --ks-key-alias upload \
+            --key-pass pass:android \
+            --out android/app/build/outputs/apk/release/app-release.apk \
+            android/app/build/outputs/apk/release/app-release-unsigned.apk
+
+      - name: بارگذاری APK امضاشده (برای دانلود)
+        uses: actions/upload-artifact@v4
+        with:
+          name: MediReminder-APK
+          path: android/app/build/outputs/apk/release/app-release.apk
+
+      - name: بارگذاری کی‌استور (برای استفاده‌های بعدی اختیاری)
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-keystore
+          path: release.keystore
