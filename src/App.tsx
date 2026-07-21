@@ -3,10 +3,10 @@ import { MedicationCard } from './components/MedicationCard';
 import { AddMedicationForm } from './components/AddMedicationForm';
 import { ConfirmDialog } from './components/ConfirmDialog';
 import { NotificationPopup } from './components/NotificationPopup';
-import { db, Medication } from './db/database';
+import { ReportModal } from './components/ReportModal'; // <-- اضافه شدن ایمپورت مدال گزارش
+import { db, Medication, HistoryRecord } from './db/database'; // <-- اضافه شدن HistoryRecord
 import { playAlarm, stopAlarm } from './utils/audio';
 
-// لینک جدید به سایت ورسل شما تغییر کرد
 const SUPPORT_WEBSITE = "https://mediremind-brown.vercel.app/";
 const LOW_STOCK_THRESHOLD = 5;
 
@@ -15,12 +15,15 @@ export default function App() {
   const [showForm, setShowForm] = useState(false);
   const [notification, setNotification] = useState<{ title: string; message: string; medication?: Medication } | null>(null);
   const [confirmDialog, setConfirmDialog] = useState<{ title: string; message: string; onConfirm: () => void } | null>(null);
+  
+  // استیت جدید برای باز و بسته کردن صفحه گزارش
+  const [reportMedication, setReportMedication] = useState<Medication | null>(null);
+  
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     loadMedications();
     
-    // Update timers every second
     intervalRef.current = setInterval(() => {
       updateTimers();
     }, 1000);
@@ -37,7 +40,6 @@ export default function App() {
     try {
       const meds = await db.getAllMedications();
       
-      // Check for elapsed time since last visit
       const lastSaved = await db.getLastSavedTime();
       const now = Math.floor(Date.now() / 1000);
       
@@ -49,7 +51,6 @@ export default function App() {
             if (med.remaining <= 0) {
               med.running = false;
               med.remaining = med.interval;
-              // Schedule notification
               setTimeout(() => showMedicationAlert(med), 2000);
             }
           }
@@ -78,7 +79,6 @@ export default function App() {
           if (med.remaining > 0) {
             return { ...med, remaining: med.remaining - 1 };
           } else {
-            // Time's up!
             showMedicationAlert(med);
             return { ...med, running: false, remaining: med.interval };
           }
@@ -86,9 +86,7 @@ export default function App() {
         return med;
       });
       
-      // Save to database
       updated.forEach(med => db.updateMedication(med));
-      
       return updated;
     });
   };
@@ -101,7 +99,6 @@ export default function App() {
       medication: med
     });
     
-    // Also try browser notification
     if ('Notification' in window && Notification.permission === 'granted') {
       new Notification('🔔 Time to Medicate!', {
         body: `${med.name} - ${med.dosage}`,
@@ -111,11 +108,37 @@ export default function App() {
     }
   };
 
-  const handleAddMedication = async (medData: Omit<Medication, 'id' | 'remaining' | 'running'>) => {
+  // 🧠 تابع هوشمند برای محاسبه دیر یا زود بودن مصرف
+  const recordDose = (med: Medication): HistoryRecord[] => {
+    const nowMs = Date.now();
+    const updatedHistory = med.history || [];
+    let status: 'on-time' | 'early' | 'late' = 'on-time';
+    
+    if (updatedHistory.length > 0) {
+      // پیدا کردن زمان آخرین مصرف
+      const latestTaken = Math.max(...updatedHistory.map(h => h.takenAt));
+      const diffMs = nowMs - latestTaken;
+      const targetMs = med.interval * 1000;
+      
+      const THIRTY_MINS = 30 * 60 * 1000;
+      const SIXTY_MINS = 60 * 60 * 1000;
+      
+      if (diffMs < targetMs - THIRTY_MINS) {
+        status = 'early'; // بیش از ۳۰ دقیقه زودتر
+      } else if (diffMs > targetMs + SIXTY_MINS) {
+        status = 'late'; // بیش از ۱ ساعت دیرتر
+      }
+    }
+    
+    return [...updatedHistory, { takenAt: nowMs, status }];
+  };
+
+  const handleAddMedication = async (medData: Omit<Medication, 'id' | 'remaining' | 'running' | 'history'>) => {
     const newMed: Medication = {
       ...medData,
       remaining: medData.interval,
-      running: false
+      running: false,
+      history: []
     };
     
     const id = await db.addMedication(newMed);
@@ -124,7 +147,6 @@ export default function App() {
     setMedications(prev => [...prev, newMed]);
     setShowForm(false);
     
-    // Show reminder to start timer
     setTimeout(() => {
       setNotification({
         title: "💡 Reminder",
@@ -144,10 +166,14 @@ export default function App() {
       title: "Confirm",
       message: confirmMessage,
       onConfirm: async () => {
+        // فقط اگر کاربر دکمه استارت را زد (نه پاز) تاریخچه را ثبت می‌کنیم
+        const updatedHistory = !wasRunning ? recordDose(med) : med.history;
+
         const updatedMed = {
           ...med,
           running: !wasRunning,
-          quantity: !wasRunning && med.quantity > 0 ? med.quantity - 1 : med.quantity
+          quantity: !wasRunning && med.quantity > 0 ? med.quantity - 1 : med.quantity,
+          history: updatedHistory
         };
         
         await db.updateMedication(updatedMed);
@@ -192,8 +218,10 @@ export default function App() {
     });
   };
 
+  // آپدیت برای دکمه Restart (زمانی که از روی آلارم دارو را می‌خورد)
   const handleRestartMedication = async (med: Medication) => {
-    const updatedMed = { ...med, running: true };
+    const updatedHistory = recordDose(med);
+    const updatedMed = { ...med, running: true, history: updatedHistory };
     await db.updateMedication(updatedMed);
     setMedications(prev => prev.map(m => m.id === med.id ? updatedMed : m));
   };
@@ -211,7 +239,7 @@ export default function App() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900">
       <div className="max-w-2xl mx-auto p-4 pb-20">
-        {/* Header - اصلاح شده */}
+        
         <div className="mb-6 pt-4">
           <h1 className="text-2xl md:text-3xl font-bold flex items-center gap-2">
             <span className="text-3xl md:text-4xl">💊</span>
@@ -221,7 +249,6 @@ export default function App() {
           </h1>
         </div>
 
-        {/* Add Medication Form */}
         <div className="mb-6">
           {!showForm ? (
             <div className="flex gap-2 sm:gap-3">
@@ -231,7 +258,6 @@ export default function App() {
               >
                 ➕ Add Medication
               </button>
-              {/* دکمه جدید برای حمایت و نکات سلامتی */}
               <button
                 onClick={() => window.open(SUPPORT_WEBSITE, '_blank')}
                 className="bg-orange-500 hover:bg-orange-600 text-white font-bold py-3 px-3 sm:px-4 rounded-lg transition-all duration-300 shadow-lg hover:shadow-orange-500/50 whitespace-nowrap flex items-center gap-1 sm:gap-2 text-sm sm:text-base"
@@ -248,7 +274,6 @@ export default function App() {
           )}
         </div>
 
-        {/* Medications List */}
         <div className="space-y-4">
           {medications.length === 0 ? (
             <div className="text-center py-12 text-gray-400">
@@ -265,13 +290,21 @@ export default function App() {
                 onToggle={() => handleToggleMedication(med)}
                 onReset={() => handleResetMedication(med)}
                 onDelete={() => handleDeleteMedication(med)}
+                onShowReport={() => setReportMedication(med)} /* <-- پاس دادن رویداد باز شدن گزارش */
               />
             ))
           )}
         </div>
       </div>
 
-      {/* Notification Popup */}
+      {/* مودال گزارش گیری (نمایش در صورت انتخاب یک دارو) */}
+      {reportMedication && (
+        <ReportModal 
+          medication={reportMedication} 
+          onClose={() => setReportMedication(null)} 
+        />
+      )}
+
       {notification && (
         <NotificationPopup
           title={notification.title}
@@ -288,7 +321,6 @@ export default function App() {
         />
       )}
 
-      {/* Confirm Dialog */}
       {confirmDialog && (
         <ConfirmDialog
           title={confirmDialog.title}
