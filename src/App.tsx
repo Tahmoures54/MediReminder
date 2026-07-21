@@ -229,66 +229,113 @@ export default function App() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900">
-      <div className="max-w-2xl mx-auto p-4 pb-20">
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-sky-900 to-slate-900 relative overflow-hidden">
+      
+      {/* Animated Background Effects */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute top-20 left-10 w-72 h-72 bg-cyan-500/10 rounded-full blur-3xl animate-pulse"></div>
+        <div className="absolute bottom-32 right-10 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl animate-pulse delay-1000"></div>
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-sky-500/5 rounded-full blur-3xl"></div>
+      </div>
+
+      <div className="max-w-2xl mx-auto p-4 pb-24 relative z-10">
         
-        <div className="mb-6 pt-4">
-          <h1 className="text-2xl md:text-3xl font-bold flex items-center gap-2">
-            <span className="text-3xl md:text-4xl">💊</span>
-            <span className="bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent whitespace-nowrap">
-              Reminder
-            </span>
-          </h1>
+        {/* Premium Header with Glow Effect */}
+        <div className="mb-8 pt-6">
+          <div className="bg-gradient-to-r from-cyan-500/10 via-blue-500/10 to-cyan-500/10 backdrop-blur-sm rounded-3xl p-6 border border-cyan-500/20 shadow-2xl shadow-cyan-500/10">
+            <div className="flex items-center justify-center gap-3">
+              <div className="relative">
+                <span className="text-5xl md:text-6xl drop-shadow-[0_0_20px_rgba(34,211,238,0.5)] animate-pulse">💊</span>
+                <div className="absolute inset-0 blur-xl bg-cyan-400/30 rounded-full"></div>
+              </div>
+              <h1 className="text-3xl md:text-4xl font-black bg-gradient-to-r from-cyan-300 via-blue-400 to-cyan-300 bg-clip-text text-transparent drop-shadow-lg animate-gradient bg-[length:200%_auto]">
+                Reminder
+              </h1>
+            </div>
+            <p className="text-center text-cyan-300/60 text-xs mt-3 font-medium tracking-wider">
+              Your Health, Our Priority
+            </p>
+          </div>
         </div>
 
-        <div className="mb-6">
+        {/* Action Buttons with Premium Design */}
+        <div className="mb-8">
           {!showForm ? (
-            <div className="flex gap-2">
+            <div className="flex gap-3">
               <button
                 onClick={() => setShowForm(true)}
-                className="flex-1 bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-3 sm:px-6 rounded-lg text-sm sm:text-base transition-all duration-300 shadow-lg hover:shadow-green-500/50 animate-pulse whitespace-nowrap"
+                className="flex-1 relative group overflow-hidden bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 text-white font-bold py-4 px-4 rounded-2xl text-sm sm:text-base transition-all duration-300 shadow-2xl shadow-green-500/30 hover:shadow-green-500/50 hover:scale-[1.02] active:scale-95"
               >
-                ➕ Add Medication
+                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000"></div>
+                <span className="relative flex items-center justify-center gap-2">
+                  <span className="text-lg">➕</span>
+                  <span>Add Medication</span>
+                </span>
               </button>
+              
               <button
                 onClick={() => window.open(SUPPORT_WEBSITE, '_blank')}
-                className="bg-orange-500 hover:bg-orange-600 text-white font-bold py-3 px-4 sm:px-5 rounded-lg transition-all duration-300 shadow-lg hover:shadow-orange-500/50 whitespace-nowrap flex items-center justify-center gap-1.5 text-sm sm:text-base"
+                className="relative group overflow-hidden bg-gradient-to-r from-orange-600 to-red-600 hover:from-orange-500 hover:to-red-500 text-white font-bold py-4 px-4 sm:px-6 rounded-2xl transition-all duration-300 shadow-2xl shadow-orange-500/30 hover:shadow-orange-500/50 hover:scale-105 active:scale-95 flex items-center justify-center gap-2 text-sm sm:text-base"
               >
-                <span>❤️</span>
-                <span className="hidden xs:inline sm:inline">Support</span>
+                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000"></div>
+                <span className="relative text-lg animate-pulse">❤️</span>
+                <span className="relative hidden sm:inline font-bold">Support</span>
               </button>
             </div>
           ) : (
-            <AddMedicationForm
-              onSubmit={handleAddMedication}
-              onCancel={() => setShowForm(false)}
-            />
+            <div className="animate-in slide-in-from-top duration-300">
+              <AddMedicationForm
+                onSubmit={handleAddMedication}
+                onCancel={() => setShowForm(false)}
+              />
+            </div>
           )}
         </div>
 
-        <div className="space-y-4">
+        {/* Medications List with Stagger Animation */}
+        <div className="space-y-5">
           {medications.length === 0 ? (
-            <div className="text-center py-12 text-gray-400">
-              <div className="text-6xl mb-4">💊</div>
-              <p className="text-lg">No medications added yet</p>
-              <p className="text-sm mt-2">Click "Add Medication" to get started</p>
+            <div className="text-center py-20 animate-in fade-in zoom-in duration-500">
+              <div className="relative inline-block mb-6">
+                <div className="text-8xl animate-bounce">💊</div>
+                <div className="absolute inset-0 blur-2xl bg-cyan-400/20 animate-pulse"></div>
+              </div>
+              <p className="text-xl font-semibold text-cyan-300/90 mb-2">No medications added yet</p>
+              <p className="text-sm text-cyan-300/50">Click "Add Medication" to get started</p>
             </div>
           ) : (
             medications.map((med, index) => (
-              <MedicationCard
-                key={med.id}
-                medication={med}
-                index={index + 1}
-                onToggle={() => handleToggleMedication(med)}
-                onReset={() => handleResetMedication(med)}
-                onDelete={() => handleDeleteMedication(med)}
-                onShowReport={() => setReportMedication(med)}
-              />
+              <div 
+                key={med.id} 
+                className="animate-in slide-in-from-bottom duration-300"
+                style={{ animationDelay: `${index * 50}ms` }}
+              >
+                <MedicationCard
+                  medication={med}
+                  index={index + 1}
+                  onToggle={() => handleToggleMedication(med)}
+                  onReset={() => handleResetMedication(med)}
+                  onDelete={() => handleDeleteMedication(med)}
+                  onShowReport={() => setReportMedication(med)}
+                />
+              </div>
             ))
           )}
         </div>
+
+        {/* Premium Footer */}
+        <div className="mt-12 text-center">
+          <div className="inline-block bg-gradient-to-r from-cyan-500/5 to-blue-500/5 backdrop-blur-sm rounded-full px-6 py-3 border border-cyan-500/10">
+            <p className="text-xs text-cyan-300/40 font-medium flex items-center gap-2">
+              <span className="text-sm">✨</span>
+              <span>Made with care for your health</span>
+              <span className="text-sm">✨</span>
+            </p>
+          </div>
+        </div>
       </div>
 
+      {/* Modals and Popups */}
       {reportMedication && (
         <ReportModal 
           medication={reportMedication} 
