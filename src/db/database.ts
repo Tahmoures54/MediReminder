@@ -1,3 +1,8 @@
+export interface HistoryRecord {
+  takenAt: number; // زمان مصرف (Timestamp)
+  status: 'on-time' | 'early' | 'late'; // وضعیت مصرف
+}
+
 export interface Medication {
   id?: number;
   name: string;
@@ -7,10 +12,11 @@ export interface Medication {
   quantity: number;
   remaining: number; // in seconds
   running: boolean;
+  history?: HistoryRecord[]; // تاریخچه برای گزارش‌گیری
 }
 
 const DB_NAME = 'MedicationReminderDB';
-const DB_VERSION = 1;
+const DB_VERSION = 2; // ارتقا به نسخه ۲ برای پشتیبانی از تاریخچه
 const STORE_NAME = 'medications';
 const STATE_STORE = 'appState';
 
@@ -65,6 +71,12 @@ class Database {
     return new Promise((resolve, reject) => {
       const transaction = db.transaction(STORE_NAME, 'readwrite');
       const store = transaction.objectStore(STORE_NAME);
+      
+      // مطمئن می‌شویم که آرایه تاریخچه هنگام ثبت داروی جدید خالی است
+      if (!medication.history) {
+        medication.history = [];
+      }
+      
       const request = store.add(medication);
 
       request.onsuccess = () => resolve(request.result as number);
@@ -77,6 +89,12 @@ class Database {
     return new Promise((resolve, reject) => {
       const transaction = db.transaction(STORE_NAME, 'readwrite');
       const store = transaction.objectStore(STORE_NAME);
+      
+      // اگر دیتای قدیمی تاریخچه ندارد، به آن اضافه می‌کنیم
+      if (!medication.history) {
+        medication.history = [];
+      }
+      
       const request = store.put(medication);
 
       request.onsuccess = () => resolve();
