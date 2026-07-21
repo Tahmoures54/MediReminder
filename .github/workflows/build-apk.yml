@@ -3,14 +3,14 @@ name: Build Signed APK (No local tools needed)
 on:
   push:
     branches: [ main ]
-  workflow_dispatch:   # برای اجرای دستی
+  workflow_dispatch:   # اجرای دستی هم ممکن باشد
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-      - name: دریافت کد
+      - name: دریافت کد از مخزن
         uses: actions/checkout@v4
 
       - name: نصب Node.js
@@ -18,10 +18,13 @@ jobs:
         with:
           node-version: '20'
 
-      - name: ساخت برنامهٔ وب
+      - name: ساخت برنامهٔ وب (Vite)
         run: |
           npm ci
           npm run build
+
+      - name: نصب Capacitor به صورت محلی
+        run: npm install @capacitor/android @capacitor/core @capacitor/cli --no-save
 
       - name: تنظیم Java
         uses: actions/setup-java@v4
@@ -32,15 +35,12 @@ jobs:
       - name: نصب Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: نصب Capacitor CLI
-        run: npm install -g @capacitor/cli @capacitor/core @capacitor/android
-
-      - name: افزودن پلتفرم Android و همگام‌سازی
+      - name: افزودن پلتفرم Android و همگام‌سازی فایل‌های وب
         run: |
           npx cap add android
           npx cap sync
 
-      - name: ساخت کی‌استور جدید (بدون نیاز به سیستم شما)
+      - name: ساخت یک کی‌استور موقت (برای امضا)
         run: |
           keytool -genkey -v \
             -keystore release.keystore \
@@ -57,7 +57,7 @@ jobs:
           cd android
           ./gradlew assembleRelease
 
-      - name: امضای APK
+      - name: امضای APK با apksigner
         run: |
           $ANDROID_SDK_ROOT/build-tools/latest/apksigner sign \
             --ks release.keystore \
@@ -67,13 +67,13 @@ jobs:
             --out android/app/build/outputs/apk/release/app-release.apk \
             android/app/build/outputs/apk/release/app-release-unsigned.apk
 
-      - name: بارگذاری APK امضاشده (برای دانلود)
+      - name: آپلود APK نهایی (برای دانلود)
         uses: actions/upload-artifact@v4
         with:
           name: MediReminder-APK
           path: android/app/build/outputs/apk/release/app-release.apk
 
-      - name: بارگذاری کی‌استور (برای استفاده‌های بعدی اختیاری)
+      - name: آپلود فایل کی‌استور (اختیاری – فقط برای پشتیبان‌گیری)
         uses: actions/upload-artifact@v4
         with:
           name: release-keystore
