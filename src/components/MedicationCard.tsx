@@ -7,9 +7,10 @@ interface MedicationCardProps {
   onToggle: () => void;
   onReset: () => void;
   onDelete: () => void;
+  onShowReport: () => void; // این پراپ برای دکمه گزارش اضافه شد
 }
 
-export function MedicationCard({ medication, index, onToggle, onReset, onDelete }: MedicationCardProps) {
+export function MedicationCard({ medication, index, onToggle, onReset, onDelete, onShowReport }: MedicationCardProps) {
   const progress = medication.remaining / medication.interval;
   const isLowStock = medication.quantity <= 5;
 
@@ -17,18 +18,35 @@ export function MedicationCard({ medication, index, onToggle, onReset, onDelete 
     <div className={`relative bg-gray-800 rounded-2xl p-5 shadow-xl border-l-4 ${
       medication.running ? 'border-cyan-400' : 'border-gray-600'
     } transition-all duration-300`}>
-      {/* Header */}
-      <div className="mb-3">
-        <h3 className="text-xl font-bold text-white flex items-center gap-2">
-          <span className="text-gray-400 text-sm">#{index}</span>
-          {medication.name}
-        </h3>
-        <p className="text-gray-300 text-sm mt-1">
-          💊 Dosage: {medication.dosage}
-        </p>
-        <p className={`text-sm mt-1 ${isLowStock ? 'text-red-400 font-bold' : 'text-gray-300'}`}>
-          📦 Remaining: {medication.quantity} {isLowStock && '⚠️'}
-        </p>
+      
+      {/* Header & Top Right Actions */}
+      <div className="flex justify-between items-start mb-3">
+        <div>
+          <h3 className="text-xl font-bold text-white flex items-center gap-2">
+            <span className="text-gray-400 text-sm">#{index}</span>
+            {medication.name}
+          </h3>
+          <p className="text-gray-300 text-sm mt-1">
+            💊 Dosage: {medication.dosage}
+          </p>
+          <p className={`text-sm mt-1 ${isLowStock ? 'text-red-400 font-bold' : 'text-gray-300'}`}>
+            📦 Remaining: {medication.quantity} {isLowStock && '⚠️'}
+          </p>
+        </div>
+
+        {/* دکمه گزارش و چراغ چشمک‌زن */}
+        <div className="flex items-center gap-3">
+          {medication.running && (
+            <div className="w-3 h-3 bg-cyan-400 rounded-full animate-pulse shadow-[0_0_8px_rgba(34,211,238,0.8)]" title="Timer is running" />
+          )}
+          <button
+            onClick={onShowReport}
+            className="bg-gray-700 hover:bg-gray-600 text-xl p-2 rounded-lg transition-colors duration-300 flex items-center justify-center shadow-lg"
+            title="View History Report"
+          >
+            📊
+          </button>
+        </div>
       </div>
 
       {/* Timer Display */}
@@ -75,13 +93,6 @@ export function MedicationCard({ medication, index, onToggle, onReset, onDelete 
           🗑
         </button>
       </div>
-
-      {/* Running indicator */}
-      {medication.running && (
-        <div className="absolute top-3 right-3">
-          <div className="w-3 h-3 bg-cyan-400 rounded-full animate-pulse" />
-        </div>
-      )}
     </div>
   );
 }
