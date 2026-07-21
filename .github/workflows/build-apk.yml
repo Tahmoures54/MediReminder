@@ -35,6 +35,10 @@ jobs:
       - name: نصب Android SDK
         uses: android-actions/setup-android@v3
 
+      - name: نصب build-tools نسخه ۳۴
+        run: |
+          $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager "build-tools;34.0.0"
+
       - name: افزودن پلتفرم Android و همگام‌سازی
         run: |
           npx cap add android
@@ -57,9 +61,9 @@ jobs:
           cd android
           ./gradlew assembleRelease
 
-      - name: امضای APK با apksigner
+      - name: امضای APK با apksigner (نسخه ۳۴.۰.۰)
         run: |
-          $ANDROID_SDK_ROOT/build-tools/latest/apksigner sign \
+          $ANDROID_SDK_ROOT/build-tools/34.0.0/apksigner sign \
             --ks release.keystore \
             --ks-pass pass:android \
             --ks-key-alias upload \
