@@ -6,7 +6,8 @@ import { NotificationPopup } from './components/NotificationPopup';
 import { db, Medication } from './db/database';
 import { playAlarm, stopAlarm } from './utils/audio';
 
-const SUPPORT_WEBSITE = "https://www.aimedireminder.com";
+// لینک جدید به سایت ورسل شما تغییر کرد
+const SUPPORT_WEBSITE = "https://mediremind-brown.vercel.app/";
 const LOW_STOCK_THRESHOLD = 5;
 
 export default function App() {
@@ -223,18 +224,20 @@ export default function App() {
         {/* Add Medication Form */}
         <div className="mb-6">
           {!showForm ? (
-            <div className="flex gap-3">
+            <div className="flex gap-2 sm:gap-3">
               <button
                 onClick={() => setShowForm(true)}
-                className="flex-1 bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-6 rounded-lg text-lg transition-all duration-300 shadow-lg hover:shadow-green-500/50 animate-pulse"
+                className="flex-1 bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-2 sm:px-6 rounded-lg text-sm sm:text-lg transition-all duration-300 shadow-lg hover:shadow-green-500/50 animate-pulse whitespace-nowrap"
               >
                 ➕ Add Medication
               </button>
+              {/* دکمه جدید برای حمایت و نکات سلامتی */}
               <button
                 onClick={() => window.open(SUPPORT_WEBSITE, '_blank')}
-                className="bg-orange-500 hover:bg-orange-600 text-white font-bold py-3 px-4 rounded-lg transition-all duration-300 shadow-lg hover:shadow-orange-500/50"
+                className="bg-orange-500 hover:bg-orange-600 text-white font-bold py-3 px-3 sm:px-4 rounded-lg transition-all duration-300 shadow-lg hover:shadow-orange-500/50 whitespace-nowrap flex items-center gap-1 sm:gap-2 text-sm sm:text-base"
               >
-                💡 Health Tips
+                <span>❤️</span>
+                <span>Support & Tips</span>
               </button>
             </div>
           ) : (
