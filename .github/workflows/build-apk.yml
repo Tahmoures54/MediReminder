@@ -3,7 +3,7 @@ name: Build Signed APK (No local tools needed)
 on:
   push:
     branches: [ main ]
-  workflow_dispatch:   # اجرای دستی هم ممکن باشد
+  workflow_dispatch:
 
 jobs:
   build:
@@ -26,11 +26,11 @@ jobs:
       - name: نصب Capacitor به صورت محلی
         run: npm install @capacitor/android @capacitor/core @capacitor/cli --no-save
 
-      - name: تنظیم Java
+      - name: تنظیم Java 21
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
-          java-version: '17'
+          java-version: '21'
 
       - name: نصب Android SDK
         uses: android-actions/setup-android@v3
