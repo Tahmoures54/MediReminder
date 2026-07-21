@@ -3,8 +3,8 @@ import { MedicationCard } from './components/MedicationCard';
 import { AddMedicationForm } from './components/AddMedicationForm';
 import { ConfirmDialog } from './components/ConfirmDialog';
 import { NotificationPopup } from './components/NotificationPopup';
-import { ReportModal } from './components/ReportModal'; // <-- اضافه شدن ایمپورت مدال گزارش
-import { db, Medication, HistoryRecord } from './db/database'; // <-- اضافه شدن HistoryRecord
+import { ReportModal } from './components/ReportModal';
+import { db, Medication, HistoryRecord } from './db/database';
 import { playAlarm, stopAlarm } from './utils/audio';
 
 const SUPPORT_WEBSITE = "https://mediremind-brown.vercel.app/";
@@ -15,10 +15,7 @@ export default function App() {
   const [showForm, setShowForm] = useState(false);
   const [notification, setNotification] = useState<{ title: string; message: string; medication?: Medication } | null>(null);
   const [confirmDialog, setConfirmDialog] = useState<{ title: string; message: string; onConfirm: () => void } | null>(null);
-  
-  // استیت جدید برای باز و بسته کردن صفحه گزارش
   const [reportMedication, setReportMedication] = useState<Medication | null>(null);
-  
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
@@ -39,7 +36,6 @@ export default function App() {
   const loadMedications = async () => {
     try {
       const meds = await db.getAllMedications();
-      
       const lastSaved = await db.getLastSavedTime();
       const now = Math.floor(Date.now() / 1000);
       
@@ -108,14 +104,12 @@ export default function App() {
     }
   };
 
-  // 🧠 تابع هوشمند برای محاسبه دیر یا زود بودن مصرف
   const recordDose = (med: Medication): HistoryRecord[] => {
     const nowMs = Date.now();
     const updatedHistory = med.history || [];
     let status: 'on-time' | 'early' | 'late' = 'on-time';
     
     if (updatedHistory.length > 0) {
-      // پیدا کردن زمان آخرین مصرف
       const latestTaken = Math.max(...updatedHistory.map(h => h.takenAt));
       const diffMs = nowMs - latestTaken;
       const targetMs = med.interval * 1000;
@@ -124,9 +118,9 @@ export default function App() {
       const SIXTY_MINS = 60 * 60 * 1000;
       
       if (diffMs < targetMs - THIRTY_MINS) {
-        status = 'early'; // بیش از ۳۰ دقیقه زودتر
+        status = 'early';
       } else if (diffMs > targetMs + SIXTY_MINS) {
-        status = 'late'; // بیش از ۱ ساعت دیرتر
+        status = 'late';
       }
     }
     
@@ -166,7 +160,6 @@ export default function App() {
       title: "Confirm",
       message: confirmMessage,
       onConfirm: async () => {
-        // فقط اگر کاربر دکمه استارت را زد (نه پاز) تاریخچه را ثبت می‌کنیم
         const updatedHistory = !wasRunning ? recordDose(med) : med.history;
 
         const updatedMed = {
@@ -218,7 +211,6 @@ export default function App() {
     });
   };
 
-  // آپدیت برای دکمه Restart (زمانی که از روی آلارم دارو را می‌خورد)
   const handleRestartMedication = async (med: Medication) => {
     const updatedHistory = recordDose(med);
     const updatedMed = { ...med, running: true, history: updatedHistory };
@@ -244,26 +236,26 @@ export default function App() {
           <h1 className="text-2xl md:text-3xl font-bold flex items-center gap-2">
             <span className="text-3xl md:text-4xl">💊</span>
             <span className="bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent whitespace-nowrap">
-              MediReminder AI
+              Reminder
             </span>
           </h1>
         </div>
 
         <div className="mb-6">
           {!showForm ? (
-            <div className="flex gap-2 sm:gap-3">
+            <div className="flex gap-2">
               <button
                 onClick={() => setShowForm(true)}
-                className="flex-1 bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-2 sm:px-6 rounded-lg text-sm sm:text-lg transition-all duration-300 shadow-lg hover:shadow-green-500/50 animate-pulse whitespace-nowrap"
+                className="flex-1 bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-3 sm:px-6 rounded-lg text-sm sm:text-base transition-all duration-300 shadow-lg hover:shadow-green-500/50 animate-pulse whitespace-nowrap"
               >
                 ➕ Add Medication
               </button>
               <button
                 onClick={() => window.open(SUPPORT_WEBSITE, '_blank')}
-                className="bg-orange-500 hover:bg-orange-600 text-white font-bold py-3 px-3 sm:px-4 rounded-lg transition-all duration-300 shadow-lg hover:shadow-orange-500/50 whitespace-nowrap flex items-center gap-1 sm:gap-2 text-sm sm:text-base"
+                className="bg-orange-500 hover:bg-orange-600 text-white font-bold py-3 px-4 sm:px-5 rounded-lg transition-all duration-300 shadow-lg hover:shadow-orange-500/50 whitespace-nowrap flex items-center justify-center gap-1.5 text-sm sm:text-base"
               >
                 <span>❤️</span>
-                <span>Support & Tips</span>
+                <span className="hidden xs:inline sm:inline">Support</span>
               </button>
             </div>
           ) : (
@@ -290,14 +282,13 @@ export default function App() {
                 onToggle={() => handleToggleMedication(med)}
                 onReset={() => handleResetMedication(med)}
                 onDelete={() => handleDeleteMedication(med)}
-                onShowReport={() => setReportMedication(med)} /* <-- پاس دادن رویداد باز شدن گزارش */
+                onShowReport={() => setReportMedication(med)}
               />
             ))
           )}
         </div>
       </div>
 
-      {/* مودال گزارش گیری (نمایش در صورت انتخاب یک دارو) */}
       {reportMedication && (
         <ReportModal 
           medication={reportMedication} 
