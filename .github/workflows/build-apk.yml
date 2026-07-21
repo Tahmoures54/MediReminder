@@ -23,19 +23,19 @@ jobs:
           npm ci
           npm run build
 
-      - name: نصب Capacitor به صورت محلی
-        run: npm install @capacitor/android @capacitor/core @capacitor/cli --no-save
+      - name: نصب Capacitor نسخه ۵ (بدون تداخل Kotlin)
+        run: npm install @capacitor/android@5 @capacitor/core@5 @capacitor/cli@5 --no-save
 
-      - name: تنظیم Java 21
+      - name: تنظیم Java 17
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
-          java-version: '21'
+          java-version: '17'
 
       - name: نصب Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: افزودن پلتفرم Android و همگام‌سازی فایل‌های وب
+      - name: افزودن پلتفرم Android و همگام‌سازی
         run: |
           npx cap add android
           npx cap sync
@@ -73,7 +73,7 @@ jobs:
           name: MediReminder-APK
           path: android/app/build/outputs/apk/release/app-release.apk
 
-      - name: آپلود فایل کی‌استور (اختیاری – فقط برای پشتیبان‌گیری)
+      - name: آپلود فایل کی‌استور (اختیاری)
         uses: actions/upload-artifact@v4
         with:
           name: release-keystore
