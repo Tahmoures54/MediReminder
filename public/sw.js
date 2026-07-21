@@ -1,10 +1,14 @@
-const CACHE_NAME = 'medi-reminder-v1';
+const CACHE_NAME = 'medi-reminder-v2';
 const urlsToCache = [
   '/',
   '/index.html',
   '/manifest.json',
-  '/icon-192.png',
-  '/icon-512.png'
+  '/android-chrome-192x192.png',
+  '/android-chrome-512x512.png',
+  '/apple-touch-icon.png',
+  '/favicon-32x32.png',
+  '/favicon-16x16.png',
+  '/favicon.ico'
 ];
 
 self.addEventListener('install', (event) => {
