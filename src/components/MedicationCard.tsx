@@ -18,32 +18,12 @@ export function MedicationCard({
   onDelete,
   onShowReport
 }: MedicationCardProps) {
-  // بهسازی: جلوگیری از خطای تقسیم بر صفر و محاسبه دقیق درصد
+  // بهسازی: جلوگیری از خطای تقسیم بر صفر و محاسبه دقیق درصد برای نوار پیشرفت
   const progressPercentage = medication.interval > 0 
     ? Math.min((medication.remaining / medication.interval) * 100, 100) 
     : 0;
     
   const isLowStock = medication.quantity <= 5;
-
-  // ویژگی جدید: هندل کردن اشتراک‌گذاری با استفاده از رابط بومی گوشی
-  const handleShare = async () => {
-    const shareData = {
-      title: 'MediReminder Status',
-      text: `من در حال مصرف داروی ${medication.name} (دوز: ${medication.dosage}) هستم. زمان باقی‌مانده تا دوز بعدی: ${formatTime(medication.remaining)}`,
-    };
-
-    try {
-      if (navigator.share) {
-        // باز کردن منوی اشتراک‌گذاری خود اندروید/iOS
-        await navigator.share(shareData);
-      } else {
-        // Fallback برای مرورگرهای قدیمی روی دسکتاپ
-        alert('امکان اشتراک‌گذاری مستقیم در این دستگاه پشتیبانی نمی‌شود.');
-      }
-    } catch (error) {
-      console.error('خطا در اشتراک‌گذاری:', error);
-    }
-  };
 
   return (
     <div className={`relative bg-gray-800 rounded-2xl p-5 shadow-xl border-l-4 transition-all duration-300 hover:shadow-2xl ${
@@ -69,22 +49,13 @@ export function MedicationCard({
             <div 
               className="w-3 h-3 bg-cyan-400 rounded-full animate-pulse shadow-[0_0_10px_rgba(34,211,238,0.8)]" 
               title="Timer is running" 
+              aria-hidden="true"
             />
           )}
           
-          {/* دکمه جدید اشتراک‌گذاری */}
-          <button
-            onClick={handleShare}
-            aria-label="Share medication status"
-            className="bg-gray-700 hover:bg-blue-600 text-lg p-2.5 rounded-lg transition-all duration-200 flex items-center justify-center shadow-lg hover:scale-105"
-            title="Share Status"
-          >
-            📤
-          </button>
-
           <button
             onClick={onShowReport}
-            aria-label="View history report"
+            aria-label="View history report for this medication"
             className="bg-gray-700 hover:bg-gray-600 text-lg p-2.5 rounded-lg transition-all duration-200 flex items-center justify-center shadow-lg hover:scale-105"
             title="View History Report"
           >
@@ -93,13 +64,17 @@ export function MedicationCard({
         </div>
       </div>
 
-      <div className={`text-5xl font-bold text-center my-4 transition-all duration-300 ${
-        medication.running ? 'text-cyan-400 drop-shadow-[0_0_15px_rgba(34,211,238,0.5)]' : 'text-gray-500'
-      }`}>
+      {/* اضافه شدن aria-live برای خوانده شدن محترمانه زمان توسط دستیار صوتی */}
+      <div 
+        className={`text-5xl font-bold text-center my-4 transition-all duration-300 ${
+          medication.running ? 'text-cyan-400 drop-shadow-[0_0_15px_rgba(34,211,238,0.5)]' : 'text-gray-500'
+        }`}
+        aria-live="polite"
+      >
         {formatTime(medication.remaining)}
       </div>
 
-      {/* بهسازی نوار پیشرفت برای دسترس‌پذیری */}
+      {/* بهسازی نوار پیشرفت با استانداردهای Accessibility */}
       <div 
         className="w-full h-2 bg-gray-700 rounded-full overflow-hidden mb-4"
         role="progressbar" 
@@ -139,6 +114,7 @@ export function MedicationCard({
         <button
           onClick={onDelete}
           aria-label="Delete medication"
+          title="Delete medication"
           className="bg-red-500 hover:bg-red-600 text-white font-bold py-3 px-4 rounded-lg transition-all duration-300 shadow-lg shadow-red-500/30 hover:shadow-red-500/50 hover:scale-105"
         >
           🗑
