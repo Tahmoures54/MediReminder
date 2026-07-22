@@ -29,12 +29,13 @@ export default function App() {
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
   // ------------------------------------------------------------------
-  // مدیریت آزادسازی بستر صوتی مرورگر
+  // رفع مشکل پخش صدا: آزادسازی بستر صوتی با اولین تعامل کاربر
   // ------------------------------------------------------------------
   const audioUnlocked = useRef(false);
 
   const unlockAudio = useCallback(() => {
     if (audioUnlocked.current) return;
+    // پخش یک صدای بسیار کوتاه بی‌صدا برای گرفتن مجوز
     try {
       const silentAudio = new Audio("data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=");
       silentAudio.volume = 0;
@@ -43,34 +44,19 @@ export default function App() {
         promise.then(() => {
           silentAudio.pause();
           audioUnlocked.current = true;
-        }).catch(() => {});
+        }).catch(() => {
+          // ممکن است مرورگر همچنان مسدود کند، در این صورت در اولین آلارم واقعی دوباره سعی می‌کنیم
+        });
       } else {
         audioUnlocked.current = true;
       }
     } catch (e) {
-      // نادیده گرفتن خطا
+      // نادیده گرفتن
     }
   }, []);
 
-  // با اولین تعامل کاربر در کل صفحه، محدودیت صدا برداشته می‌شود
-  useEffect(() => {
-    const handleFirstInteraction = () => {
-      unlockAudio();
-      document.removeEventListener('pointerdown', handleFirstInteraction);
-      document.removeEventListener('keydown', handleFirstInteraction);
-    };
-    
-    document.addEventListener('pointerdown', handleFirstInteraction);
-    document.addEventListener('keydown', handleFirstInteraction);
-
-    return () => {
-      document.removeEventListener('pointerdown', handleFirstInteraction);
-      document.removeEventListener('keydown', handleFirstInteraction);
-    };
-  }, [unlockAudio]);
-
   // ------------------------------------------------------------------
-  // بارگذاری اولیه و تنظیمات چرخه حیات
+  // بارگذاری اولیه
   // ------------------------------------------------------------------
   useEffect(() => {
     loadMedications();
@@ -82,9 +68,6 @@ export default function App() {
     const handleVisibilityChange = () => {
       if (document.hidden) {
         saveAllMedications();
-      } else {
-        // وقتی کاربر دوباره به تب برمی‌گردد تایمرها فوراً به‌روزرسانی شوند
-        updateTimers(); 
       }
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);
@@ -105,9 +88,10 @@ export default function App() {
       const updatedMeds: MedicationWithTimestamp[] = [];
 
       for (const med of meds) {
-        // جلوگیری از خطای تایپ اسکریپت با بررسی امن
-        const lastUpdated = 'lastUpdated' in med ? (med as any).lastUpdated : now;
-        const medWithTS: MedicationWithTimestamp = { ...med, lastUpdated };
+        const medWithTS: MedicationWithTimestamp = {
+          ...med,
+          lastUpdated: (med as any).lastUpdated || now,
+        };
 
         if (medWithTS.running) {
           const elapsed = Math.floor((now - medWithTS.lastUpdated) / 1000);
@@ -132,24 +116,17 @@ export default function App() {
   };
 
   const updateTimers = () => {
-    const now = Date.now();
     setMedications(prev => {
       let changed = false;
       const updated = prev.map(med => {
         if (med.running) {
-          // محاسبه دقیق زمان گذشته شده (رفع مشکل کند شدن تایمر در تب‌های غیرفعال)
-          const elapsed = Math.floor((now - med.lastUpdated) / 1000);
-          
-          if (elapsed > 0) {
+          if (med.remaining > 0) {
             changed = true;
-            const newRemaining = med.remaining - elapsed;
-            
-            if (newRemaining <= 0) {
-              // استفاده از setTimeout برای جلوگیری از اجرای ساید‌افکت داخل تابع آپدیت استیت
-              setTimeout(() => showMedicationAlert(med), 0);
-              return { ...med, running: false, remaining: med.interval, lastUpdated: now };
-            }
-            return { ...med, remaining: newRemaining, lastUpdated: now };
+            return { ...med, remaining: med.remaining - 1 };
+          } else {
+            showMedicationAlert(med);
+            changed = true;
+            return { ...med, running: false, remaining: med.interval, lastUpdated: Date.now() };
           }
         }
         return med;
@@ -159,6 +136,7 @@ export default function App() {
   };
 
   const showMedicationAlert = (med: MedicationWithTimestamp) => {
+    // تلاش برای پخش صدا (اگر بستر آزاد شده باشد اجرا می‌شود)
     playAlarm();
 
     const newAlert: AlertItem = {
@@ -197,6 +175,9 @@ export default function App() {
   };
 
   const handleAddMedication = async (medData: Omit<Medication, 'id' | 'remaining' | 'running' | 'history'>) => {
+    // آزادسازی بستر صوتی با این تعامل کاربر
+    unlockAudio();
+
     const now = Date.now();
     const newMed: MedicationWithTimestamp = {
       ...medData,
@@ -222,6 +203,8 @@ export default function App() {
   };
 
   const handleToggleMedication = async (med: MedicationWithTimestamp) => {
+    unlockAudio(); // تعامل کاربر، فرصت آزادسازی
+
     const wasRunning = med.running;
     const confirmMessage = wasRunning
       ? "Pause the timer?"
@@ -260,6 +243,7 @@ export default function App() {
   };
 
   const handleResetMedication = async (med: MedicationWithTimestamp) => {
+    unlockAudio();
     setConfirmDialog({
       title: "Reset Timer",
       message: "Reset timer to full interval?",
@@ -277,6 +261,7 @@ export default function App() {
   };
 
   const handleDeleteMedication = async (med: MedicationWithTimestamp) => {
+    unlockAudio();
     setConfirmDialog({
       title: "Delete Medication",
       message: `Remove ${med.name}?`,
@@ -317,11 +302,6 @@ export default function App() {
 
   const currentAlert = alertQueue.length > 0 ? alertQueue[0] : null;
 
-  const dismissCurrentAlert = () => {
-    setAlertQueue(prev => prev.slice(1));
-    if (alertQueue.length <= 1) stopAlarm();
-  };
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-sky-900 to-slate-900 relative overflow-hidden">
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
@@ -350,25 +330,32 @@ export default function App() {
 
         <div className="mb-8">
           {!showForm ? (
-            <div className="flex gap-3">
+            <div className="flex gap-3 justify-center">
+              {/* دکمه اضافه کردن کوتاه شده */}
               <button
-                onClick={() => setShowForm(true)}
-                className="flex-1 relative group overflow-hidden bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 text-white font-bold py-4 px-4 rounded-2xl text-sm sm:text-base transition-all duration-300 shadow-2xl shadow-green-500/30 hover:shadow-green-500/50 hover:scale-[1.02] active:scale-95"
+                onClick={() => {
+                  unlockAudio();
+                  setShowForm(true);
+                }}
+                className="relative group overflow-hidden bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 text-white font-bold py-4 px-6 rounded-2xl text-sm sm:text-base transition-all duration-300 shadow-2xl shadow-green-500/30 hover:shadow-green-500/50 hover:scale-[1.02] active:scale-95 flex items-center justify-center gap-2"
               >
                 <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000"></div>
-                <span className="relative flex items-center justify-center gap-2">
-                  <span className="text-lg">➕</span>
-                  <span>Medication</span>
+                <span className="relative flex items-center justify-center gap-1.5">
+                  <span className="text-xl font-black">+</span>
+                  <span>Med</span>
                 </span>
               </button>
               
+              {/* دکمه حمایت تغییر یافته به سفید در زمینه قرمز */}
               <button
-                onClick={() => window.open(SUPPORT_WEBSITE, '_blank')}
-                className="relative group overflow-hidden bg-gradient-to-r from-orange-600 to-red-600 hover:from-orange-500 hover:to-red-500 text-white font-bold py-4 px-4 sm:px-6 rounded-2xl transition-all duration-300 shadow-2xl shadow-orange-500/30 hover:shadow-orange-500/50 hover:scale-105 active:scale-95 flex items-center justify-center gap-2 text-sm sm:text-base"
+                onClick={() => {
+                  unlockAudio();
+                  window.open(SUPPORT_WEBSITE, '_blank');
+                }}
+                className="relative group overflow-hidden bg-red-600 hover:bg-red-500 text-white font-bold py-4 px-6 sm:px-8 rounded-2xl transition-all duration-300 shadow-2xl shadow-red-500/30 hover:shadow-red-500/50 hover:scale-105 active:scale-95 flex items-center justify-center gap-2 text-sm sm:text-base"
               >
                 <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000"></div>
-                <span className="relative text-lg animate-pulse">Support</span>
-                <span className="relative hidden sm:inline font-bold">Support</span>
+                <span className="relative font-bold text-white">Support</span>
               </button>
             </div>
           ) : (
@@ -433,10 +420,14 @@ export default function App() {
         <NotificationPopup
           title={currentAlert.title}
           message={currentAlert.message}
-          onClose={dismissCurrentAlert}
+          onClose={() => {
+            setAlertQueue(prev => prev.slice(1));
+            if (alertQueue.length <= 1) stopAlarm();
+          }}
           onRestart={currentAlert.medication ? () => {
             handleRestartMedication(currentAlert.medication!);
-            dismissCurrentAlert();
+            setAlertQueue(prev => prev.slice(1));
+            if (alertQueue.length <= 1) stopAlarm();
           } : undefined}
         />
       )}
