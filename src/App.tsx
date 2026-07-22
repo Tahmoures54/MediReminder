@@ -358,7 +358,7 @@ export default function App() {
                 <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000"></div>
                 <span className="relative flex items-center justify-center gap-2">
                   <span className="text-lg">➕</span>
-                  <span>Add Medication</span>
+                  <span>Medication</span>
                 </span>
               </button>
               
@@ -367,7 +367,7 @@ export default function App() {
                 className="relative group overflow-hidden bg-gradient-to-r from-orange-600 to-red-600 hover:from-orange-500 hover:to-red-500 text-white font-bold py-4 px-4 sm:px-6 rounded-2xl transition-all duration-300 shadow-2xl shadow-orange-500/30 hover:shadow-orange-500/50 hover:scale-105 active:scale-95 flex items-center justify-center gap-2 text-sm sm:text-base"
               >
                 <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000"></div>
-                <span className="relative text-lg animate-pulse">❤️</span>
+                <span className="relative text-lg animate-pulse">Support</span>
                 <span className="relative hidden sm:inline font-bold">Support</span>
               </button>
             </div>
