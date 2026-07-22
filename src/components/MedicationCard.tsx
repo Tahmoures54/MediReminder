@@ -10,14 +10,45 @@ interface MedicationCardProps {
   onShowReport: () => void;
 }
 
-export function MedicationCard({ medication, index, onToggle, onReset, onDelete, onShowReport }: MedicationCardProps) {
-  const progress = medication.remaining / medication.interval;
+export function MedicationCard({
+  medication,
+  index,
+  onToggle,
+  onReset,
+  onDelete,
+  onShowReport
+}: MedicationCardProps) {
+  // بهسازی: جلوگیری از خطای تقسیم بر صفر و محاسبه دقیق درصد
+  const progressPercentage = medication.interval > 0 
+    ? Math.min((medication.remaining / medication.interval) * 100, 100) 
+    : 0;
+    
   const isLowStock = medication.quantity <= 5;
 
+  // ویژگی جدید: هندل کردن اشتراک‌گذاری با استفاده از رابط بومی گوشی
+  const handleShare = async () => {
+    const shareData = {
+      title: 'MediReminder Status',
+      text: `من در حال مصرف داروی ${medication.name} (دوز: ${medication.dosage}) هستم. زمان باقی‌مانده تا دوز بعدی: ${formatTime(medication.remaining)}`,
+    };
+
+    try {
+      if (navigator.share) {
+        // باز کردن منوی اشتراک‌گذاری خود اندروید/iOS
+        await navigator.share(shareData);
+      } else {
+        // Fallback برای مرورگرهای قدیمی روی دسکتاپ
+        alert('امکان اشتراک‌گذاری مستقیم در این دستگاه پشتیبانی نمی‌شود.');
+      }
+    } catch (error) {
+      console.error('خطا در اشتراک‌گذاری:', error);
+    }
+  };
+
   return (
-    <div className={`relative bg-gray-800 rounded-2xl p-5 shadow-xl border-l-4 ${
+    <div className={`relative bg-gray-800 rounded-2xl p-5 shadow-xl border-l-4 transition-all duration-300 hover:shadow-2xl ${
       medication.running ? 'border-cyan-400' : 'border-gray-600'
-    } transition-all duration-300 hover:shadow-2xl`}>
+    }`}>
       
       <div className="flex justify-between items-start mb-3">
         <div className="flex-1">
@@ -35,10 +66,25 @@ export function MedicationCard({ medication, index, onToggle, onReset, onDelete,
 
         <div className="flex items-center gap-2">
           {medication.running && (
-            <div className="w-3 h-3 bg-cyan-400 rounded-full animate-pulse shadow-[0_0_10px_rgba(34,211,238,0.8)]" title="Timer is running" />
+            <div 
+              className="w-3 h-3 bg-cyan-400 rounded-full animate-pulse shadow-[0_0_10px_rgba(34,211,238,0.8)]" 
+              title="Timer is running" 
+            />
           )}
+          
+          {/* دکمه جدید اشتراک‌گذاری */}
+          <button
+            onClick={handleShare}
+            aria-label="Share medication status"
+            className="bg-gray-700 hover:bg-blue-600 text-lg p-2.5 rounded-lg transition-all duration-200 flex items-center justify-center shadow-lg hover:scale-105"
+            title="Share Status"
+          >
+            📤
+          </button>
+
           <button
             onClick={onShowReport}
+            aria-label="View history report"
             className="bg-gray-700 hover:bg-gray-600 text-lg p-2.5 rounded-lg transition-all duration-200 flex items-center justify-center shadow-lg hover:scale-105"
             title="View History Report"
           >
@@ -47,24 +93,32 @@ export function MedicationCard({ medication, index, onToggle, onReset, onDelete,
         </div>
       </div>
 
-      <div className={`text-5xl font-bold text-center my-4 ${
+      <div className={`text-5xl font-bold text-center my-4 transition-all duration-300 ${
         medication.running ? 'text-cyan-400 drop-shadow-[0_0_15px_rgba(34,211,238,0.5)]' : 'text-gray-500'
-      } transition-all duration-300`}>
+      }`}>
         {formatTime(medication.remaining)}
       </div>
 
-      <div className="w-full h-2 bg-gray-700 rounded-full overflow-hidden mb-4">
+      {/* بهسازی نوار پیشرفت برای دسترس‌پذیری */}
+      <div 
+        className="w-full h-2 bg-gray-700 rounded-full overflow-hidden mb-4"
+        role="progressbar" 
+        aria-valuenow={progressPercentage} 
+        aria-valuemin={0} 
+        aria-valuemax={100}
+      >
         <div
           className={`h-full transition-all duration-1000 ${
             medication.running ? 'bg-gradient-to-r from-cyan-500 to-blue-500' : 'bg-gray-600'
           }`}
-          style={{ width: `${progress * 100}%` }}
+          style={{ width: `${progressPercentage}%` }}
         />
       </div>
 
       <div className="flex gap-2">
         <button
           onClick={onToggle}
+          aria-label={medication.running ? "Pause timer" : "Start timer"}
           className={`flex-1 font-bold py-3 px-4 rounded-lg transition-all duration-300 ${
             medication.running
               ? 'bg-orange-500 hover:bg-orange-600 text-white shadow-lg shadow-orange-500/30 hover:shadow-orange-500/50'
@@ -76,6 +130,7 @@ export function MedicationCard({ medication, index, onToggle, onReset, onDelete,
         
         <button
           onClick={onReset}
+          aria-label="Reset timer"
           className="bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-4 rounded-lg transition-all duration-300 hover:scale-105"
         >
           ↺ Reset
@@ -83,6 +138,7 @@ export function MedicationCard({ medication, index, onToggle, onReset, onDelete,
         
         <button
           onClick={onDelete}
+          aria-label="Delete medication"
           className="bg-red-500 hover:bg-red-600 text-white font-bold py-3 px-4 rounded-lg transition-all duration-300 shadow-lg shadow-red-500/30 hover:shadow-red-500/50 hover:scale-105"
         >
           🗑
