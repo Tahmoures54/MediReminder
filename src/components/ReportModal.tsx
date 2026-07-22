@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { Medication, HistoryRecord } from '../db/database';
 
 interface ReportModalProps {
@@ -6,15 +7,12 @@ interface ReportModalProps {
 }
 
 export function ReportModal({ medication, onClose }: ReportModalProps) {
-  // اگر تاریخچه‌ای نبود یک آرایه خالی در نظر می‌گیریم
   const history = medication.history || [];
   
-  // مرتب‌سازی تاریخچه از جدید به قدیم (۵ تای آخر)
   const sortedHistory = [...history]
     .sort((a, b) => b.takenAt - a.takenAt)
-    .slice(0, 5); // فقط ۵ رکورد آخر را نشان می‌دهیم که شلوغ نشود
+    .slice(0, 5); 
 
-  // محاسبه درصد پایبندی (مصرف‌های به‌موقع)
   const calculateScore = () => {
     if (history.length === 0) return 0;
     const onTimeCount = history.filter(h => h.status === 'on-time').length;
@@ -23,7 +21,33 @@ export function ReportModal({ medication, onClose }: ReportModalProps) {
 
   const score = calculateScore();
 
-  // تبدیل Timestamp به تاریخ و ساعت خوانا
+  // ویژگی جدید: بستن مودال با دکمه Escape کیبورد
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onClose]);
+
+  // ویژگی جدید: ساختار پیام برای اشتراک‌گذاری به پزشک یا خانواده
+  const handleShareReport = async () => {
+    const reportText = `📊 Medication Report: ${medication.name}\n⭐ Overall Adherence: ${history.length > 0 ? score + '%' : 'No data yet'}\n📦 Total Doses Recorded: ${history.length}`;
+    
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          title: `${medication.name} Report`,
+          text: reportText,
+        });
+      } else {
+        alert('Sharing is not supported on this device.');
+      }
+    } catch (error) {
+      console.error('Error sharing report:', error);
+    }
+  };
+
   const formatDateTime = (timestamp: number) => {
     const date = new Date(timestamp);
     const today = new Date();
@@ -41,7 +65,6 @@ export function ReportModal({ medication, onClose }: ReportModalProps) {
     return `${date.toLocaleDateString()} - ${timeString}`;
   };
 
-  // تعیین استایل و آیکون بر اساس وضعیت
   const getStatusDisplay = (status: HistoryRecord['status']) => {
     switch (status) {
       case 'on-time':
@@ -54,20 +77,42 @@ export function ReportModal({ medication, onClose }: ReportModalProps) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="bg-gray-800 rounded-2xl w-full max-w-md p-6 shadow-2xl border border-gray-700 animate-in zoom-in-95 duration-200">
+    <div 
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200"
+      onClick={onClose} // ویژگی جدید: بستن با کلیک روی پس‌زمینه تیره
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="modal-title"
+    >
+      <div 
+        className="bg-gray-800 rounded-2xl w-full max-w-md p-6 shadow-2xl border border-gray-700 animate-in zoom-in-95 duration-200"
+        onClick={(e) => e.stopPropagation()} // جلوگیری از بسته شدن وقتی داخل کادر کلیک می‌شود
+      >
         
         {/* Header */}
         <div className="flex justify-between items-center mb-6">
-          <h2 className="text-xl font-bold text-white flex items-center gap-2">
+          <h2 id="modal-title" className="text-xl font-bold text-white flex items-center gap-2">
             📊 {medication.name} Report
           </h2>
-          <button 
-            onClick={onClose}
-            className="text-gray-400 hover:text-white transition-colors p-2"
-          >
-            ✕
-          </button>
+          <div className="flex items-center gap-2">
+            {/* دکمه جدید اشتراک‌گذاری */}
+            <button 
+              onClick={handleShareReport}
+              className="bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 transition-colors p-2.5 rounded-lg flex items-center justify-center"
+              title="Share with Doctor"
+              aria-label="Share Report"
+            >
+              📤
+            </button>
+            <button 
+              onClick={onClose}
+              className="bg-gray-700/50 text-gray-400 hover:text-white hover:bg-gray-700 transition-colors p-2.5 rounded-lg flex items-center justify-center"
+              title="Close"
+              aria-label="Close modal"
+            >
+              ✕
+            </button>
+          </div>
         </div>
 
         {/* Score Card */}
@@ -86,7 +131,7 @@ export function ReportModal({ medication, onClose }: ReportModalProps) {
         </div>
 
         {/* History List */}
-        <div className="space-y-3 mb-6 max-h-64 overflow-y-auto pr-2">
+        <div className="space-y-3 mb-6 max-h-64 overflow-y-auto pr-2 custom-scrollbar">
           <h3 className="text-gray-400 text-sm font-semibold mb-2">Last 5 Doses:</h3>
           
           {sortedHistory.length === 0 ? (
@@ -99,7 +144,7 @@ export function ReportModal({ medication, onClose }: ReportModalProps) {
               return (
                 <div key={index} className={`flex items-center justify-between p-3 rounded-lg ${display.bg} border border-gray-700/50`}>
                   <div className="flex items-center gap-3">
-                    <span className="text-xl">{display.icon}</span>
+                    <span className="text-xl" aria-hidden="true">{display.icon}</span>
                     <span className="text-gray-200 text-sm font-medium">
                       {formatDateTime(record.takenAt)}
                     </span>
