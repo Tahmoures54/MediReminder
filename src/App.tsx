@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { MedicationCard } from './components/MedicationCard';
 import { AddMedicationForm } from './components/AddMedicationForm';
 import { ConfirmDialog } from './components/ConfirmDialog';
@@ -10,14 +10,68 @@ import { playAlarm, stopAlarm } from './utils/audio';
 const SUPPORT_WEBSITE = "https://mediremind-brown.vercel.app/";
 const LOW_STOCK_THRESHOLD = 5;
 
+interface MedicationWithTimestamp extends Medication {
+  lastUpdated: number;
+}
+
+interface AlertItem {
+  title: string;
+  message: string;
+  medication: MedicationWithTimestamp;
+}
+
 export default function App() {
-  const [medications, setMedications] = useState<Medication[]>([]);
+  const [medications, setMedications] = useState<MedicationWithTimestamp[]>([]);
   const [showForm, setShowForm] = useState(false);
-  const [notification, setNotification] = useState<{ title: string; message: string; medication?: Medication } | null>(null);
+  const [alertQueue, setAlertQueue] = useState<AlertItem[]>([]);
   const [confirmDialog, setConfirmDialog] = useState<{ title: string; message: string; onConfirm: () => void } | null>(null);
-  const [reportMedication, setReportMedication] = useState<Medication | null>(null);
+  const [reportMedication, setReportMedication] = useState<MedicationWithTimestamp | null>(null);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
+  // ------------------------------------------------------------------
+  // مدیریت آزادسازی بستر صوتی مرورگر
+  // ------------------------------------------------------------------
+  const audioUnlocked = useRef(false);
+
+  const unlockAudio = useCallback(() => {
+    if (audioUnlocked.current) return;
+    try {
+      const silentAudio = new Audio("data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=");
+      silentAudio.volume = 0;
+      const promise = silentAudio.play();
+      if (promise !== undefined) {
+        promise.then(() => {
+          silentAudio.pause();
+          audioUnlocked.current = true;
+        }).catch(() => {});
+      } else {
+        audioUnlocked.current = true;
+      }
+    } catch (e) {
+      // نادیده گرفتن خطا
+    }
+  }, []);
+
+  // با اولین تعامل کاربر در کل صفحه، محدودیت صدا برداشته می‌شود
+  useEffect(() => {
+    const handleFirstInteraction = () => {
+      unlockAudio();
+      document.removeEventListener('pointerdown', handleFirstInteraction);
+      document.removeEventListener('keydown', handleFirstInteraction);
+    };
+    
+    document.addEventListener('pointerdown', handleFirstInteraction);
+    document.addEventListener('keydown', handleFirstInteraction);
+
+    return () => {
+      document.removeEventListener('pointerdown', handleFirstInteraction);
+      document.removeEventListener('keydown', handleFirstInteraction);
+    };
+  }, [unlockAudio]);
+
+  // ------------------------------------------------------------------
+  // بارگذاری اولیه و تنظیمات چرخه حیات
+  // ------------------------------------------------------------------
   useEffect(() => {
     loadMedications();
     
@@ -25,76 +79,95 @@ export default function App() {
       updateTimers();
     }, 1000);
 
-    return () => {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        saveAllMedications();
+      } else {
+        // وقتی کاربر دوباره به تب برمی‌گردد تایمرها فوراً به‌روزرسانی شوند
+        updateTimers(); 
       }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('beforeunload', saveAllMedications);
+
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
       stopAlarm();
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('beforeunload', saveAllMedications);
     };
   }, []);
 
   const loadMedications = async () => {
     try {
-      const meds = await db.getAllMedications();
-      const lastSaved = await db.getLastSavedTime();
-      const now = Math.floor(Date.now() / 1000);
-      
-      if (lastSaved > 0) {
-        const elapsed = now - lastSaved;
-        const updatedMeds = meds.map(med => {
-          if (med.running) {
-            med.remaining -= elapsed;
-            if (med.remaining <= 0) {
-              med.running = false;
-              med.remaining = med.interval;
-              setTimeout(() => showMedicationAlert(med), 2000);
+      const meds: Medication[] = await db.getAllMedications();
+      const now = Date.now();
+      const updatedMeds: MedicationWithTimestamp[] = [];
+
+      for (const med of meds) {
+        // جلوگیری از خطای تایپ اسکریپت با بررسی امن
+        const lastUpdated = 'lastUpdated' in med ? (med as any).lastUpdated : now;
+        const medWithTS: MedicationWithTimestamp = { ...med, lastUpdated };
+
+        if (medWithTS.running) {
+          const elapsed = Math.floor((now - medWithTS.lastUpdated) / 1000);
+          if (elapsed > 0) {
+            medWithTS.remaining = Math.max(0, medWithTS.remaining - elapsed);
+            if (medWithTS.remaining <= 0) {
+              medWithTS.running = false;
+              medWithTS.remaining = medWithTS.interval;
+              setTimeout(() => showMedicationAlert(medWithTS), 500);
             }
           }
-          return med;
-        });
-        
-        for (const med of updatedMeds) {
-          await db.updateMedication(med);
         }
-        
-        setMedications(updatedMeds);
-      } else {
-        setMedications(meds);
+        medWithTS.lastUpdated = now;
+        updatedMeds.push(medWithTS);
       }
-      
-      await db.setLastSavedTime(now);
+
+      await Promise.all(updatedMeds.map(med => db.updateMedication(med)));
+      setMedications(updatedMeds);
     } catch (error) {
       console.error('Failed to load medications:', error);
     }
   };
 
-  const updateTimers = async () => {
+  const updateTimers = () => {
+    const now = Date.now();
     setMedications(prev => {
+      let changed = false;
       const updated = prev.map(med => {
         if (med.running) {
-          if (med.remaining > 0) {
-            return { ...med, remaining: med.remaining - 1 };
-          } else {
-            showMedicationAlert(med);
-            return { ...med, running: false, remaining: med.interval };
+          // محاسبه دقیق زمان گذشته شده (رفع مشکل کند شدن تایمر در تب‌های غیرفعال)
+          const elapsed = Math.floor((now - med.lastUpdated) / 1000);
+          
+          if (elapsed > 0) {
+            changed = true;
+            const newRemaining = med.remaining - elapsed;
+            
+            if (newRemaining <= 0) {
+              // استفاده از setTimeout برای جلوگیری از اجرای ساید‌افکت داخل تابع آپدیت استیت
+              setTimeout(() => showMedicationAlert(med), 0);
+              return { ...med, running: false, remaining: med.interval, lastUpdated: now };
+            }
+            return { ...med, remaining: newRemaining, lastUpdated: now };
           }
         }
         return med;
       });
-      
-      updated.forEach(med => db.updateMedication(med));
-      return updated;
+      return changed ? updated : prev;
     });
   };
 
-  const showMedicationAlert = (med: Medication) => {
+  const showMedicationAlert = (med: MedicationWithTimestamp) => {
     playAlarm();
-    setNotification({
+
+    const newAlert: AlertItem = {
       title: "🔔 Time to Medicate!",
       message: `Take now:\n💊 ${med.name}\n⚖️ Dosage: ${med.dosage}`,
-      medication: med
-    });
-    
+      medication: med,
+    };
+    setAlertQueue(prev => [...prev, newAlert]);
+
     if ('Notification' in window && Notification.permission === 'granted') {
       new Notification('🔔 Time to Medicate!', {
         body: `${med.name} - ${med.dosage}`,
@@ -104,7 +177,7 @@ export default function App() {
     }
   };
 
-  const recordDose = (med: Medication): HistoryRecord[] => {
+  const recordDose = (med: MedicationWithTimestamp): HistoryRecord[] => {
     const nowMs = Date.now();
     const updatedHistory = med.history || [];
     let status: 'on-time' | 'early' | 'late' = 'on-time';
@@ -117,22 +190,20 @@ export default function App() {
       const THIRTY_MINS = 30 * 60 * 1000;
       const SIXTY_MINS = 60 * 60 * 1000;
       
-      if (diffMs < targetMs - THIRTY_MINS) {
-        status = 'early';
-      } else if (diffMs > targetMs + SIXTY_MINS) {
-        status = 'late';
-      }
+      if (diffMs < targetMs - THIRTY_MINS) status = 'early';
+      else if (diffMs > targetMs + SIXTY_MINS) status = 'late';
     }
-    
     return [...updatedHistory, { takenAt: nowMs, status }];
   };
 
   const handleAddMedication = async (medData: Omit<Medication, 'id' | 'remaining' | 'running' | 'history'>) => {
-    const newMed: Medication = {
+    const now = Date.now();
+    const newMed: MedicationWithTimestamp = {
       ...medData,
       remaining: medData.interval,
       running: false,
-      history: []
+      history: [],
+      lastUpdated: now,
     };
     
     const id = await db.addMedication(newMed);
@@ -142,16 +213,16 @@ export default function App() {
     setShowForm(false);
     
     setTimeout(() => {
-      setNotification({
+      setAlertQueue(prev => [...prev, {
         title: "💡 Reminder",
-        message: "Tap ▶ Start after each dose."
-      });
+        message: "Tap ▶ Start after each dose.",
+        medication: newMed,
+      }]);
     }, 300);
   };
 
-  const handleToggleMedication = async (med: Medication) => {
+  const handleToggleMedication = async (med: MedicationWithTimestamp) => {
     const wasRunning = med.running;
-    
     const confirmMessage = wasRunning
       ? "Pause the timer?"
       : `Did you take ${med.name} (${med.dosage}) now?\nTimer will start after confirmation.`;
@@ -161,12 +232,14 @@ export default function App() {
       message: confirmMessage,
       onConfirm: async () => {
         const updatedHistory = !wasRunning ? recordDose(med) : med.history;
+        const now = Date.now();
 
-        const updatedMed = {
+        const updatedMed: MedicationWithTimestamp = {
           ...med,
           running: !wasRunning,
           quantity: !wasRunning && med.quantity > 0 ? med.quantity - 1 : med.quantity,
-          history: updatedHistory
+          history: updatedHistory,
+          lastUpdated: now,
         };
         
         await db.updateMedication(updatedMed);
@@ -174,24 +247,28 @@ export default function App() {
         
         if (!wasRunning && updatedMed.quantity <= LOW_STOCK_THRESHOLD) {
           setTimeout(() => {
-            setNotification({
+            setAlertQueue(prev => [...prev, {
               title: "💊 Low Stock Alert",
-              message: `Only ${updatedMed.quantity} pill${updatedMed.quantity > 1 ? 's' : ''} left of ${updatedMed.name}.\nPlease refill soon.`
-            });
+              message: `Only ${updatedMed.quantity} pill${updatedMed.quantity > 1 ? 's' : ''} left of ${updatedMed.name}.\nPlease refill soon.`,
+              medication: updatedMed,
+            }]);
           }, 500);
         }
-        
         setConfirmDialog(null);
       }
     });
   };
 
-  const handleResetMedication = async (med: Medication) => {
+  const handleResetMedication = async (med: MedicationWithTimestamp) => {
     setConfirmDialog({
       title: "Reset Timer",
       message: "Reset timer to full interval?",
       onConfirm: async () => {
-        const updatedMed = { ...med, remaining: med.interval };
+        const updatedMed: MedicationWithTimestamp = {
+          ...med,
+          remaining: med.interval,
+          lastUpdated: Date.now(),
+        };
         await db.updateMedication(updatedMed);
         setMedications(prev => prev.map(m => m.id === med.id ? updatedMed : m));
         setConfirmDialog(null);
@@ -199,7 +276,7 @@ export default function App() {
     });
   };
 
-  const handleDeleteMedication = async (med: Medication) => {
+  const handleDeleteMedication = async (med: MedicationWithTimestamp) => {
     setConfirmDialog({
       title: "Delete Medication",
       message: `Remove ${med.name}?`,
@@ -211,27 +288,42 @@ export default function App() {
     });
   };
 
-  const handleRestartMedication = async (med: Medication) => {
+  const handleRestartMedication = (med: MedicationWithTimestamp) => {
     const updatedHistory = recordDose(med);
-    const updatedMed = { ...med, running: true, history: updatedHistory };
-    await db.updateMedication(updatedMed);
+    const updatedMed: MedicationWithTimestamp = {
+      ...med,
+      running: true,
+      history: updatedHistory,
+      lastUpdated: Date.now(),
+    };
+    db.updateMedication(updatedMed);
     setMedications(prev => prev.map(m => m.id === med.id ? updatedMed : m));
   };
 
-  const requestNotificationPermission = async () => {
-    if ('Notification' in window && Notification.permission === 'default') {
-      await Notification.requestPermission();
-    }
-  };
+  const saveAllMedications = useCallback(async () => {
+    const now = Date.now();
+    setMedications(prev => {
+      const updated = prev.map(med => ({ ...med, lastUpdated: now }));
+      updated.forEach(med => db.updateMedication(med));
+      return updated;
+    });
+  }, []);
 
   useEffect(() => {
-    requestNotificationPermission();
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission();
+    }
   }, []);
+
+  const currentAlert = alertQueue.length > 0 ? alertQueue[0] : null;
+
+  const dismissCurrentAlert = () => {
+    setAlertQueue(prev => prev.slice(1));
+    if (alertQueue.length <= 1) stopAlarm();
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-sky-900 to-slate-900 relative overflow-hidden">
-      
-      {/* Animated Background Effects */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <div className="absolute top-20 left-10 w-72 h-72 bg-cyan-500/10 rounded-full blur-3xl animate-pulse"></div>
         <div className="absolute bottom-32 right-10 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl animate-pulse delay-1000"></div>
@@ -239,8 +331,6 @@ export default function App() {
       </div>
 
       <div className="max-w-2xl mx-auto p-4 pb-24 relative z-10">
-        
-        {/* Premium Header with Glow Effect */}
         <div className="mb-8 pt-6">
           <div className="bg-gradient-to-r from-cyan-500/10 via-blue-500/10 to-cyan-500/10 backdrop-blur-sm rounded-3xl p-6 border border-cyan-500/20 shadow-2xl shadow-cyan-500/10">
             <div className="flex items-center justify-center gap-3">
@@ -258,7 +348,6 @@ export default function App() {
           </div>
         </div>
 
-        {/* Action Buttons with Premium Design */}
         <div className="mb-8">
           {!showForm ? (
             <div className="flex gap-3">
@@ -292,7 +381,6 @@ export default function App() {
           )}
         </div>
 
-        {/* Medications List with Stagger Animation */}
         <div className="space-y-5">
           {medications.length === 0 ? (
             <div className="text-center py-20 animate-in fade-in zoom-in duration-500">
@@ -323,7 +411,6 @@ export default function App() {
           )}
         </div>
 
-        {/* Premium Footer */}
         <div className="mt-12 text-center">
           <div className="inline-block bg-gradient-to-r from-cyan-500/5 to-blue-500/5 backdrop-blur-sm rounded-full px-6 py-3 border border-cyan-500/10">
             <p className="text-xs text-cyan-300/40 font-medium flex items-center gap-2">
@@ -335,7 +422,6 @@ export default function App() {
         </div>
       </div>
 
-      {/* Modals and Popups */}
       {reportMedication && (
         <ReportModal 
           medication={reportMedication} 
@@ -343,18 +429,14 @@ export default function App() {
         />
       )}
 
-      {notification && (
+      {currentAlert && (
         <NotificationPopup
-          title={notification.title}
-          message={notification.message}
-          onClose={() => {
-            setNotification(null);
-            stopAlarm();
-          }}
-          onRestart={notification.medication ? () => {
-            handleRestartMedication(notification.medication!);
-            setNotification(null);
-            stopAlarm();
+          title={currentAlert.title}
+          message={currentAlert.message}
+          onClose={dismissCurrentAlert}
+          onRestart={currentAlert.medication ? () => {
+            handleRestartMedication(currentAlert.medication!);
+            dismissCurrentAlert();
           } : undefined}
         />
       )}
