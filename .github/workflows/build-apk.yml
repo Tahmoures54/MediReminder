@@ -23,8 +23,8 @@ jobs:
           npm ci
           npm run build
 
-      - name: نصب Capacitor نسخه ۵ (بدون تداخل Kotlin)
-        run: npm install @capacitor/android@5 @capacitor/core@5 @capacitor/cli@5 --no-save
+      - name: نصب Capacitor نسخه ۵
+        run: npm install @capacitor/android@5 @capacitor/core@5 @capacitor/cli@5 @capacitor/assets --no-save
 
       - name: تنظیم Java 17
         uses: actions/setup-java@v4
@@ -39,9 +39,19 @@ jobs:
         run: |
           $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager "build-tools;34.0.0"
 
-      - name: افزودن پلتفرم Android و همگام‌سازی
+      - name: افزودن پلتفرم Android
         run: |
           npx cap add android
+
+      - name: تولید و جایگذاری آیکون‌های نیتیو برنامه
+        run: |
+          mkdir -p assets
+          cp public/icon-512.png assets/icon.png
+          cp public/icon-512.png assets/icon-only.png
+          npx @capacitor/assets generate --android
+
+      - name: همگام‌سازی پروژه
+        run: |
           npx cap sync
 
       - name: ساخت یک کی‌استور موقت (برای امضا)
