@@ -1,3 +1,4 @@
+// src/App.tsx
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { MedicationCard } from './components/MedicationCard';
 import { AddMedicationForm } from './components/AddMedicationForm';
@@ -94,13 +95,13 @@ const recalculateRemaining = (
 };
 
 /**
- * ایجاد نوتیفیکیشن مرورگر
+ * ایجاد نوتیفیکیشن مرورگر (برای زمانی که صفحه باز است)
  */
 const sendBrowserNotification = (medication: MedicationWithTimestamp): void => {
   if ('Notification' in window && Notification.permission === 'granted') {
     new Notification('🔔 Time to Medicate!', {
       body: `${medication.name} - ${medication.dosage}`,
-      icon: '/icon.png',
+      icon: '/android-chrome-192x192.png',
       tag: `med-${medication.id}`,
       requireInteraction: true,
     });
@@ -126,6 +127,26 @@ const createLowStockAlert = (medication: MedicationWithTimestamp): AlertItem => 
   } left of ${medication.name}.\nPlease refill soon.`,
   medication,
 });
+
+// ============================================================================
+// Service Worker Alarm Sync
+// ============================================================================
+const syncAlarmsToServiceWorker = (meds: MedicationWithTimestamp[]) => {
+  if (!('serviceWorker' in navigator) || !navigator.serviceWorker.controller) return;
+  const now = Date.now();
+  const alarms = meds
+    .filter(m => m.running && m.remaining > 0)
+    .map(m => ({
+      id: m.id,
+      time: now + m.remaining * 1000,
+      name: m.name,
+      dosage: m.dosage,
+    }));
+  navigator.serviceWorker.controller.postMessage({
+    type: 'SCHEDULE_ALARMS',
+    alarms,
+  });
+};
 
 // ============================================================================
 // Custom Hooks
@@ -246,7 +267,6 @@ export default function App() {
       }
     } catch (error) {
       console.error('Failed to load medications:', error);
-      // TODO: نمایش پیام خطا به کاربر
     }
   }, []);
 
@@ -324,7 +344,10 @@ export default function App() {
   // Initialize app
   // --------------------------------------------------------------------------
   useEffect(() => {
-    loadMedications();
+    loadMedications().then(() => {
+      // پس از بارگذاری، آلارم‌ها را همگام‌سازی کن
+      syncAlarmsToServiceWorker(medicationsRef.current);
+    });
 
     // راه‌اندازی تایمر
     intervalRef.current = setInterval(updateTimers, TIMER_INTERVAL);
@@ -334,7 +357,9 @@ export default function App() {
       if (document.hidden) {
         saveAllMedications();
       } else {
-        loadMedications(); // بازخوانی در بازگشت
+        loadMedications().then(() => {
+          syncAlarmsToServiceWorker(medicationsRef.current);
+        });
       }
     };
 
@@ -351,6 +376,34 @@ export default function App() {
       window.removeEventListener('beforeunload', saveAllMedications);
     };
   }, [loadMedications, updateTimers, saveAllMedications]);
+
+  // --------------------------------------------------------------------------
+  // Sync alarms whenever medications change
+  // --------------------------------------------------------------------------
+  useEffect(() => {
+    syncAlarmsToServiceWorker(medications);
+  }, [medications]);
+
+  // --------------------------------------------------------------------------
+  // Listen for Service Worker messages
+  // --------------------------------------------------------------------------
+  useEffect(() => {
+    const handler = (event: MessageEvent) => {
+      if (event.data?.type === 'ALARM_TRIGGERED') {
+        const med = medicationsRef.current.find(m => m.id === event.data.medicationId);
+        if (med) {
+          playAlarm(); // پخش صدای طولانی
+          setAlertQueue(prev => {
+            // از تکراری نبودن اطمینان حاصل کنید
+            if (prev.some(a => a.medication.id === med.id)) return prev;
+            return [...prev, createMedicationAlert(med)];
+          });
+        }
+      }
+    };
+    navigator.serviceWorker?.addEventListener('message', handler);
+    return () => navigator.serviceWorker?.removeEventListener('message', handler);
+  }, []);
 
   // --------------------------------------------------------------------------
   // Handle stop expired medications
@@ -403,7 +456,6 @@ export default function App() {
       ]);
     } catch (error) {
       console.error('Failed to add medication:', error);
-      // TODO: نمایش پیام خطا
     }
   };
 
@@ -511,6 +563,9 @@ export default function App() {
       if (newQuantity <= LOW_STOCK_THRESHOLD) {
         setAlertQueue(prev => [...prev, createLowStockAlert(updatedMed)]);
       }
+      
+      // همگام‌سازی آلارم‌های سرویس‌ورکر بعد از راه‌اندازی مجدد
+      syncAlarmsToServiceWorker(medicationsRef.current);
     } catch (error) {
       console.error('Failed to restart medication:', error);
     }
@@ -518,6 +573,14 @@ export default function App() {
 
   const handleCloseAlert = () => {
     setAlertQueue(prev => {
+      const current = prev[0];
+      if (current && current.medication?.id) {
+        // به سرویس‌ورکر بگو آلارم تأیید شد (لغو زنجیره تکرار)
+        navigator.serviceWorker?.controller?.postMessage({
+          type: 'DISMISS_ALARM',
+          id: current.medication.id,
+        });
+      }
       const newQueue = prev.slice(1);
       if (newQueue.length === 0) {
         stopAlarm();
