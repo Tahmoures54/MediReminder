@@ -21,7 +21,7 @@ export function ReportModal({ medication, onClose }: ReportModalProps) {
 
   const score = calculateScore();
 
-  // ویژگی جدید: بستن مودال با دکمه Escape کیبورد
+  // بستن مودال با دکمه Escape
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
@@ -30,21 +30,36 @@ export function ReportModal({ medication, onClose }: ReportModalProps) {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [onClose]);
 
-  // ویژگی جدید: ساختار پیام برای اشتراک‌گذاری به پزشک یا خانواده
   const handleShareReport = async () => {
-    const reportText = `📊 Medication Report: ${medication.name}\n⭐ Overall Adherence: ${history.length > 0 ? score + '%' : 'No data yet'}\n📦 Total Doses Recorded: ${history.length}`;
-    
+    const lastDose = history.length > 0 ? formatDateTime(history[0].takenAt) : 'N/A';
+    const reportText = `📊 Medication Report: ${medication.name}
+💊 Dosage: ${medication.dosage}
+⭐ Adherence: ${history.length > 0 ? score + '%' : 'No data'}
+📦 Total Doses: ${history.length}
+🕒 Last Dose: ${lastDose}
+🔗 Track with MediReminder: ${window.location.origin}`;
+
     try {
       if (navigator.share) {
         await navigator.share({
-          title: `${medication.name} Report`,
+          title: `${medication.name} - Medication Report`,
           text: reportText,
+          url: window.location.origin,
         });
       } else {
-        alert('Sharing is not supported on this device.');
+        await navigator.clipboard.writeText(reportText);
+        alert('📋 Report copied to clipboard! You can paste it to share.');
       }
     } catch (error) {
-      console.error('Error sharing report:', error);
+      if (error instanceof Error && error.name !== 'AbortError') {
+        console.error('Share failed:', error);
+        try {
+          await navigator.clipboard.writeText(reportText);
+          alert('📋 Report copied to clipboard (sharing not supported).');
+        } catch (clipErr) {
+          alert('⚠️ Unable to share or copy report. Please try again.');
+        }
+      }
     }
   };
 
@@ -79,14 +94,14 @@ export function ReportModal({ medication, onClose }: ReportModalProps) {
   return (
     <div 
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200"
-      onClick={onClose} // ویژگی جدید: بستن با کلیک روی پس‌زمینه تیره
+      onClick={onClose}
       role="dialog"
       aria-modal="true"
       aria-labelledby="modal-title"
     >
       <div 
         className="bg-gray-800 rounded-2xl w-full max-w-md p-6 shadow-2xl border border-gray-700 animate-in zoom-in-95 duration-200"
-        onClick={(e) => e.stopPropagation()} // جلوگیری از بسته شدن وقتی داخل کادر کلیک می‌شود
+        onClick={(e) => e.stopPropagation()}
       >
         
         {/* Header */}
@@ -95,7 +110,6 @@ export function ReportModal({ medication, onClose }: ReportModalProps) {
             📊 {medication.name} Report
           </h2>
           <div className="flex items-center gap-2">
-            {/* دکمه جدید اشتراک‌گذاری */}
             <button 
               onClick={handleShareReport}
               className="bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 transition-colors p-2.5 rounded-lg flex items-center justify-center"
