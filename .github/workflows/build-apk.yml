@@ -23,8 +23,13 @@ jobs:
           npm ci
           npm run build
 
+<<<<<<< HEAD
       - name: نصب Capacitor نسخه 6 و پلاگین Local Notifications
         run: npm install @capacitor/android@6 @capacitor/core@6 @capacitor/cli@6 @capacitor/local-notifications@6 --no-save
+=======
+      - name: نصب Capacitor نسخه ۵
+        run: npm install @capacitor/android@5 @capacitor/core@5 @capacitor/cli@5 @capacitor/assets --no-save
+>>>>>>> ff00a59066623bd25edcddb025064fd599d7c2b2
 
       - name: تنظیم Java 17
         uses: actions/setup-java@v4
@@ -40,12 +45,17 @@ jobs:
           $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager "build-tools;34.0.0"
 
       - name: افزودن پلتفرم Android
+<<<<<<< HEAD
         run: npx cap add android
 
       - name: کپی فایل صوتی به مسیر منابع اندروید
         run: |
           mkdir -p android/app/src/main/res/raw
           cp src/main/res/raw/medication_alarm.wav android/app/src/main/res/raw/medication_alarm.wav
+=======
+        run: |
+          npx cap add android
+>>>>>>> ff00a59066623bd25edcddb025064fd599d7c2b2
 
       - name: تولید و جایگذاری آیکون‌های نیتیو برنامه
         run: |
@@ -55,7 +65,12 @@ jobs:
           npx @capacitor/assets generate --android
 
       - name: همگام‌سازی پروژه
+<<<<<<< HEAD
         run: npx cap sync
+=======
+        run: |
+          npx cap sync
+>>>>>>> ff00a59066623bd25edcddb025064fd599d7c2b2
 
       - name: ساخت یک کی‌استور موقت (برای امضا)
         run: |
@@ -70,7 +85,13 @@ jobs:
             -dname "CN=MediReminder, OU=Dev, O=Charity, L=City, S=State, C=IR"
 
       - name: ساخت APK بدون امضا
+<<<<<<< HEAD
         run: cd android && ./gradlew assembleRelease
+=======
+        run: |
+          cd android
+          ./gradlew assembleRelease
+>>>>>>> ff00a59066623bd25edcddb025064fd599d7c2b2
 
       - name: امضای APK با apksigner (نسخه ۳۴.۰.۰)
         run: |
@@ -92,4 +113,8 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: release-keystore
+<<<<<<< HEAD
           path: release.keystore
+=======
+          path: release.keystore
+>>>>>>> ff00a59066623bd25edcddb025064fd599d7c2b2

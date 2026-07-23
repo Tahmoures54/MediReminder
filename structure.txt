@@ -1,22 +1,32 @@
 MediReminder:
+<<<<<<< HEAD
 |   capacitor.config.ts
+=======
+>>>>>>> ff00a59066623bd25edcddb025064fd599d7c2b2
 |   DEPLOYMENT.md
 |   DOCUMENTATION_INDEX.md
 |   FEATURES.md
 |   index.html
+<<<<<<< HEAD
 |   main.jpg
+=======
+>>>>>>> ff00a59066623bd25edcddb025064fd599d7c2b2
 |   package-lock.json
 |   package.json
 |   PROJECT_SUMMARY.md
 |   QUICKSTART.md
 |   README.md
+<<<<<<< HEAD
 |   report.jpg
+=======
+>>>>>>> ff00a59066623bd25edcddb025064fd599d7c2b2
 |   structure.txt
 |   TECHNICAL_DOCS.md
 |   tsconfig.json
 |   USAGE_GUIDE.md
 |   vite.config.ts
 |   
+<<<<<<< HEAD
 +---.github
 |   \---workflows
 |           build-apk.yml
@@ -29,6 +39,9 @@ MediReminder:
 |       favicon-16x16.png
 |       favicon-32x32.png
 |       favicon.ico
+=======
++---public
+>>>>>>> ff00a59066623bd25edcddb025064fd599d7c2b2
 |       icon-192.png
 |       icon-512.png
 |       manifest.json
@@ -44,16 +57,22 @@ MediReminder:
     |       ConfirmDialog.tsx
     |       MedicationCard.tsx
     |       NotificationPopup.tsx
+<<<<<<< HEAD
     |       ReportModal.tsx
+=======
+>>>>>>> ff00a59066623bd25edcddb025064fd599d7c2b2
     |       
     +---db
     |       database.ts
     |       
+<<<<<<< HEAD
     +---main
     |   \---res
     |       \---raw
     |               medication_alarm.wav
     |               
+=======
+>>>>>>> ff00a59066623bd25edcddb025064fd599d7c2b2
     \---utils
             audio.ts
             cn.ts
