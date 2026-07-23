@@ -7,11 +7,8 @@ import { NotificationPopup } from './components/NotificationPopup';
 import { ReportModal } from './components/ReportModal';
 import { db, Medication, HistoryRecord } from './db/database';
 import { playAlarm, stopAlarm } from './utils/audio';
-<<<<<<< HEAD
 import { Capacitor } from '@capacitor/core';
 import { LocalNotifications } from '@capacitor/local-notifications';
-=======
->>>>>>> ff00a59066623bd25edcddb025064fd599d7c2b2
 
 // ============================================================================
 // Constants
@@ -45,12 +42,9 @@ interface ConfirmDialogData {
 // Utility Functions
 // ============================================================================
 
-<<<<<<< HEAD
-=======
 /**
  * محاسبه وضعیت مصرف دارو (به موقع، زود، دیر)
  */
->>>>>>> ff00a59066623bd25edcddb025064fd599d7c2b2
 const calculateDoseStatus = (
   lastTakenAt: number,
   currentTime: number,
@@ -64,12 +58,9 @@ const calculateDoseStatus = (
   return 'on-time';
 };
 
-<<<<<<< HEAD
-=======
 /**
  * ثبت دوز جدید در تاریخچه
  */
->>>>>>> ff00a59066623bd25edcddb025064fd599d7c2b2
 const createDoseRecord = (
   medication: MedicationWithTimestamp
 ): HistoryRecord[] => {
@@ -86,12 +77,9 @@ const createDoseRecord = (
   return [...history, { takenAt: nowMs, status }];
 };
 
-<<<<<<< HEAD
-=======
 /**
  * به‌روزرسانی زمان باقی‌مانده بر اساس آخرین به‌روزرسانی
  */
->>>>>>> ff00a59066623bd25edcddb025064fd599d7c2b2
 const recalculateRemaining = (
   medication: MedicationWithTimestamp,
   currentTime: number
@@ -108,12 +96,9 @@ const recalculateRemaining = (
   };
 };
 
-<<<<<<< HEAD
-=======
 /**
  * ایجاد نوتیفیکیشن مرورگر (برای زمانی که صفحه باز است)
  */
->>>>>>> ff00a59066623bd25edcddb025064fd599d7c2b2
 const sendBrowserNotification = (medication: MedicationWithTimestamp): void => {
   if ('Notification' in window && Notification.permission === 'granted') {
     new Notification('🔔 Time to Medicate!', {
@@ -125,24 +110,18 @@ const sendBrowserNotification = (medication: MedicationWithTimestamp): void => {
   }
 };
 
-<<<<<<< HEAD
-=======
 /**
  * ایجاد هشدار برای دارو
  */
->>>>>>> ff00a59066623bd25edcddb025064fd599d7c2b2
 const createMedicationAlert = (medication: MedicationWithTimestamp): AlertItem => ({
   title: "🔔 Time to Medicate!",
   message: `Take now:\n💊 ${medication.name}\n⚖️ Dosage: ${medication.dosage}`,
   medication,
 });
 
-<<<<<<< HEAD
-=======
 /**
  * ایجاد هشدار موجودی کم
  */
->>>>>>> ff00a59066623bd25edcddb025064fd599d7c2b2
 const createLowStockAlert = (medication: MedicationWithTimestamp): AlertItem => ({
   title: "💊 Low Stock Alert",
   message: `Only ${medication.quantity} pill${
@@ -152,11 +131,7 @@ const createLowStockAlert = (medication: MedicationWithTimestamp): AlertItem => 
 });
 
 // ============================================================================
-<<<<<<< HEAD
-// Service Worker Alarm Sync (only for web)
-=======
 // Service Worker Alarm Sync
->>>>>>> ff00a59066623bd25edcddb025064fd599d7c2b2
 // ============================================================================
 const syncAlarmsToServiceWorker = (meds: MedicationWithTimestamp[]) => {
   if (!('serviceWorker' in navigator) || !navigator.serviceWorker.controller) return;
@@ -176,7 +151,6 @@ const syncAlarmsToServiceWorker = (meds: MedicationWithTimestamp[]) => {
 };
 
 // ============================================================================
-<<<<<<< HEAD
 // Native Alarm Sync (Capacitor Local Notifications)
 // ============================================================================
 const scheduleNativeAlarms = async (meds: MedicationWithTimestamp[]) => {
@@ -224,14 +198,9 @@ const syncAlarms = (meds: MedicationWithTimestamp[]) => {
 // Custom Hooks
 // ============================================================================
 
-=======
-// Custom Hooks
-// ============================================================================
-
 /**
  * مدیریت آزادسازی صدا در مرورگر
  */
->>>>>>> ff00a59066623bd25edcddb025064fd599d7c2b2
 const useAudioUnlock = () => {
   const unlockedRef = useRef(false);
 
@@ -249,23 +218,16 @@ const useAudioUnlock = () => {
         unlockedRef.current = true;
       })
       .catch(() => {
-<<<<<<< HEAD
-        // Silent fail
-=======
         // Silent fail - برخی مرورگرها ممکن است اجازه ندهند
->>>>>>> ff00a59066623bd25edcddb025064fd599d7c2b2
       });
   }, []);
 
   return unlock;
 };
 
-<<<<<<< HEAD
-=======
 /**
  * درخواست مجوز نوتیفیکیشن
  */
->>>>>>> ff00a59066623bd25edcddb025064fd599d7c2b2
 const useNotificationPermission = () => {
   useEffect(() => {
     if ('Notification' in window && Notification.permission === 'default') {
@@ -325,17 +287,11 @@ export default function App() {
           lastUpdated,
         };
 
-<<<<<<< HEAD
-        if (processedMed.running) {
-          processedMed = recalculateRemaining(processedMed, now);
-          
-=======
         // بازیابی زمان از دست رفته
         if (processedMed.running) {
           processedMed = recalculateRemaining(processedMed, now);
           
           // اگر در زمان غیبت منقضی شده
->>>>>>> ff00a59066623bd25edcddb025064fd599d7c2b2
           if (processedMed.remaining === 0) {
             processedMed.running = false;
             processedMed.remaining = processedMed.interval;
@@ -346,17 +302,11 @@ export default function App() {
         processedMeds.push(processedMed);
       }
 
-<<<<<<< HEAD
-      await Promise.all(processedMeds.map(med => db.updateMedication(med)));
-      setMedications(processedMeds);
-
-=======
       // ذخیره در دیتابیس
       await Promise.all(processedMeds.map(med => db.updateMedication(med)));
       setMedications(processedMeds);
 
       // نمایش هشدارها
->>>>>>> ff00a59066623bd25edcddb025064fd599d7c2b2
       if (expiredAlerts.length > 0) {
         playAlarm();
         setAlertQueue(prev => [...prev, ...expiredAlerts]);
@@ -381,10 +331,7 @@ export default function App() {
         hasChanges = true;
         const newRemaining = med.remaining - 1;
 
-<<<<<<< HEAD
-=======
         // تشخیص انقضا
->>>>>>> ff00a59066623bd25edcddb025064fd599d7c2b2
         if (newRemaining === 0) {
           expiredMeds.push(med);
           return {
@@ -401,11 +348,6 @@ export default function App() {
         };
       });
 
-<<<<<<< HEAD
-      if (expiredMeds.length > 0) {
-        playAlarm();
-        expiredMeds.forEach(sendBrowserNotification);
-=======
       // مدیریت داروهای منقضی شده
       if (expiredMeds.length > 0) {
         playAlarm();
@@ -414,7 +356,6 @@ export default function App() {
         expiredMeds.forEach(sendBrowserNotification);
         
         // اضافه کردن به صف هشدار
->>>>>>> ff00a59066623bd25edcddb025064fd599d7c2b2
         const newAlerts = expiredMeds.map(createMedicationAlert);
         setAlertQueue(prev => [...prev, ...newAlerts]);
       }
@@ -427,11 +368,7 @@ export default function App() {
   // Save all medications to database
   // --------------------------------------------------------------------------
   const saveAllMedications = useCallback(async () => {
-<<<<<<< HEAD
-    if (isSavingRef.current) return;
-=======
     if (isSavingRef.current) return; // جلوگیری از اجرای همزمان
->>>>>>> ff00a59066623bd25edcddb025064fd599d7c2b2
     
     isSavingRef.current = true;
     try {
@@ -454,32 +391,20 @@ export default function App() {
   // --------------------------------------------------------------------------
   useEffect(() => {
     loadMedications().then(() => {
-<<<<<<< HEAD
-      syncAlarms(medicationsRef.current);
-    });
-
-    intervalRef.current = setInterval(updateTimers, TIMER_INTERVAL);
-
-=======
       // پس از بارگذاری، آلارم‌ها را همگام‌سازی کن
-      syncAlarmsToServiceWorker(medicationsRef.current);
+      syncAlarms(medicationsRef.current);
     });
 
     // راه‌اندازی تایمر
     intervalRef.current = setInterval(updateTimers, TIMER_INTERVAL);
 
     // Event listeners
->>>>>>> ff00a59066623bd25edcddb025064fd599d7c2b2
     const handleVisibilityChange = () => {
       if (document.hidden) {
         saveAllMedications();
       } else {
         loadMedications().then(() => {
-<<<<<<< HEAD
           syncAlarms(medicationsRef.current);
-=======
-          syncAlarmsToServiceWorker(medicationsRef.current);
->>>>>>> ff00a59066623bd25edcddb025064fd599d7c2b2
         });
       }
     };
@@ -487,10 +412,7 @@ export default function App() {
     document.addEventListener('visibilitychange', handleVisibilityChange);
     window.addEventListener('beforeunload', saveAllMedications);
 
-<<<<<<< HEAD
-=======
     // Cleanup
->>>>>>> ff00a59066623bd25edcddb025064fd599d7c2b2
     return () => {
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
@@ -505,7 +427,6 @@ export default function App() {
   // Sync alarms whenever medications change
   // --------------------------------------------------------------------------
   useEffect(() => {
-<<<<<<< HEAD
     syncAlarms(medications);
   }, [medications]);
 
@@ -535,28 +456,16 @@ export default function App() {
   }, []);
 
   // --------------------------------------------------------------------------
-  // Listen for web service worker messages
-=======
-    syncAlarmsToServiceWorker(medications);
-  }, [medications]);
-
-  // --------------------------------------------------------------------------
   // Listen for Service Worker messages
->>>>>>> ff00a59066623bd25edcddb025064fd599d7c2b2
   // --------------------------------------------------------------------------
   useEffect(() => {
     const handler = (event: MessageEvent) => {
       if (event.data?.type === 'ALARM_TRIGGERED') {
         const med = medicationsRef.current.find(m => m.id === event.data.medicationId);
         if (med) {
-<<<<<<< HEAD
-          playAlarm();
-          setAlertQueue(prev => {
-=======
           playAlarm(); // پخش صدای طولانی
           setAlertQueue(prev => {
             // از تکراری نبودن اطمینان حاصل کنید
->>>>>>> ff00a59066623bd25edcddb025064fd599d7c2b2
             if (prev.some(a => a.medication.id === med.id)) return prev;
             return [...prev, createMedicationAlert(med)];
           });
@@ -568,11 +477,7 @@ export default function App() {
   }, []);
 
   // --------------------------------------------------------------------------
-<<<<<<< HEAD
-  // Handle stop expired medications (auto-reset timer after alarm)
-=======
   // Handle stop expired medications
->>>>>>> ff00a59066623bd25edcddb025064fd599d7c2b2
   // --------------------------------------------------------------------------
   useEffect(() => {
     const expiredMeds = medications.filter(med => med.running && med.remaining === 0);
@@ -611,10 +516,7 @@ export default function App() {
       setMedications(prev => [...prev, newMed]);
       setShowForm(false);
 
-<<<<<<< HEAD
-=======
       // نمایش راهنما
->>>>>>> ff00a59066623bd25edcddb025064fd599d7c2b2
       setAlertQueue(prev => [
         ...prev,
         {
@@ -653,10 +555,7 @@ export default function App() {
           await db.updateMedication(updatedMed);
           setMedications(prev => prev.map(m => m.id === med.id ? updatedMed : m));
 
-<<<<<<< HEAD
-=======
           // بررسی موجودی کم
->>>>>>> ff00a59066623bd25edcddb025064fd599d7c2b2
           if (willStart && updatedMed.quantity <= LOW_STOCK_THRESHOLD) {
             setAlertQueue(prev => [...prev, createLowStockAlert(updatedMed)]);
           }
@@ -715,11 +614,7 @@ export default function App() {
 
   const handleRestartFromAlert = async (alertMed: MedicationWithTimestamp) => {
     const currentMed = medicationsRef.current.find(m => m.id === alertMed.id);
-<<<<<<< HEAD
-    if (!currentMed) return;
-=======
     if (!currentMed) return; // دارو حذف شده
->>>>>>> ff00a59066623bd25edcddb025064fd599d7c2b2
 
     try {
       const newQuantity = currentMed.quantity > 0 ? currentMed.quantity - 1 : 0;
@@ -735,20 +630,13 @@ export default function App() {
       await db.updateMedication(updatedMed);
       setMedications(prev => prev.map(m => m.id === currentMed.id ? updatedMed : m));
 
-<<<<<<< HEAD
-=======
       // بررسی موجودی کم
->>>>>>> ff00a59066623bd25edcddb025064fd599d7c2b2
       if (newQuantity <= LOW_STOCK_THRESHOLD) {
         setAlertQueue(prev => [...prev, createLowStockAlert(updatedMed)]);
       }
       
-<<<<<<< HEAD
-      syncAlarms(medicationsRef.current);
-=======
       // همگام‌سازی آلارم‌های سرویس‌ورکر بعد از راه‌اندازی مجدد
-      syncAlarmsToServiceWorker(medicationsRef.current);
->>>>>>> ff00a59066623bd25edcddb025064fd599d7c2b2
+      syncAlarms(medicationsRef.current);
     } catch (error) {
       console.error('Failed to restart medication:', error);
     }
@@ -758,7 +646,6 @@ export default function App() {
     setAlertQueue(prev => {
       const current = prev[0];
       if (current && current.medication?.id) {
-<<<<<<< HEAD
         // Tell SW to stop follow-up alarms (if web)
         if (!Capacitor.isNativePlatform()) {
           navigator.serviceWorker?.controller?.postMessage({
@@ -768,13 +655,6 @@ export default function App() {
         }
         // For native, we may cancel the specific notification if needed, but
         // it's already delivered and user is interacting.
-=======
-        // به سرویس‌ورکر بگو آلارم تأیید شد (لغو زنجیره تکرار)
-        navigator.serviceWorker?.controller?.postMessage({
-          type: 'DISMISS_ALARM',
-          id: current.medication.id,
-        });
->>>>>>> ff00a59066623bd25edcddb025064fd599d7c2b2
       }
       const newQueue = prev.slice(1);
       if (newQueue.length === 0) {
@@ -946,8 +826,4 @@ export default function App() {
       )}
     </div>
   );
-<<<<<<< HEAD
 }
-=======
-}
->>>>>>> ff00a59066623bd25edcddb025064fd599d7c2b2
