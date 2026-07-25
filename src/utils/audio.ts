@@ -1,79 +1,132 @@
+// src/utils/audio.ts
+import { Capacitor } from '@capacitor/core';
+import { Haptics, ImpactStyle } from '@capacitor/haptics';
+
+// ─── Web Audio (oscillator) ───────────────────────────────────────────────────
 let audioContext: AudioContext | null = null;
 let oscillator: OscillatorNode | null = null;
 let gainNode: GainNode | null = null;
+let alarmLoopHandle: ReturnType<typeof setTimeout> | null = null;
+let isAlarmPlaying = false;
+
+/**
+ * یک بوق کوتاه (200ms روشن، 200ms خاموش) × 5 بار
+ * سپس یک وقفه ۱ ثانیه‌ای و دوباره تکرار می‌شود تا stopAlarm صدا زده شود
+ */
+function playBeepCycle(ctx: AudioContext, gain: GainNode) {
+  const beepOn = 0.2;
+  const beepOff = 0.2;
+  let t = ctx.currentTime;
+
+  for (let i = 0; i < 5; i++) {
+    gain.gain.setValueAtTime(0.45, t);
+    gain.gain.setValueAtTime(0, t + beepOn);
+    t += beepOn + beepOff;
+  }
+  return t; // زمان پایان این چرخه
+}
 
 export function playAlarm() {
+  if (isAlarmPlaying) return; // از اجرای دوباره جلوگیری می‌کند
+  isAlarmPlaying = true;
+
+  // ─── Haptics (ویبره) ─────────────────────────────────────────────────────
+  triggerHaptics();
+
+  // ─── Web Audio ────────────────────────────────────────────────────────────
   try {
-    stopAlarm(); // Stop any existing alarm
-    
-    // Create audio context
-    audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-    
-    // Create oscillator (generates sound wave)
+    stopAlarmInternal(); // پاک‌سازی قبلی
+
+    audioContext = new (window.AudioContext ||
+      (window as any).webkitAudioContext)();
+
     oscillator = audioContext.createOscillator();
     gainNode = audioContext.createGain();
-    
-    // Configure alarm sound
+
     oscillator.type = 'sine';
-    oscillator.frequency.setValueAtTime(800, audioContext.currentTime); // 800 Hz
-    
-    // Set volume
-    gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
-    
-    // Connect nodes
+    oscillator.frequency.setValueAtTime(880, audioContext.currentTime);
+    gainNode.gain.setValueAtTime(0, audioContext.currentTime);
+
     oscillator.connect(gainNode);
     gainNode.connect(audioContext.destination);
-    
-    // Create beeping pattern
-    const beepDuration = 0.2;
-    const pauseDuration = 0.2;
-    let time = audioContext.currentTime;
-    
-    for (let i = 0; i < 5; i++) {
-      gainNode.gain.setValueAtTime(0.3, time);
-      gainNode.gain.setValueAtTime(0, time + beepDuration);
-      time += beepDuration + pauseDuration;
-    }
-    
-    // Start the oscillator
-    oscillator.start(audioContext.currentTime);
-    oscillator.stop(time);
-    
-    // Clean up after alarm finishes
-    oscillator.onended = () => {
-      stopAlarm();
+    oscillator.start();
+
+    // اجرای اولین چرخه
+    const cycleDuration = playBeepCycle(audioContext, gainNode);
+
+    // تکرار هر چرخه + ۱ ثانیه مکث
+    const scheduleNextCycle = (delayMs: number) => {
+      alarmLoopHandle = setTimeout(() => {
+        if (!isAlarmPlaying || !audioContext || !gainNode) return;
+        const end = playBeepCycle(audioContext, gainNode);
+        const cycleMs = (end - audioContext.currentTime) * 1000;
+        scheduleNextCycle(cycleMs + 1000);
+      }, delayMs);
     };
-  } catch (error) {
-    console.error('Failed to play alarm:', error);
+
+    scheduleNextCycle((cycleDuration - audioContext.currentTime) * 1000 + 1000);
+  } catch (err) {
+    console.warn('Web Audio playAlarm error:', err);
+    isAlarmPlaying = false;
   }
 }
 
 export function stopAlarm() {
+  isAlarmPlaying = false;
+  stopAlarmInternal();
+}
+
+function stopAlarmInternal() {
+  if (alarmLoopHandle !== null) {
+    clearTimeout(alarmLoopHandle);
+    alarmLoopHandle = null;
+  }
   if (oscillator) {
-    try {
-      oscillator.stop();
-      oscillator.disconnect();
-    } catch (e) {
-      // Already stopped
-    }
+    try { oscillator.stop(); } catch {}
+    try { oscillator.disconnect(); } catch {}
     oscillator = null;
   }
-  
   if (gainNode) {
-    gainNode.disconnect();
+    try { gainNode.disconnect(); } catch {}
     gainNode = null;
   }
-  
   if (audioContext) {
-    audioContext.close();
+    try { audioContext.close(); } catch {}
     audioContext = null;
   }
 }
 
+// ─── Haptics ─────────────────────────────────────────────────────────────────
+export async function triggerHaptics() {
+  // وب: Vibration API
+  if (!Capacitor.isNativePlatform()) {
+    if ('vibrate' in navigator) {
+      // الگوی ویبره: روشن/خاموش به میلی‌ثانیه
+      navigator.vibrate([300, 150, 300, 150, 300]);
+    }
+    return;
+  }
+
+  // Native: Capacitor Haptics
+  try {
+    // ویبره سنگین ۳ بار پشت سرهم
+    for (let i = 0; i < 3; i++) {
+      await Haptics.impact({ style: ImpactStyle.Heavy });
+      await delay(300);
+    }
+  } catch (err) {
+    console.warn('Haptics error:', err);
+  }
+}
+
+function delay(ms: number) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+// ─── Format helper ────────────────────────────────────────────────────────────
 export function formatTime(seconds: number): string {
-  const hours = Math.floor(seconds / 3600);
-  const minutes = Math.floor((seconds % 3600) / 60);
-  const secs = Math.floor(seconds % 60);
-  
-  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = Math.floor(seconds % 60);
+  return [h, m, s].map(v => String(v).padStart(2, '0')).join(':');
 }
