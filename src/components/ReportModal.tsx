@@ -1,164 +1,457 @@
-import { useEffect } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Medication, HistoryRecord } from '../db/database';
+import { Share } from '@capacitor/share';
 
 interface ReportModalProps {
   medication: Medication;
   onClose: () => void;
 }
 
+type FeedbackState = {
+  type: 'success' | 'error' | 'info';
+  message: string;
+} | null;
+
+const RECENT_DOSES_LIMIT = 5;
+
+function formatDateTime(timestamp: number): string {
+  const date = new Date(timestamp);
+  const today = new Date();
+
+  const isToday =
+    date.getDate() === today.getDate() &&
+    date.getMonth() === today.getMonth() &&
+    date.getFullYear() === today.getFullYear();
+
+  const timeString = date.toLocaleTimeString([], {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+
+  if (isToday) {
+    return `Today at ${timeString}`;
+  }
+
+  return `${date.toLocaleDateString()} - ${timeString}`;
+}
+
+function getStatusDisplay(status: HistoryRecord['status']) {
+  switch (status) {
+    case 'on-time':
+      return {
+        icon: '🟢',
+        text: 'On Time',
+        color: 'text-green-400',
+        bg: 'bg-green-400/10',
+      };
+    case 'early':
+      return {
+        icon: '🟡',
+        text: 'Early',
+        color: 'text-yellow-400',
+        bg: 'bg-yellow-400/10',
+      };
+    case 'late':
+      return {
+        icon: '🔴',
+        text: 'Late',
+        color: 'text-red-400',
+        bg: 'bg-red-400/10',
+      };
+    default:
+      return {
+        icon: '⚪',
+        text: 'Unknown',
+        color: 'text-gray-400',
+        bg: 'bg-gray-400/10',
+      };
+  }
+}
+
+function getAdherenceLabel(score: number, total: number) {
+  if (total === 0) return 'No data yet';
+  if (score >= 80) return '🌟 Excellent';
+  if (score >= 50) return '👍 Good';
+  return '⚠️ Needs Attention';
+}
+
+function sanitizeFileName(name: string) {
+  return name
+    .toLowerCase()
+    .replace(/[^a-z0-9\u0600-\u06FF\s-]/gi, '')
+    .trim()
+    .replace(/\s+/g, '-');
+}
+
+async function copyTextToClipboard(text: string): Promise<boolean> {
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch {}
+
+  try {
+    const textarea = document.createElement('textarea');
+    textarea.value = text;
+    textarea.setAttribute('readonly', '');
+    textarea.style.position = 'fixed';
+    textarea.style.opacity = '0';
+    textarea.style.pointerEvents = 'none';
+    document.body.appendChild(textarea);
+    textarea.focus();
+    textarea.select();
+
+    const success = document.execCommand('copy');
+    document.body.removeChild(textarea);
+    return success;
+  } catch {
+    return false;
+  }
+}
+
+function downloadTextFile(filename: string, text: string) {
+  const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+function buildReportText(
+  medication: Medication,
+  stats: {
+    total: number;
+    onTimeCount: number;
+    earlyCount: number;
+    lateCount: number;
+    score: number;
+    lastDose: string;
+  },
+  recentHistory: HistoryRecord[]
+) {
+  const recentLines =
+    recentHistory.length > 0
+      ? recentHistory
+          .map(record => {
+            const status = getStatusDisplay(record.status);
+            return `- ${formatDateTime(record.takenAt)} — ${status.text}`;
+          })
+          .join('\n')
+      : '- No doses recorded yet';
+
+  const adherenceText = stats.total > 0 ? `${stats.score}%` : 'No data';
+
+  return `📊 Medication Report
+
+💊 Name: ${medication.name}
+⚖️ Dosage: ${medication.dosage}
+⭐ Adherence: ${adherenceText}
+📦 Recorded Doses: ${stats.total}
+🟢 On Time: ${stats.onTimeCount}
+🟡 Early: ${stats.earlyCount}
+🔴 Late: ${stats.lateCount}
+🕒 Last Dose: ${stats.lastDose}
+
+📝 Recent Doses:
+${recentLines}
+
+🔗 Generated with MediReminder
+${window.location.origin}`;
+}
+
 export function ReportModal({ medication, onClose }: ReportModalProps) {
   const history = medication.history || [];
-  
-  const sortedHistory = [...history]
-    .sort((a, b) => b.takenAt - a.takenAt)
-    .slice(0, 5); 
 
-  const calculateScore = () => {
-    if (history.length === 0) return 0;
-    const onTimeCount = history.filter(h => h.status === 'on-time').length;
-    return Math.round((onTimeCount / history.length) * 100);
-  };
+  const sortedHistory = useMemo(() => {
+    return [...history].sort((a, b) => b.takenAt - a.takenAt);
+  }, [history]);
 
-  const score = calculateScore();
+  const recentHistory = useMemo(() => {
+    return sortedHistory.slice(0, RECENT_DOSES_LIMIT);
+  }, [sortedHistory]);
 
-  // بستن مودال با دکمه Escape
+  const stats = useMemo(() => {
+    const total = sortedHistory.length;
+    const onTimeCount = sortedHistory.filter(h => h.status === 'on-time').length;
+    const earlyCount = sortedHistory.filter(h => h.status === 'early').length;
+    const lateCount = sortedHistory.filter(h => h.status === 'late').length;
+    const score = total > 0 ? Math.round((onTimeCount / total) * 100) : 0;
+    const lastDose = total > 0 ? formatDateTime(sortedHistory[0].takenAt) : 'N/A';
+
+    return {
+      total,
+      onTimeCount,
+      earlyCount,
+      lateCount,
+      score,
+      lastDose,
+    };
+  }, [sortedHistory]);
+
+  const reportText = useMemo(() => {
+    return buildReportText(medication, stats, recentHistory);
+  }, [medication, stats, recentHistory]);
+
+  const [feedback, setFeedback] = useState<FeedbackState>(null);
+  const [isSharing, setIsSharing] = useState(false);
+  const [isCopying, setIsCopying] = useState(false);
+  const [isDownloading, setIsDownloading] = useState(false);
+
+  // بستن مودال با Escape + قفل اسکرول صفحه
   useEffect(() => {
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
     };
+
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener('keydown', handleKeyDown);
+    };
   }, [onClose]);
 
+  // حذف خودکار پیام وضعیت
+  useEffect(() => {
+    if (!feedback) return;
+    const timer = window.setTimeout(() => {
+      setFeedback(null);
+    }, 2800);
+
+    return () => window.clearTimeout(timer);
+  }, [feedback]);
+
+  const showFeedback = (type: 'success' | 'error' | 'info', message: string) => {
+    setFeedback({ type, message });
+  };
+
+  const handleCopyReport = async () => {
+    setIsCopying(true);
+    try {
+      const copied = await copyTextToClipboard(reportText);
+      if (copied) {
+        showFeedback('success', '📋 Report copied to clipboard.');
+      } else {
+        showFeedback('error', '⚠️ Unable to copy report.');
+      }
+    } catch (error) {
+      console.error('Copy failed:', error);
+      showFeedback('error', '⚠️ Unable to copy report.');
+    } finally {
+      setIsCopying(false);
+    }
+  };
+
+  const handleDownloadReport = async () => {
+    setIsDownloading(true);
+    try {
+      const filename = `${sanitizeFileName(medication.name || 'medication')}-report.txt`;
+      downloadTextFile(filename, reportText);
+      showFeedback('success', '⬇️ Report downloaded successfully.');
+    } catch (error) {
+      console.error('Download failed:', error);
+      showFeedback('error', '⚠️ Unable to download report.');
+    } finally {
+      setIsDownloading(false);
+    }
+  };
+
   const handleShareReport = async () => {
-    const lastDose = history.length > 0 ? formatDateTime(history[0].takenAt) : 'N/A';
-    const reportText = `📊 Medication Report: ${medication.name}
-💊 Dosage: ${medication.dosage}
-⭐ Adherence: ${history.length > 0 ? score + '%' : 'No data'}
-📦 Total Doses: ${history.length}
-🕒 Last Dose: ${lastDose}
-🔗 Track with MediReminder: ${window.location.origin}`;
+    setIsSharing(true);
 
     try {
-      if (navigator.share) {
-        await navigator.share({
+      const canShare = await Share.canShare();
+
+      if (canShare.value) {
+        await Share.share({
           title: `${medication.name} - Medication Report`,
           text: reportText,
           url: window.location.origin,
+          dialogTitle: 'Share medication report',
         });
-      } else {
-        await navigator.clipboard.writeText(reportText);
-        alert('📋 Report copied to clipboard! You can paste it to share.');
+
+        showFeedback('success', '📤 Share menu opened.');
+        return;
       }
+
+      const copied = await copyTextToClipboard(reportText);
+      if (copied) {
+        showFeedback('info', '📋 Sharing unavailable. Report copied instead.');
+        return;
+      }
+
+      const filename = `${sanitizeFileName(medication.name || 'medication')}-report.txt`;
+      downloadTextFile(filename, reportText);
+      showFeedback('info', '⬇️ Sharing unavailable. Report downloaded instead.');
     } catch (error) {
-      if (error instanceof Error && error.name !== 'AbortError') {
-        console.error('Share failed:', error);
-        try {
-          await navigator.clipboard.writeText(reportText);
-          alert('📋 Report copied to clipboard (sharing not supported).');
-        } catch (clipErr) {
-          alert('⚠️ Unable to share or copy report. Please try again.');
-        }
+      if (error instanceof Error && error.name === 'AbortError') {
+        return;
       }
-    }
-  };
 
-  const formatDateTime = (timestamp: number) => {
-    const date = new Date(timestamp);
-    const today = new Date();
-    
-    const isToday = date.getDate() === today.getDate() && 
-                    date.getMonth() === today.getMonth() && 
-                    date.getFullYear() === today.getFullYear();
+      console.error('Share failed:', error);
 
-    const timeString = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    
-    if (isToday) {
-      return `Today at ${timeString}`;
-    }
-    
-    return `${date.toLocaleDateString()} - ${timeString}`;
-  };
+      try {
+        const copied = await copyTextToClipboard(reportText);
+        if (copied) {
+          showFeedback('info', '📋 Share failed. Report copied instead.');
+          return;
+        }
 
-  const getStatusDisplay = (status: HistoryRecord['status']) => {
-    switch (status) {
-      case 'on-time':
-        return { icon: '🟢', text: 'On Time', color: 'text-green-400', bg: 'bg-green-400/10' };
-      case 'early':
-        return { icon: '🟡', text: 'Early', color: 'text-yellow-400', bg: 'bg-yellow-400/10' };
-      case 'late':
-        return { icon: '🔴', text: 'Late', color: 'text-red-400', bg: 'bg-red-400/10' };
+        const filename = `${sanitizeFileName(medication.name || 'medication')}-report.txt`;
+        downloadTextFile(filename, reportText);
+        showFeedback('info', '⬇️ Share failed. Report downloaded instead.');
+      } catch (fallbackError) {
+        console.error('Fallback share failed:', fallbackError);
+        showFeedback('error', '⚠️ Unable to share the report.');
+      }
+    } finally {
+      setIsSharing(false);
     }
   };
 
   return (
-    <div 
+    <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200"
       onClick={onClose}
       role="dialog"
       aria-modal="true"
       aria-labelledby="modal-title"
     >
-      <div 
-        className="bg-gray-800 rounded-2xl w-full max-w-md p-6 shadow-2xl border border-gray-700 animate-in zoom-in-95 duration-200"
+      <div
+        className="bg-gray-800 rounded-2xl w-full max-w-md p-6 shadow-2xl border border-gray-700 animate-in zoom-in-95 duration-200 max-h-[90vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
-        
         {/* Header */}
-        <div className="flex justify-between items-center mb-6">
-          <h2 id="modal-title" className="text-xl font-bold text-white flex items-center gap-2">
-            📊 {medication.name} Report
-          </h2>
-          <div className="flex items-center gap-2">
-            <button 
-              onClick={handleShareReport}
-              className="bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 transition-colors p-2.5 rounded-lg flex items-center justify-center"
-              title="Share with Doctor"
-              aria-label="Share Report"
-            >
-              📤
-            </button>
-            <button 
-              onClick={onClose}
-              className="bg-gray-700/50 text-gray-400 hover:text-white hover:bg-gray-700 transition-colors p-2.5 rounded-lg flex items-center justify-center"
-              title="Close"
-              aria-label="Close modal"
-            >
-              ✕
-            </button>
+        <div className="flex justify-between items-center mb-5">
+          <div>
+            <h2 id="modal-title" className="text-xl font-bold text-white flex items-center gap-2">
+              📊 {medication.name} Report
+            </h2>
+            <p className="text-xs text-gray-400 mt-1">
+              Shareable summary for doctor or caregiver
+            </p>
+          </div>
+
+          <button
+            onClick={onClose}
+            className="bg-gray-700/50 text-gray-400 hover:text-white hover:bg-gray-700 transition-colors p-2.5 rounded-lg flex items-center justify-center"
+            title="Close"
+            aria-label="Close modal"
+          >
+            ✕
+          </button>
+        </div>
+
+        {/* Feedback */}
+        {feedback && (
+          <div
+            aria-live="polite"
+            className={`mb-4 rounded-xl border px-4 py-3 text-sm ${
+              feedback.type === 'success'
+                ? 'bg-green-500/10 border-green-500/30 text-green-300'
+                : feedback.type === 'info'
+                ? 'bg-blue-500/10 border-blue-500/30 text-blue-300'
+                : 'bg-red-500/10 border-red-500/30 text-red-300'
+            }`}
+          >
+            {feedback.message}
+          </div>
+        )}
+
+        {/* Score Card */}
+        <div className="bg-gray-900 rounded-xl p-4 mb-4 border border-gray-700 flex items-center justify-between">
+          <div>
+            <p className="text-gray-400 text-sm mb-1">Overall Adherence</p>
+            <p className="text-sm text-gray-200">
+              {getAdherenceLabel(stats.score, stats.total)}
+            </p>
+          </div>
+          <div
+            className={`text-3xl font-bold ${
+              stats.total === 0
+                ? 'text-gray-400'
+                : stats.score >= 80
+                ? 'text-green-400'
+                : stats.score >= 50
+                ? 'text-yellow-400'
+                : 'text-red-400'
+            }`}
+          >
+            {stats.total > 0 ? `${stats.score}%` : '-'}
           </div>
         </div>
 
-        {/* Score Card */}
-        <div className="bg-gray-900 rounded-xl p-4 mb-6 border border-gray-700 flex items-center justify-between">
-          <div>
-            <p className="text-gray-400 text-sm mb-1">Overall Adherence</p>
-            <p className="text-sm">
-              {score >= 80 ? '🌟 Excellent' : score >= 50 ? '👍 Good' : '⚠️ Needs Attention'}
-            </p>
+        {/* Quick Stats */}
+        <div className="grid grid-cols-2 gap-3 mb-6">
+          <div className="bg-gray-900 rounded-xl p-4 border border-gray-700">
+            <p className="text-gray-400 text-xs mb-1">Dosage</p>
+            <p className="text-white font-semibold text-sm">{medication.dosage}</p>
           </div>
-          <div className={`text-3xl font-bold ${
-            score >= 80 ? 'text-green-400' : score >= 50 ? 'text-yellow-400' : 'text-red-400'
-          }`}>
-            {history.length > 0 ? `${score}%` : '-'}
+
+          <div className="bg-gray-900 rounded-xl p-4 border border-gray-700">
+            <p className="text-gray-400 text-xs mb-1">Recorded Doses</p>
+            <p className="text-white font-semibold text-sm">{stats.total}</p>
+          </div>
+
+          <div className="bg-gray-900 rounded-xl p-4 border border-gray-700 col-span-2">
+            <p className="text-gray-400 text-xs mb-1">Last Dose</p>
+            <p className="text-white font-semibold text-sm">{stats.lastDose}</p>
+          </div>
+        </div>
+
+        {/* Detailed Counters */}
+        <div className="grid grid-cols-3 gap-3 mb-6">
+          <div className="rounded-xl border border-green-500/20 bg-green-500/10 p-3 text-center">
+            <div className="text-lg">🟢</div>
+            <div className="text-green-300 text-sm font-bold">{stats.onTimeCount}</div>
+            <div className="text-green-200/70 text-xs">On Time</div>
+          </div>
+
+          <div className="rounded-xl border border-yellow-500/20 bg-yellow-500/10 p-3 text-center">
+            <div className="text-lg">🟡</div>
+            <div className="text-yellow-300 text-sm font-bold">{stats.earlyCount}</div>
+            <div className="text-yellow-200/70 text-xs">Early</div>
+          </div>
+
+          <div className="rounded-xl border border-red-500/20 bg-red-500/10 p-3 text-center">
+            <div className="text-lg">🔴</div>
+            <div className="text-red-300 text-sm font-bold">{stats.lateCount}</div>
+            <div className="text-red-200/70 text-xs">Late</div>
           </div>
         </div>
 
         {/* History List */}
-        <div className="space-y-3 mb-6 max-h-64 overflow-y-auto pr-2 custom-scrollbar">
-          <h3 className="text-gray-400 text-sm font-semibold mb-2">Last 5 Doses:</h3>
-          
-          {sortedHistory.length === 0 ? (
-            <div className="text-center py-6 text-gray-500 text-sm">
-              No doses recorded yet. <br/>Start the timer to track your history.
+        <div className="space-y-3 mb-6 pr-1">
+          <h3 className="text-gray-400 text-sm font-semibold mb-2">
+            Last {RECENT_DOSES_LIMIT} Doses:
+          </h3>
+
+          {recentHistory.length === 0 ? (
+            <div className="text-center py-6 text-gray-500 text-sm bg-gray-900 rounded-xl border border-gray-700">
+              No doses recorded yet.
+              <br />
+              Start the timer to track your history.
             </div>
           ) : (
-            sortedHistory.map((record, index) => {
+            recentHistory.map((record, index) => {
               const display = getStatusDisplay(record.status);
               return (
-                <div key={index} className={`flex items-center justify-between p-3 rounded-lg ${display.bg} border border-gray-700/50`}>
+                <div
+                  key={`${record.takenAt}-${index}`}
+                  className={`flex items-center justify-between p-3 rounded-lg ${display.bg} border border-gray-700/50`}
+                >
                   <div className="flex items-center gap-3">
-                    <span className="text-xl" aria-hidden="true">{display.icon}</span>
+                    <span className="text-xl" aria-hidden="true">
+                      {display.icon}
+                    </span>
                     <span className="text-gray-200 text-sm font-medium">
                       {formatDateTime(record.takenAt)}
                     </span>
@@ -172,6 +465,33 @@ export function ReportModal({ medication, onClose }: ReportModalProps) {
           )}
         </div>
 
+        {/* Share Actions */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
+          <button
+            onClick={handleShareReport}
+            disabled={isSharing}
+            className="bg-blue-600 hover:bg-blue-500 disabled:opacity-60 disabled:cursor-not-allowed text-white font-bold py-3 px-4 rounded-xl transition-colors duration-200"
+          >
+            {isSharing ? 'Sharing...' : '📤 Share'}
+          </button>
+
+          <button
+            onClick={handleCopyReport}
+            disabled={isCopying}
+            className="bg-cyan-600 hover:bg-cyan-500 disabled:opacity-60 disabled:cursor-not-allowed text-white font-bold py-3 px-4 rounded-xl transition-colors duration-200"
+          >
+            {isCopying ? 'Copying...' : '📋 Copy'}
+          </button>
+
+          <button
+            onClick={handleDownloadReport}
+            disabled={isDownloading}
+            className="bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 disabled:cursor-not-allowed text-white font-bold py-3 px-4 rounded-xl transition-colors duration-200"
+          >
+            {isDownloading ? 'Preparing...' : '⬇️ Download'}
+          </button>
+        </div>
+
         {/* Close Button */}
         <button
           onClick={onClose}
@@ -179,7 +499,6 @@ export function ReportModal({ medication, onClose }: ReportModalProps) {
         >
           Close Report
         </button>
-
       </div>
     </div>
   );
