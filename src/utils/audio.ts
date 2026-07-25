@@ -2,120 +2,162 @@
 import { Capacitor } from '@capacitor/core';
 import { Haptics, ImpactStyle } from '@capacitor/haptics';
 
-// ─── Web Audio (oscillator) ───────────────────────────────────────────────────
 let audioContext: AudioContext | null = null;
 let oscillator: OscillatorNode | null = null;
 let gainNode: GainNode | null = null;
-let alarmLoopHandle: ReturnType<typeof setTimeout> | null = null;
+let audioLoopTimer: ReturnType<typeof setTimeout> | null = null;
 let isAlarmPlaying = false;
 
-/**
- * یک بوق کوتاه (200ms روشن، 200ms خاموش) × 5 بار
- * سپس یک وقفه ۱ ثانیه‌ای و دوباره تکرار می‌شود تا stopAlarm صدا زده شود
- */
-function playBeepCycle(ctx: AudioContext, gain: GainNode) {
-  const beepOn = 0.2;
-  const beepOff = 0.2;
-  let t = ctx.currentTime;
+const BEEP_FREQUENCY = 880;
+const BEEP_ON_SEC = 0.22;
+const BEEP_OFF_SEC = 0.18;
+const BEEPS_PER_CYCLE = 5;
+const GAP_AFTER_CYCLE_MS = 900;
+const ALARM_VOLUME = 0.35;
 
-  for (let i = 0; i < 5; i++) {
-    gain.gain.setValueAtTime(0.45, t);
-    gain.gain.setValueAtTime(0, t + beepOn);
-    t += beepOn + beepOff;
-  }
-  return t; // زمان پایان این چرخه
+function createAudioContext(): AudioContext | null {
+  if (typeof window === 'undefined') return null;
+
+  const AudioContextClass =
+    window.AudioContext || (window as any).webkitAudioContext;
+
+  if (!AudioContextClass) return null;
+
+  return new AudioContextClass();
 }
 
-export function playAlarm() {
-  if (isAlarmPlaying) return; // از اجرای دوباره جلوگیری می‌کند
+function clearAudioResources() {
+  if (audioLoopTimer !== null) {
+    clearTimeout(audioLoopTimer);
+    audioLoopTimer = null;
+  }
+
+  if (oscillator) {
+    try {
+      oscillator.stop();
+    } catch {}
+    try {
+      oscillator.disconnect();
+    } catch {}
+    oscillator = null;
+  }
+
+  if (gainNode) {
+    try {
+      gainNode.disconnect();
+    } catch {}
+    gainNode = null;
+  }
+
+  if (audioContext) {
+    const ctx = audioContext;
+    audioContext = null;
+    try {
+      ctx.close();
+    } catch {}
+  }
+
+  // توقف ویبره وب اگر فعال بوده
+  if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+    navigator.vibrate(0);
+  }
+}
+
+function scheduleBeepCycle(ctx: AudioContext, gain: GainNode): number {
+  let t = ctx.currentTime;
+
+  for (let i = 0; i < BEEPS_PER_CYCLE; i++) {
+    gain.gain.setValueAtTime(ALARM_VOLUME, t);
+    gain.gain.setValueAtTime(0, t + BEEP_ON_SEC);
+    t += BEEP_ON_SEC + BEEP_OFF_SEC;
+  }
+
+  gain.gain.setValueAtTime(0, t);
+
+  return Math.max(0, (t - ctx.currentTime) * 1000);
+}
+
+/**
+ * پخش صدای آلارم داخل خود اپ
+ * تا زمانی که stopAlarm صدا زده نشود، به صورت چرخه‌ای ادامه می‌دهد
+ */
+export async function playAlarm() {
+  if (isAlarmPlaying) return;
+
   isAlarmPlaying = true;
+  clearAudioResources();
 
-  // ─── Haptics (ویبره) ─────────────────────────────────────────────────────
-  triggerHaptics();
-
-  // ─── Web Audio ────────────────────────────────────────────────────────────
   try {
-    stopAlarmInternal(); // پاک‌سازی قبلی
+    const ctx = createAudioContext();
+    if (!ctx) {
+      isAlarmPlaying = false;
+      return;
+    }
 
-    audioContext = new (window.AudioContext ||
-      (window as any).webkitAudioContext)();
+    audioContext = ctx;
+
+    if (audioContext.state === 'suspended') {
+      await audioContext.resume();
+    }
 
     oscillator = audioContext.createOscillator();
     gainNode = audioContext.createGain();
 
     oscillator.type = 'sine';
-    oscillator.frequency.setValueAtTime(880, audioContext.currentTime);
+    oscillator.frequency.setValueAtTime(BEEP_FREQUENCY, audioContext.currentTime);
     gainNode.gain.setValueAtTime(0, audioContext.currentTime);
 
     oscillator.connect(gainNode);
     gainNode.connect(audioContext.destination);
+
     oscillator.start();
 
-    // اجرای اولین چرخه
-    const cycleDuration = playBeepCycle(audioContext, gainNode);
+    const runCycle = () => {
+      if (!isAlarmPlaying || !audioContext || !gainNode) return;
 
-    // تکرار هر چرخه + ۱ ثانیه مکث
-    const scheduleNextCycle = (delayMs: number) => {
-      alarmLoopHandle = setTimeout(() => {
-        if (!isAlarmPlaying || !audioContext || !gainNode) return;
-        const end = playBeepCycle(audioContext, gainNode);
-        const cycleMs = (end - audioContext.currentTime) * 1000;
-        scheduleNextCycle(cycleMs + 1000);
-      }, delayMs);
+      const cycleMs = scheduleBeepCycle(audioContext, gainNode);
+
+      audioLoopTimer = setTimeout(() => {
+        runCycle();
+      }, cycleMs + GAP_AFTER_CYCLE_MS);
     };
 
-    scheduleNextCycle((cycleDuration - audioContext.currentTime) * 1000 + 1000);
-  } catch (err) {
-    console.warn('Web Audio playAlarm error:', err);
-    isAlarmPlaying = false;
+    runCycle();
+  } catch (error) {
+    console.error('Failed to play alarm:', error);
+    stopAlarm();
   }
 }
 
+/**
+ * توقف صدای آلارم
+ */
 export function stopAlarm() {
   isAlarmPlaying = false;
-  stopAlarmInternal();
+  clearAudioResources();
 }
 
-function stopAlarmInternal() {
-  if (alarmLoopHandle !== null) {
-    clearTimeout(alarmLoopHandle);
-    alarmLoopHandle = null;
-  }
-  if (oscillator) {
-    try { oscillator.stop(); } catch {}
-    try { oscillator.disconnect(); } catch {}
-    oscillator = null;
-  }
-  if (gainNode) {
-    try { gainNode.disconnect(); } catch {}
-    gainNode = null;
-  }
-  if (audioContext) {
-    try { audioContext.close(); } catch {}
-    audioContext = null;
-  }
-}
-
-// ─── Haptics ─────────────────────────────────────────────────────────────────
+/**
+ * اجرای ویبره
+ * - در Native: Haptics
+ * - در Web/PWA: Vibration API
+ */
 export async function triggerHaptics() {
-  // وب: Vibration API
-  if (!Capacitor.isNativePlatform()) {
-    if ('vibrate' in navigator) {
-      // الگوی ویبره: روشن/خاموش به میلی‌ثانیه
-      navigator.vibrate([300, 150, 300, 150, 300]);
+  if (Capacitor.isNativePlatform()) {
+    try {
+      await Haptics.impact({ style: ImpactStyle.Heavy });
+      await delay(120);
+      await Haptics.impact({ style: ImpactStyle.Heavy });
+      await delay(120);
+      await Haptics.impact({ style: ImpactStyle.Heavy });
+    } catch (error) {
+      console.warn('Haptics error:', error);
     }
     return;
   }
 
-  // Native: Capacitor Haptics
-  try {
-    // ویبره سنگین ۳ بار پشت سرهم
-    for (let i = 0; i < 3; i++) {
-      await Haptics.impact({ style: ImpactStyle.Heavy });
-      await delay(300);
-    }
-  } catch (err) {
-    console.warn('Haptics error:', err);
+  if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+    navigator.vibrate([350, 150, 350, 150, 350]);
   }
 }
 
@@ -123,10 +165,10 @@ function delay(ms: number) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-// ─── Format helper ────────────────────────────────────────────────────────────
 export function formatTime(seconds: number): string {
-  const h = Math.floor(seconds / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
-  const s = Math.floor(seconds % 60);
-  return [h, m, s].map(v => String(v).padStart(2, '0')).join(':');
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const secs = Math.floor(seconds % 60);
+
+  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
 }
