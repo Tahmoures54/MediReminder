@@ -2,38 +2,58 @@
 import { Capacitor } from '@capacitor/core';
 import { LocalNotifications } from '@capacitor/local-notifications';
 
-export type PermissionStatus = 'granted' | 'denied' | 'prompt' | 'unavailable';
+export const NOTIFICATION_CHANNEL_ID = 'medication-alarms';
+
+export type AppNotificationPermission =
+  | 'granted'
+  | 'denied'
+  | 'prompt'
+  | 'prompt-with-rationale'
+  | 'unavailable';
 
 /**
  * بررسی وضعیت فعلی مجوز نوتیفیکیشن
  */
-export async function checkNotificationPermission(): Promise<PermissionStatus> {
+export async function checkNotificationPermission(): Promise<AppNotificationPermission> {
   if (Capacitor.isNativePlatform()) {
-    const result = await LocalNotifications.checkPermissions();
-    return result.display as PermissionStatus;
+    try {
+      const result = await LocalNotifications.checkPermissions();
+      return (result.display ?? 'prompt') as AppNotificationPermission;
+    } catch (error) {
+      console.error('checkPermissions error:', error);
+      return 'unavailable';
+    }
   }
 
-  if (!('Notification' in window)) return 'unavailable';
-  return Notification.permission as PermissionStatus;
+  if (typeof window === 'undefined' || !('Notification' in window)) {
+    return 'unavailable';
+  }
+
+  if (Notification.permission === 'default') {
+    return 'prompt';
+  }
+
+  return Notification.permission as AppNotificationPermission;
 }
 
 /**
- * درخواست مجوز نوتیفیکیشن از کاربر
- * مقدار برگشتی: true یعنی مجوز داده شد
+ * درخواست مجوز نوتیفیکیشن
  */
 export async function requestNotificationPermission(): Promise<boolean> {
   if (Capacitor.isNativePlatform()) {
     try {
       const result = await LocalNotifications.requestPermissions();
       return result.display === 'granted';
-    } catch (err) {
-      console.error('Native notification permission error:', err);
+    } catch (error) {
+      console.error('requestPermissions error:', error);
       return false;
     }
   }
 
-  // وب / PWA
-  if (!('Notification' in window)) return false;
+  if (typeof window === 'undefined' || !('Notification' in window)) {
+    return false;
+  }
+
   if (Notification.permission === 'granted') return true;
   if (Notification.permission === 'denied') return false;
 
@@ -42,42 +62,48 @@ export async function requestNotificationPermission(): Promise<boolean> {
 }
 
 /**
- * ایجاد کانال نوتیفیکیشن اندروید (فقط یک‌بار کافی است)
+ * ساخت کانال نوتیفیکیشن اندروید با صدا و ویبره
+ * مهم: فایل صدا باید در این مسیر باشد:
+ * android/app/src/main/res/raw/medication_alarm.wav
  */
 export async function setupAndroidChannel(): Promise<void> {
-  if (!Capacitor.isNativePlatform()) return;
+  if (Capacitor.getPlatform() !== 'android') return;
 
   try {
-    // حذف کانال قدیمی و ساخت مجدد (برای جلوگیری از cache بدون صدا)
-    await LocalNotifications.deleteChannel({ id: 'medication-alarms' });
-  } catch {}
+    // اگر قبلاً کانال بدون صدا ساخته شده بود، پاک شود
+    try {
+      await LocalNotifications.deleteChannel({ id: NOTIFICATION_CHANNEL_ID });
+    } catch {
+      // اگر وجود نداشت مشکلی نیست
+    }
 
-  try {
     await LocalNotifications.createChannel({
-      id: 'medication-alarms',
+      id: NOTIFICATION_CHANNEL_ID,
       name: 'Medication Alarms',
-      description: 'Reminders for medication doses',
-      importance: 5,        // IMPORTANCE_HIGH
-      visibility: 1,        // VISIBILITY_PUBLIC
+      description: 'Medication reminder alerts',
+      importance: 5,
+      visibility: 1,
       sound: 'medication_alarm.wav',
       vibration: true,
       lights: true,
       lightColor: '#DC2626',
     });
-  } catch (err) {
-    console.error('createChannel error:', err);
+  } catch (error) {
+    console.error('createChannel error:', error);
   }
 }
 
 /**
- * تابع کلی که همه مجوزها را یک‌جا مدیریت می‌کند
- * باید بعد از اولین تعامل کاربر صدا زده شود
+ * راه‌اندازی کامل مجوزها
  */
 export async function initAllPermissions(): Promise<{
   notification: boolean;
 }> {
   const notification = await requestNotificationPermission();
-  await setupAndroidChannel();
+
+  if (notification) {
+    await setupAndroidChannel();
+  }
 
   return { notification };
 }
