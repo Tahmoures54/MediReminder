@@ -40,10 +40,24 @@ jobs:
       - name: افزودن پلتفرم Android
         run: npx cap add android
 
+      - name: اضافه کردن مجوزهای لازم به AndroidManifest
+        run: |
+          MANIFEST="android/app/src/main/AndroidManifest.xml"
+          
+          # مجوز نوتیفیکیشن (اندروید 13+)
+          if ! grep -q "POST_NOTIFICATIONS" "$MANIFEST"; then
+            sed -i 's|<uses-permission android:name="android.permission.INTERNET" />|<uses-permission android:name="android.permission.INTERNET" />\n    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />\n    <uses-permission android:name="android.permission.VIBRATE" />\n    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />\n    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />\n    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />|' "$MANIFEST"
+          fi
+          
+          echo "✅ AndroidManifest.xml updated:"
+          cat "$MANIFEST"
+
       - name: کپی فایل صوتی به مسیر منابع اندروید
         run: |
           mkdir -p android/app/src/main/res/raw
           cp src/main/res/raw/medication_alarm.wav android/app/src/main/res/raw/medication_alarm.wav
+          echo "✅ Sound file copied successfully"
+          ls -la android/app/src/main/res/raw/
 
       - name: تولید و جایگذاری آیکون‌های نیتیو برنامه
         run: |
@@ -53,7 +67,7 @@ jobs:
           npx @capacitor/assets generate --android
 
       - name: همگام‌سازی پروژه
-        run: npx cap sync
+        run: npx cap sync android
 
       - name: ساخت یک کی‌استور موقت (برای امضا)
         run: |
@@ -70,7 +84,7 @@ jobs:
       - name: ساخت APK بدون امضا
         run: cd android && ./gradlew assembleRelease
 
-      - name: امضای APK با apksigner (نسخه ۳۴.۰.۰)
+      - name: امضای APK با apksigner
         run: |
           $ANDROID_SDK_ROOT/build-tools/34.0.0/apksigner sign \
             --ks release.keystore \
@@ -80,13 +94,13 @@ jobs:
             --out android/app/build/outputs/apk/release/app-release.apk \
             android/app/build/outputs/apk/release/app-release-unsigned.apk
 
-      - name: آپلود APK نهایی (برای دانلود)
+      - name: آپلود APK نهایی
         uses: actions/upload-artifact@v4
         with:
           name: MediReminder-APK
           path: android/app/build/outputs/apk/release/app-release.apk
 
-      - name: آپلود فایل کی‌استور (اختیاری)
+      - name: آپلود فایل کی‌استور
         uses: actions/upload-artifact@v4
         with:
           name: release-keystore
