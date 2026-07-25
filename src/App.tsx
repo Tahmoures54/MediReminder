@@ -133,6 +133,7 @@ const scheduleNativeAlarms = async (meds: MedicationWithTimestamp[]) => {
   const now = Date.now();
   const notifications: any[] = [];
 
+  // لغو تمام نوتیفیکیشن‌های قبلی
   try {
     const pending = await LocalNotifications.getPending();
     if (pending.notifications.length > 0) {
@@ -146,10 +147,10 @@ const scheduleNativeAlarms = async (meds: MedicationWithTimestamp[]) => {
         id: med.id!,
         title: '🔔 Time to Medicate!',
         body: `${med.name} - ${med.dosage}`,
+        // ✅ smallIcon حذف شد چون resource وجود ندارد
         channelId: 'medication-alarms',
         schedule: { at: new Date(now + med.remaining * 1000) },
         sound: 'medication_alarm.wav',
-        smallIcon: 'ic_stat_med',
         iconColor: '#DC2626',
         extra: { medicationId: med.id },
       });
@@ -177,7 +178,7 @@ const syncAlarms = (meds: MedicationWithTimestamp[]) => {
 };
 
 // ============================================================================
-// Custom Hooks
+// Hook: Audio Unlock
 // ============================================================================
 const useAudioUnlock = () => {
   const unlockedRef = useRef(false);
@@ -188,7 +189,8 @@ const useAudioUnlock = () => {
       "data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA="
     );
     silentAudio.volume = 0;
-    silentAudio.play()
+    silentAudio
+      .play()
       .then(() => {
         silentAudio.pause();
         unlockedRef.current = true;
@@ -200,7 +202,7 @@ const useAudioUnlock = () => {
 };
 
 // ============================================================================
-// Permission Hook
+// Hook: Permissions
 // ============================================================================
 const usePermissions = () => {
   const [permissionGranted, setPermissionGranted] = useState<boolean | null>(null);
@@ -213,8 +215,10 @@ const usePermissions = () => {
         setShowPermissionBanner(false);
       } else if (status === 'denied') {
         setPermissionGranted(false);
+        // حتی اگر رد کرده، بنر را نشان بده تا راهنمایی شود
         setShowPermissionBanner(true);
-      } else if (status === 'prompt') {
+      } else {
+        // prompt یا prompt-with-rationale
         setShowPermissionBanner(true);
       }
     });
@@ -325,18 +329,10 @@ export default function App() {
 
         if (newRemaining === 0) {
           expiredMeds.push(med);
-          return {
-            ...med,
-            remaining: 0,
-            lastUpdated: now,
-          };
+          return { ...med, remaining: 0, lastUpdated: now };
         }
 
-        return {
-          ...med,
-          remaining: newRemaining,
-          lastUpdated: now,
-        };
+        return { ...med, remaining: newRemaining, lastUpdated: now };
       });
 
       if (expiredMeds.length > 0) {
@@ -410,72 +406,76 @@ export default function App() {
   }, [medications]);
 
   // --------------------------------------------------------------------------
-  // Native notification listeners
+  // Native notification listeners (فقط در اندروید/iOS)
   // --------------------------------------------------------------------------
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return;
 
-    // وقتی کاربر روی نوتیفیکیشن کلیک می‌کند
-    const actionListener = LocalNotifications.addListener(
+    let actionListenerCleanup: (() => void) | null = null;
+    let receivedListenerCleanup: (() => void) | null = null;
+
+    // وقتی کاربر روی نوتیفیکیشن ضربه می‌زند و اپ باز می‌شود
+    LocalNotifications.addListener(
       'localNotificationActionPerformed',
       notification => {
         const medId = notification.notification.extra?.medicationId;
-        if (medId) {
-          const med = medicationsRef.current.find(m => m.id === medId);
-          if (med) {
-            playAlarm();
-            triggerHaptics();
-            setAlertQueue(prev => {
-              if (prev.some(a => a.medication.id === med.id)) return prev;
-              return [...prev, createMedicationAlert(med)];
-            });
-          }
-        }
+        if (!medId) return;
+        const med = medicationsRef.current.find(m => m.id === medId);
+        if (!med) return;
+        playAlarm();
+        triggerHaptics();
+        setAlertQueue(prev => {
+          if (prev.some(a => a.medication.id === med.id)) return prev;
+          return [...prev, createMedicationAlert(med)];
+        });
       }
-    );
+    ).then(listener => {
+      actionListenerCleanup = () => listener.remove();
+    });
 
     // وقتی اپ باز است و نوتیفیکیشن می‌رسد
-    const receivedListener = LocalNotifications.addListener(
+    LocalNotifications.addListener(
       'localNotificationReceived',
       notification => {
         const medId = notification.extra?.medicationId;
-        if (medId) {
-          const med = medicationsRef.current.find(m => m.id === medId);
-          if (med) {
-            playAlarm();
-            triggerHaptics();
-            setAlertQueue(prev => {
-              if (prev.some(a => a.medication.id === med.id)) return prev;
-              return [...prev, createMedicationAlert(med)];
-            });
-          }
-        }
+        if (!medId) return;
+        const med = medicationsRef.current.find(m => m.id === medId);
+        if (!med) return;
+        playAlarm();
+        triggerHaptics();
+        setAlertQueue(prev => {
+          if (prev.some(a => a.medication.id === med.id)) return prev;
+          return [...prev, createMedicationAlert(med)];
+        });
       }
-    );
+    ).then(listener => {
+      receivedListenerCleanup = () => listener.remove();
+    });
 
     return () => {
-      actionListener.then(l => l.remove());
-      receivedListener.then(l => l.remove());
+      actionListenerCleanup?.();
+      receivedListenerCleanup?.();
     };
   }, []);
 
   // --------------------------------------------------------------------------
-  // Service Worker messages
+  // Service Worker messages (فقط در وب/PWA)
   // --------------------------------------------------------------------------
   useEffect(() => {
+    if (Capacitor.isNativePlatform()) return;
+
     const handler = (event: MessageEvent) => {
-      if (event.data?.type === 'ALARM_TRIGGERED') {
-        const med = medicationsRef.current.find(m => m.id === event.data.medicationId);
-        if (med) {
-          playAlarm();
-          triggerHaptics();
-          setAlertQueue(prev => {
-            if (prev.some(a => a.medication.id === med.id)) return prev;
-            return [...prev, createMedicationAlert(med)];
-          });
-        }
-      }
+      if (event.data?.type !== 'ALARM_TRIGGERED') return;
+      const med = medicationsRef.current.find(m => m.id === event.data.medicationId);
+      if (!med) return;
+      playAlarm();
+      triggerHaptics();
+      setAlertQueue(prev => {
+        if (prev.some(a => a.medication.id === med.id)) return prev;
+        return [...prev, createMedicationAlert(med)];
+      });
     };
+
     navigator.serviceWorker?.addEventListener('message', handler);
     return () => navigator.serviceWorker?.removeEventListener('message', handler);
   }, []);
@@ -484,21 +484,23 @@ export default function App() {
   // Handle expired medications (remaining === 0)
   // --------------------------------------------------------------------------
   useEffect(() => {
-    const expiredMeds = medications.filter(med => med.running && med.remaining === 0);
-    if (expiredMeds.length > 0) {
-      setMedications(prev =>
-        prev.map(med =>
-          expiredMeds.some(exp => exp.id === med.id)
-            ? {
-                ...med,
-                running: false,
-                remaining: med.interval,
-                lastUpdated: Date.now(),
-              }
-            : med
-        )
-      );
-    }
+    const expiredMeds = medications.filter(
+      med => med.running && med.remaining === 0
+    );
+    if (expiredMeds.length === 0) return;
+
+    setMedications(prev =>
+      prev.map(med =>
+        expiredMeds.some(exp => exp.id === med.id)
+          ? {
+              ...med,
+              running: false,
+              remaining: med.interval,
+              lastUpdated: Date.now(),
+            }
+          : med
+      )
+    );
   }, [medications]);
 
   // --------------------------------------------------------------------------
@@ -541,10 +543,10 @@ export default function App() {
     const willStart = !med.running;
     const message = willStart
       ? `Did you take ${med.name} (${med.dosage}) now?\nTimer will start after confirmation.`
-      : "Pause the timer?";
+      : 'Pause the timer?';
 
     setConfirmDialog({
-      title: "Confirm",
+      title: 'Confirm',
       message,
       onConfirm: async () => {
         try {
@@ -552,13 +554,16 @@ export default function App() {
           const updatedMed: MedicationWithTimestamp = {
             ...med,
             running: willStart,
-            quantity: willStart && med.quantity > 0 ? med.quantity - 1 : med.quantity,
+            quantity:
+              willStart && med.quantity > 0 ? med.quantity - 1 : med.quantity,
             history: willStart ? createDoseRecord(med) : med.history,
             lastUpdated: now,
           };
 
           await db.updateMedication(updatedMed);
-          setMedications(prev => prev.map(m => m.id === med.id ? updatedMed : m));
+          setMedications(prev =>
+            prev.map(m => (m.id === med.id ? updatedMed : m))
+          );
 
           if (willStart && updatedMed.quantity <= LOW_STOCK_THRESHOLD) {
             setAlertQueue(prev => [...prev, createLowStockAlert(updatedMed)]);
@@ -575,8 +580,8 @@ export default function App() {
   const handleResetMedication = (med: MedicationWithTimestamp) => {
     unlockAudio();
     setConfirmDialog({
-      title: "Reset Timer",
-      message: "Reset timer to full interval?",
+      title: 'Reset Timer',
+      message: 'Reset timer to full interval?',
       onConfirm: async () => {
         try {
           const updatedMed: MedicationWithTimestamp = {
@@ -585,7 +590,9 @@ export default function App() {
             lastUpdated: Date.now(),
           };
           await db.updateMedication(updatedMed);
-          setMedications(prev => prev.map(m => m.id === med.id ? updatedMed : m));
+          setMedications(prev =>
+            prev.map(m => (m.id === med.id ? updatedMed : m))
+          );
         } catch (error) {
           console.error('Failed to reset medication:', error);
         } finally {
@@ -598,7 +605,7 @@ export default function App() {
   const handleDeleteMedication = (med: MedicationWithTimestamp) => {
     unlockAudio();
     setConfirmDialog({
-      title: "Delete Medication",
+      title: 'Delete Medication',
       message: `Remove ${med.name}?\nThis action cannot be undone.`,
       onConfirm: async () => {
         try {
@@ -629,7 +636,9 @@ export default function App() {
       };
 
       await db.updateMedication(updatedMed);
-      setMedications(prev => prev.map(m => m.id === currentMed.id ? updatedMed : m));
+      setMedications(prev =>
+        prev.map(m => (m.id === currentMed.id ? updatedMed : m))
+      );
 
       if (newQuantity <= LOW_STOCK_THRESHOLD) {
         setAlertQueue(prev => [...prev, createLowStockAlert(updatedMed)]);
@@ -644,14 +653,15 @@ export default function App() {
   const handleCloseAlert = () => {
     setAlertQueue(prev => {
       const current = prev[0];
-      if (current?.medication?.id) {
-        if (!Capacitor.isNativePlatform()) {
-          navigator.serviceWorker?.controller?.postMessage({
-            type: 'DISMISS_ALARM',
-            id: current.medication.id,
-          });
-        }
+
+      // به سرویس‌ورکر بگو آلارم dismiss شد
+      if (current?.medication?.id && !Capacitor.isNativePlatform()) {
+        navigator.serviceWorker?.controller?.postMessage({
+          type: 'DISMISS_ALARM',
+          id: current.medication.id,
+        });
       }
+
       const newQueue = prev.slice(1);
       if (newQueue.length === 0) stopAlarm();
       return newQueue;
@@ -701,13 +711,18 @@ export default function App() {
                 Enable notifications to receive medication reminders
               </p>
               <p className="text-amber-300/60 text-xs mt-1 leading-relaxed">
-                Without this permission, alarms won't work when the app is closed or in the background.
+                Without this permission, alarms won't work when the app is
+                closed or in the background.
               </p>
             </div>
             <button
               onClick={async () => {
                 unlockAudio();
-                await requestPermissions();
+                // ✅ بعد از گرفتن مجوز، آلارم‌ها را فوری sync کن
+                const result = await requestPermissions();
+                if (result.notification) {
+                  syncAlarms(medicationsRef.current);
+                }
               }}
               className="shrink-0 bg-amber-500 hover:bg-amber-400 active:scale-95 text-black font-bold py-2 px-5 rounded-xl text-sm transition-all duration-200 shadow-md shadow-amber-500/30"
             >
