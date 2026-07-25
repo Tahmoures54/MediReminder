@@ -10,116 +10,194 @@ interface MedicationCardProps {
   onShowReport: () => void;
 }
 
+const LOW_STOCK_THRESHOLD = 5;
+
 export function MedicationCard({
   medication,
   index,
   onToggle,
   onReset,
   onDelete,
-  onShowReport
+  onShowReport,
 }: MedicationCardProps) {
-  // بهسازی: جلوگیری از خطای تقسیم بر صفر و محاسبه دقیق درصد برای نوار پیشرفت
-  const progressPercentage = medication.interval > 0 
-    ? Math.min((medication.remaining / medication.interval) * 100, 100) 
-    : 0;
-    
-  const isLowStock = medication.quantity <= 5;
+  const safeInterval = Math.max(0, medication.interval || 0);
+  const safeRemaining = Math.max(0, medication.remaining || 0);
+
+  const progressPercentage =
+    safeInterval > 0
+      ? Math.max(0, Math.min((safeRemaining / safeInterval) * 100, 100))
+      : 0;
+
+  const isLowStock = medication.quantity <= LOW_STOCK_THRESHOLD;
+  const isRunning = medication.running;
+  const isFinished = safeRemaining === 0;
+  const isResetDisabled = safeRemaining === safeInterval;
+
+  const isTimeCritical = isRunning && progressPercentage <= 15;
+  const isTimeWarning = isRunning && progressPercentage > 15 && progressPercentage <= 35;
+
+  const timerColorClass = isRunning
+    ? isTimeCritical
+      ? 'text-red-400 drop-shadow-[0_0_15px_rgba(248,113,113,0.45)]'
+      : isTimeWarning
+      ? 'text-yellow-400 drop-shadow-[0_0_15px_rgba(250,204,21,0.35)]'
+      : 'text-cyan-400 drop-shadow-[0_0_15px_rgba(34,211,238,0.5)]'
+    : 'text-gray-500';
+
+  const progressBarClass = isRunning
+    ? isTimeCritical
+      ? 'bg-gradient-to-r from-red-500 to-orange-500'
+      : isTimeWarning
+      ? 'bg-gradient-to-r from-yellow-400 to-amber-500'
+      : 'bg-gradient-to-r from-cyan-500 to-blue-500'
+    : 'bg-gray-600';
+
+  const cardBorderClass = isRunning
+    ? isTimeCritical
+      ? 'border-red-400'
+      : 'border-cyan-400'
+    : 'border-gray-600';
+
+  const cardTitleId = `medication-title-${medication.id ?? index}`;
+  const timerLabel = `${formatTime(safeRemaining)} remaining`;
 
   return (
-    <div className={`relative bg-gray-800 rounded-2xl p-5 shadow-xl border-l-4 transition-all duration-300 hover:shadow-2xl ${
-      medication.running ? 'border-cyan-400' : 'border-gray-600'
-    }`}>
-      
-      <div className="flex justify-between items-start mb-3">
-        <div className="flex-1">
-          <h3 className="text-xl font-bold text-white flex items-center gap-2">
-            <span className="text-gray-400 text-sm">#{index}</span>
-            {medication.name}
+    <article
+      className={`relative rounded-2xl border-l-4 bg-gray-800 p-5 shadow-xl transition-all duration-300 hover:shadow-2xl ${cardBorderClass}`}
+      aria-labelledby={cardTitleId}
+    >
+      {/* Header */}
+      <div className="mb-3 flex justify-between items-start gap-3">
+        <div className="flex-1 min-w-0">
+          <h3
+            id={cardTitleId}
+            className="flex items-center gap-2 text-xl font-bold text-white"
+          >
+            <span className="text-sm text-gray-400 shrink-0">#{index}</span>
+            <span className="truncate">{medication.name}</span>
           </h3>
-          <p className="text-gray-300 text-sm mt-1">
+
+          <p className="mt-1 text-sm text-gray-300">
             💊 Dosage: {medication.dosage}
           </p>
-          <p className={`text-sm mt-1 ${isLowStock ? 'text-red-400 font-bold animate-pulse' : 'text-gray-300'}`}>
-            📦 Remaining: {medication.quantity} {isLowStock && '⚠️'}
+
+          <p className="mt-1 text-sm text-gray-300">
+            ⏱ Every {medication.intervalHours} hour{medication.intervalHours !== 1 ? 's' : ''}
+          </p>
+
+          <p
+            className={`mt-1 text-sm ${
+              isLowStock
+                ? 'font-bold text-red-400 animate-pulse'
+                : 'text-gray-300'
+            }`}
+          >
+            📦 Remaining: {medication.quantity} {isLowStock ? '⚠️' : ''}
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
-          {medication.running && (
-            <div 
-              className="w-3 h-3 bg-cyan-400 rounded-full animate-pulse shadow-[0_0_10px_rgba(34,211,238,0.8)]" 
-              title="Timer is running" 
+        <div className="flex items-center gap-2 shrink-0">
+          {isRunning && (
+            <div
+              className={`h-3 w-3 rounded-full ${
+                isTimeCritical
+                  ? 'bg-red-400 shadow-[0_0_10px_rgba(248,113,113,0.8)]'
+                  : 'bg-cyan-400 shadow-[0_0_10px_rgba(34,211,238,0.8)]'
+              } animate-pulse`}
+              title={isTimeCritical ? 'Medication time is very close' : 'Timer is running'}
               aria-hidden="true"
             />
           )}
-          
+
           <button
+            type="button"
             onClick={onShowReport}
-            aria-label="View history report for this medication"
-            className="bg-gray-700 hover:bg-gray-600 text-lg p-2.5 rounded-lg transition-all duration-200 flex items-center justify-center shadow-lg hover:scale-105"
+            aria-label={`View history report for ${medication.name}`}
             title="View History Report"
+            className="flex items-center justify-center rounded-lg bg-gray-700 p-2.5 text-lg shadow-lg transition-all duration-200 hover:scale-105 hover:bg-gray-600 focus:outline-none focus:ring-4 focus:ring-cyan-400/30"
           >
             📊
           </button>
         </div>
       </div>
 
-      {/* اضافه شدن aria-live برای خوانده شدن محترمانه زمان توسط دستیار صوتی */}
-      <div 
-        className={`text-5xl font-bold text-center my-4 transition-all duration-300 ${
-          medication.running ? 'text-cyan-400 drop-shadow-[0_0_15px_rgba(34,211,238,0.5)]' : 'text-gray-500'
-        }`}
-        aria-live="polite"
-      >
-        {formatTime(medication.remaining)}
+      {/* Timer */}
+      <div className="my-4 text-center">
+        <div
+          className={`text-5xl font-bold transition-all duration-300 ${timerColorClass}`}
+          role="timer"
+          aria-live="off"
+          aria-label={timerLabel}
+        >
+          {formatTime(safeRemaining)}
+        </div>
+
+        <p className="mt-2 text-xs text-gray-400">
+          {isRunning
+            ? isFinished
+              ? 'Dose time reached'
+              : isTimeCritical
+              ? 'Time is almost up'
+              : 'Timer is active'
+            : 'Timer is paused'}
+        </p>
       </div>
 
-      {/* بهسازی نوار پیشرفت با استانداردهای Accessibility */}
-      <div 
-        className="w-full h-2 bg-gray-700 rounded-full overflow-hidden mb-4"
-        role="progressbar" 
-        aria-valuenow={progressPercentage} 
-        aria-valuemin={0} 
+      {/* Progress */}
+      <div
+        className="mb-4 h-2 w-full overflow-hidden rounded-full bg-gray-700"
+        role="progressbar"
+        aria-label={`Timer progress for ${medication.name}`}
+        aria-valuenow={Math.round(progressPercentage)}
+        aria-valuemin={0}
         aria-valuemax={100}
+        aria-valuetext={`${Math.round(progressPercentage)} percent remaining, ${formatTime(
+          safeRemaining
+        )} left`}
       >
         <div
-          className={`h-full transition-all duration-1000 ${
-            medication.running ? 'bg-gradient-to-r from-cyan-500 to-blue-500' : 'bg-gray-600'
-          }`}
+          className={`h-full transition-all duration-1000 ${progressBarClass}`}
           style={{ width: `${progressPercentage}%` }}
         />
       </div>
 
+      {/* Actions */}
       <div className="flex gap-2">
         <button
+          type="button"
           onClick={onToggle}
-          aria-label={medication.running ? "Pause timer" : "Start timer"}
-          className={`flex-1 font-bold py-3 px-4 rounded-lg transition-all duration-300 ${
-            medication.running
-              ? 'bg-orange-500 hover:bg-orange-600 text-white shadow-lg shadow-orange-500/30 hover:shadow-orange-500/50'
-              : 'bg-green-500 hover:bg-green-600 text-white shadow-lg shadow-green-500/30 hover:shadow-green-500/50 hover:scale-[1.02]'
+          aria-label={isRunning ? `Pause ${medication.name} timer` : `Start ${medication.name} timer`}
+          aria-pressed={isRunning}
+          className={`flex-1 rounded-lg px-4 py-3 font-bold transition-all duration-300 focus:outline-none focus:ring-4 ${
+            isRunning
+              ? 'bg-orange-500 text-white shadow-lg shadow-orange-500/30 hover:bg-orange-600 hover:shadow-orange-500/50 focus:ring-orange-300/30'
+              : 'bg-green-500 text-white shadow-lg shadow-green-500/30 hover:scale-[1.02] hover:bg-green-600 hover:shadow-green-500/50 focus:ring-green-300/30'
           }`}
         >
-          {medication.running ? '⏸ Pause' : '▶ Start'}
+          {isRunning ? '⏸ Pause' : '▶ Start'}
         </button>
-        
+
         <button
+          type="button"
           onClick={onReset}
-          aria-label="Reset timer"
-          className="bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-4 rounded-lg transition-all duration-300 hover:scale-105"
+          disabled={isResetDisabled}
+          aria-label={`Reset ${medication.name} timer`}
+          title="Reset timer"
+          className="rounded-lg bg-gray-600 px-4 py-3 font-bold text-white transition-all duration-300 hover:scale-105 hover:bg-gray-700 focus:outline-none focus:ring-4 focus:ring-gray-300/20 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:scale-100"
         >
           ↺ Reset
         </button>
-        
+
         <button
+          type="button"
           onClick={onDelete}
-          aria-label="Delete medication"
+          aria-label={`Delete ${medication.name}`}
           title="Delete medication"
-          className="bg-red-500 hover:bg-red-600 text-white font-bold py-3 px-4 rounded-lg transition-all duration-300 shadow-lg shadow-red-500/30 hover:shadow-red-500/50 hover:scale-105"
+          className="rounded-lg bg-red-500 px-4 py-3 font-bold text-white shadow-lg shadow-red-500/30 transition-all duration-300 hover:scale-105 hover:bg-red-600 hover:shadow-red-500/50 focus:outline-none focus:ring-4 focus:ring-red-300/30"
         >
           🗑
         </button>
       </div>
-    </div>
+    </article>
   );
 }
