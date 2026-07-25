@@ -17,10 +17,11 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
+          cache: 'npm'
 
-      - name: ساخت برنامهٔ وب (Vite)
+      - name: نصب وابستگی‌ها و ساخت برنامهٔ وب
         run: |
-          npm ci
+          npm install
           npm run build
 
       - name: تنظیم Java 21
@@ -32,7 +33,7 @@ jobs:
       - name: نصب Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: نصب build-tools نسخه ۳۴
+      - name: نصب build-tools نسخه 34
         run: |
           $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager "build-tools;34.0.0" --sdk_root=$ANDROID_SDK_ROOT
           yes | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --licenses
@@ -40,17 +41,13 @@ jobs:
       - name: افزودن پلتفرم Android
         run: npx cap add android
 
-      - name: اضافه کردن مجوزهای لازم به AndroidManifest
+      - name: بررسی وجود فایل صدای آلارم
         run: |
-          MANIFEST="android/app/src/main/AndroidManifest.xml"
-          
-          # مجوز نوتیفیکیشن (اندروید 13+)
-          if ! grep -q "POST_NOTIFICATIONS" "$MANIFEST"; then
-            sed -i 's|<uses-permission android:name="android.permission.INTERNET" />|<uses-permission android:name="android.permission.INTERNET" />\n    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />\n    <uses-permission android:name="android.permission.VIBRATE" />\n    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />\n    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />\n    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />|' "$MANIFEST"
+          if [ ! -f "src/main/res/raw/medication_alarm.wav" ]; then
+            echo "❌ File src/main/res/raw/medication_alarm.wav not found"
+            exit 1
           fi
-          
-          echo "✅ AndroidManifest.xml updated:"
-          cat "$MANIFEST"
+          echo "✅ Alarm sound file exists"
 
       - name: کپی فایل صوتی به مسیر منابع اندروید
         run: |
@@ -59,17 +56,37 @@ jobs:
           echo "✅ Sound file copied successfully"
           ls -la android/app/src/main/res/raw/
 
+      - name: اضافه کردن مجوزهای لازم به AndroidManifest
+        run: |
+          MANIFEST="android/app/src/main/AndroidManifest.xml"
+
+          if [ ! -f "$MANIFEST" ]; then
+            echo "❌ AndroidManifest.xml not found"
+            exit 1
+          fi
+
+          if ! grep -q "POST_NOTIFICATIONS" "$MANIFEST"; then
+            sed -i 's|<uses-permission android:name="android.permission.INTERNET" />|<uses-permission android:name="android.permission.INTERNET" />\n    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />\n    <uses-permission android:name="android.permission.VIBRATE" />\n    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />\n    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />\n    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />|' "$MANIFEST"
+          fi
+
+          echo "✅ AndroidManifest.xml updated"
+
       - name: تولید و جایگذاری آیکون‌های نیتیو برنامه
         run: |
+          if [ ! -f "public/icon-512.png" ]; then
+            echo "❌ public/icon-512.png not found"
+            exit 1
+          fi
+
           mkdir -p assets
           cp public/icon-512.png assets/icon.png
           cp public/icon-512.png assets/icon-only.png
           npx @capacitor/assets generate --android
 
-      - name: همگام‌سازی پروژه
+      - name: همگام‌سازی پروژه Capacitor
         run: npx cap sync android
 
-      - name: ساخت یک کی‌استور موقت (برای امضا)
+      - name: ساخت کی‌استور موقت برای امضا
         run: |
           keytool -genkey -v \
             -keystore release.keystore \
@@ -86,13 +103,31 @@ jobs:
 
       - name: امضای APK با apksigner
         run: |
+          UNSIGNED_APK="android/app/build/outputs/apk/release/app-release-unsigned.apk"
+          SIGNED_APK="android/app/build/outputs/apk/release/app-release.apk"
+
+          if [ ! -f "$UNSIGNED_APK" ]; then
+            echo "❌ Unsigned APK not found"
+            exit 1
+          fi
+
           $ANDROID_SDK_ROOT/build-tools/34.0.0/apksigner sign \
             --ks release.keystore \
             --ks-pass pass:android \
             --ks-key-alias upload \
             --key-pass pass:android \
-            --out android/app/build/outputs/apk/release/app-release.apk \
-            android/app/build/outputs/apk/release/app-release-unsigned.apk
+            --out "$SIGNED_APK" \
+            "$UNSIGNED_APK"
+
+          echo "✅ APK signed successfully"
+
+      - name: بررسی وجود APK نهایی
+        run: |
+          if [ ! -f "android/app/build/outputs/apk/release/app-release.apk" ]; then
+            echo "❌ Final APK not found"
+            exit 1
+          fi
+          echo "✅ Final APK exists"
 
       - name: آپلود APK نهایی
         uses: actions/upload-artifact@v4
