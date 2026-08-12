@@ -11,7 +11,11 @@ import { initAllPermissions, checkNotificationPermission } from './utils/permiss
 import { Capacitor } from '@capacitor/core';
 import { LocalNotifications } from '@capacitor/local-notifications';
 
-const SUPPORT_WEBSITE = "https://mediremind-brown.vercel.app/";
+/** پشتیبانی واتساپ */
+const SUPPORT_WHATSAPP =
+  'https://wa.me/989160684552?text=' +
+  encodeURIComponent('سلام، درباره اپلیکیشن یادآور هوشمند دارو راهنمایی می‌خواهم.');
+
 const LOW_STOCK_THRESHOLD = 5;
 const TIMER_INTERVAL = 1000;
 const EARLY_THRESHOLD_MS = 30 * 60 * 1000;
@@ -75,8 +79,8 @@ const recalculateRemaining = (
 
 const sendBrowserNotification = (medication: MedicationWithTimestamp): void => {
   if ('Notification' in window && Notification.permission === 'granted') {
-    new Notification('🔔 زمان مصرف دارو! / Time to Medicate!', {
-      body: `💊 ${medication.name} — ${medication.dosage}\nالان مصرف کنید / Take now`,
+    new Notification('🔔 زمان مصرف دارو!', {
+      body: `💊 ${medication.name} — ${medication.dosage}\nالان مصرف کنید`,
       icon: '/android-chrome-192x192.png',
       tag: `med-${medication.id}`,
       requireInteraction: true,
@@ -86,14 +90,14 @@ const sendBrowserNotification = (medication: MedicationWithTimestamp): void => {
 
 const createMedicationAlert = (medication: MedicationWithTimestamp): AlertItem => ({
   title: '🔔 زمان مصرف دارو!',
-  message: `الان مصرف کنید:\n💊 ${medication.name}\n⚖️ دوز: ${medication.dosage}\n\nTake now: ${medication.name} (${medication.dosage})`,
+  message: `الان مصرف کنید:\n💊 ${medication.name}\n⚖️ دوز: ${medication.dosage}`,
   medication,
   isMedicationAlert: true,
 });
 
 const createLowStockAlert = (medication: MedicationWithTimestamp): AlertItem => ({
   title: '💊 هشدار موجودی کم',
-  message: `فقط ${medication.quantity} عدد از ${medication.name} باقی مانده.\nلطفاً به‌زودی تهیه کنید.\n\nOnly ${medication.quantity} left of ${medication.name}. Please refill soon.`,
+  message: `فقط ${medication.quantity} عدد از «${medication.name}» باقی مانده.\nلطفاً به‌زودی تهیه کنید.`,
   medication,
   isMedicationAlert: false,
 });
@@ -130,7 +134,7 @@ const scheduleNativeAlarms = async (meds: MedicationWithTimestamp[]) => {
     if (med.running && med.remaining > 0) {
       notifications.push({
         id: med.id!,
-        title: '🔔 زمان مصرف دارو! / Time to Medicate!',
+        title: '🔔 زمان مصرف دارو!',
         body: `💊 ${med.name} — ${med.dosage}`,
         channelId: 'medication-alarms',
         schedule: { at: new Date(now + med.remaining * 1000) },
@@ -164,7 +168,7 @@ const useAudioUnlock = () => {
   const unlock = useCallback(() => {
     if (unlockedRef.current) return;
     const silentAudio = new Audio(
-      "data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA="
+      'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA='
     );
     silentAudio.volume = 0;
     silentAudio
@@ -396,7 +400,6 @@ export default function App() {
     };
   }, []);
 
-  // SW messages — use ref for Taken so handler stays fresh
   useEffect(() => {
     if (Capacitor.isNativePlatform()) return;
 
@@ -433,7 +436,7 @@ export default function App() {
           ...prev.filter(a => a.medication.id !== medicationId),
           {
             title: '⏰ به تعویق افتاد',
-            message: `یادآوری ${minutes || 10} دقیقه دیگر فعال می‌شود.\nSnoozed for ${minutes || 10} minutes.`,
+            message: `یادآوری ${minutes || 10} دقیقه دیگر فعال می‌شود.`,
             medication: med,
             isMedicationAlert: false,
           },
@@ -494,7 +497,7 @@ export default function App() {
         ...prev,
         {
           title: '💡 راهنما',
-          message: 'پس از هر دوز، دکمه ▶ Start را بزنید.\nTap ▶ Start after each dose.',
+          message: 'پس از هر دوز، دکمه «▶ شروع» را بزنید تا تایمر بعدی فعال شود.',
           medication: newMed,
           isMedicationAlert: false,
         },
@@ -508,8 +511,8 @@ export default function App() {
     unlockAudio();
     const willStart = !med.running;
     const message = willStart
-      ? `آیا ${med.name} (${med.dosage}) را الان مصرف کردید؟\nتایمر بعد از تأیید شروع می‌شود.\n\nDid you take ${med.name} (${med.dosage}) now?`
-      : 'تایمر متوقف شود؟\nPause the timer?';
+      ? `آیا «${med.name}» (${med.dosage}) را الان مصرف کردید؟\nتایمر بعد از تأیید شروع می‌شود.`
+      : 'تایمر متوقف شود؟';
 
     setConfirmDialog({
       title: willStart ? 'تأیید مصرف' : 'توقف تایمر',
@@ -547,7 +550,7 @@ export default function App() {
     unlockAudio();
     setConfirmDialog({
       title: 'ریست تایمر',
-      message: 'تایمر به بازه کامل بازگردد؟\nReset timer to full interval?',
+      message: 'تایمر به بازه کامل برگردد؟',
       onConfirm: async () => {
         try {
           const updatedMed: MedicationWithTimestamp = {
@@ -572,7 +575,7 @@ export default function App() {
     unlockAudio();
     setConfirmDialog({
       title: 'حذف دارو',
-      message: `${med.name} حذف شود؟\nاین عمل قابل بازگشت نیست.\n\nRemove ${med.name}? This cannot be undone.`,
+      message: `«${med.name}» حذف شود؟\nاین عمل قابل بازگشت نیست.`,
       onConfirm: async () => {
         try {
           await db.deleteMedication(med.id!);
@@ -624,7 +627,6 @@ export default function App() {
         });
       }
 
-      // sync with latest list after state update path
       const nextList = medicationsRef.current.map(m =>
         m.id === currentMed.id ? updatedMed : m
       );
@@ -684,7 +686,7 @@ export default function App() {
       LocalNotifications.schedule({
         notifications: [{
           id: Number(medId) || Date.now() % 100000,
-          title: '🔔 زمان مصرف دارو! / Time to Medicate!',
+          title: '🔔 زمان مصرف دارو!',
           body: `💊 ${current.medication.name} — ${current.medication.dosage}`,
           channelId: 'medication-alarms',
           schedule: { at },
@@ -700,7 +702,7 @@ export default function App() {
       ...prev.slice(1),
       {
         title: '⏰ به تعویق افتاد',
-        message: `یادآوری تا ${minutes} دقیقه دیگر.\nSnoozed for ${minutes} minutes.`,
+        message: `یادآوری تا ${minutes} دقیقه دیگر.`,
         medication: current.medication,
         isMedicationAlert: false,
       },
@@ -710,7 +712,7 @@ export default function App() {
   const hasActiveMedications = medications.length > 0;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-sky-900 to-slate-900 relative overflow-hidden">
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-sky-900 to-slate-900 relative overflow-hidden" dir="rtl">
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <div className="absolute top-20 left-10 w-72 h-72 bg-cyan-500/10 rounded-full blur-3xl animate-pulse" />
         <div
@@ -763,12 +765,12 @@ export default function App() {
                 </span>
                 <div className="absolute inset-0 blur-xl bg-cyan-400/30 rounded-full" />
               </div>
-              <h1 className="text-3xl md:text-4xl font-black bg-gradient-to-r from-cyan-300 via-blue-400 to-cyan-300 bg-clip-text text-transparent drop-shadow-lg">
-                یادآور دارو
+              <h1 className="text-2xl sm:text-3xl md:text-4xl font-black bg-gradient-to-r from-cyan-300 via-blue-400 to-cyan-300 bg-clip-text text-transparent drop-shadow-lg text-center">
+                یادآور هوشمند دارو
               </h1>
             </div>
             <p className="text-center text-cyan-300/60 text-xs mt-3 font-medium tracking-wider">
-              سلامت شما اولویت ماست · Your Health, Our Priority
+              سلامت شما اولویت ماست
             </p>
           </div>
         </header>
@@ -794,13 +796,16 @@ export default function App() {
               <button
                 onClick={() => {
                   unlockAudio();
-                  window.open(SUPPORT_WEBSITE, '_blank', 'noopener,noreferrer');
+                  window.open(SUPPORT_WHATSAPP, '_blank', 'noopener,noreferrer');
                 }}
-                className="relative group overflow-hidden bg-red-600 hover:bg-red-500 text-white font-bold py-4 px-6 sm:px-8 rounded-2xl transition-all duration-300 shadow-2xl shadow-red-500/30 hover:shadow-red-500/50 hover:scale-105 active:scale-95 flex items-center justify-center gap-2 text-sm sm:text-base"
-                aria-label="پشتیبانی"
+                className="relative group overflow-hidden bg-[#25D366] hover:bg-[#20bd5a] text-white font-bold py-4 px-6 sm:px-8 rounded-2xl transition-all duration-300 shadow-2xl shadow-green-500/20 hover:shadow-green-500/40 hover:scale-105 active:scale-95 flex items-center justify-center gap-2 text-sm sm:text-base"
+                aria-label="پشتیبانی از طریق واتساپ"
               >
                 <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000" />
-                <span className="relative font-bold text-white">پشتیبانی</span>
+                <span className="relative font-bold text-white flex items-center gap-1.5">
+                  <span aria-hidden="true">💬</span>
+                  پشتیبانی
+                </span>
               </button>
             </div>
           ) : (
@@ -851,7 +856,7 @@ export default function App() {
           <div className="inline-block bg-gradient-to-r from-cyan-500/5 to-blue-500/5 backdrop-blur-sm rounded-full px-6 py-3 border border-cyan-500/10">
             <p className="text-xs text-cyan-300/40 font-medium flex items-center gap-2">
               <span className="text-sm">✨</span>
-              <span>ساخته‌شده با دقت برای سلامت شما</span>
+              <span>یادآور هوشمند دارو — ساخته‌شده با دقت برای سلامت شما</span>
               <span className="text-sm">✨</span>
             </p>
           </div>
