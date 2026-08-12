@@ -11,18 +11,12 @@ import { initAllPermissions, checkNotificationPermission } from './utils/permiss
 import { Capacitor } from '@capacitor/core';
 import { LocalNotifications } from '@capacitor/local-notifications';
 
-// ============================================================================
-// Constants
-// ============================================================================
 const SUPPORT_WEBSITE = "https://mediremind-brown.vercel.app/";
 const LOW_STOCK_THRESHOLD = 5;
 const TIMER_INTERVAL = 1000;
 const EARLY_THRESHOLD_MS = 30 * 60 * 1000;
 const LATE_THRESHOLD_MS = 60 * 60 * 1000;
 
-// ============================================================================
-// Types
-// ============================================================================
 interface MedicationWithTimestamp extends Medication {
   lastUpdated: number;
 }
@@ -40,9 +34,6 @@ interface ConfirmDialogData {
   onConfirm: () => void;
 }
 
-// ============================================================================
-// Utility Functions
-// ============================================================================
 const calculateDoseStatus = (
   lastTakenAt: number,
   currentTime: number,
@@ -107,9 +98,6 @@ const createLowStockAlert = (medication: MedicationWithTimestamp): AlertItem => 
   isMedicationAlert: false,
 });
 
-// ============================================================================
-// Service Worker Alarm Sync
-// ============================================================================
 const syncAlarmsToServiceWorker = (meds: MedicationWithTimestamp[]) => {
   if (!('serviceWorker' in navigator) || !navigator.serviceWorker.controller) return;
   const now = Date.now();
@@ -127,9 +115,6 @@ const syncAlarmsToServiceWorker = (meds: MedicationWithTimestamp[]) => {
   });
 };
 
-// ============================================================================
-// Native Alarm Sync
-// ============================================================================
 const scheduleNativeAlarms = async (meds: MedicationWithTimestamp[]) => {
   const now = Date.now();
   const notifications: any[] = [];
@@ -152,7 +137,6 @@ const scheduleNativeAlarms = async (meds: MedicationWithTimestamp[]) => {
         sound: 'medication_alarm.wav',
         iconColor: '#DC2626',
         extra: { medicationId: med.id },
-        actionTypeId: 'MEDICATION_ACTIONS',
       });
     }
   }
@@ -174,9 +158,6 @@ const syncAlarms = (meds: MedicationWithTimestamp[]) => {
   }
 };
 
-// ============================================================================
-// Hook: Audio Unlock
-// ============================================================================
 const useAudioUnlock = () => {
   const unlockedRef = useRef(false);
 
@@ -198,9 +179,6 @@ const useAudioUnlock = () => {
   return unlock;
 };
 
-// ============================================================================
-// Hook: Permissions
-// ============================================================================
 const usePermissions = () => {
   const [permissionGranted, setPermissionGranted] = useState<boolean | null>(null);
   const [showPermissionBanner, setShowPermissionBanner] = useState(false);
@@ -228,12 +206,9 @@ const usePermissions = () => {
     return result;
   }, []);
 
-  return { permissionGranted, showPermissionBanner, requestPermissions, setShowPermissionBanner };
+  return { permissionGranted, showPermissionBanner, requestPermissions };
 };
 
-// ============================================================================
-// Main Component
-// ============================================================================
 export default function App() {
   const [medications, setMedications] = useState<MedicationWithTimestamp[]>([]);
   const [showForm, setShowForm] = useState(false);
@@ -244,6 +219,7 @@ export default function App() {
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const medicationsRef = useRef<MedicationWithTimestamp[]>([]);
   const isSavingRef = useRef(false);
+  const restartFromAlertRef = useRef<(med: MedicationWithTimestamp) => Promise<void>>(async () => {});
 
   const unlockAudio = useAudioUnlock();
   const { permissionGranted, showPermissionBanner, requestPermissions } = usePermissions();
@@ -372,7 +348,6 @@ export default function App() {
     syncAlarms(medications);
   }, [medications]);
 
-  // Native notification listeners
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return;
 
@@ -421,7 +396,7 @@ export default function App() {
     };
   }, []);
 
-  // Service Worker messages (web / PWA)
+  // SW messages — use ref for Taken so handler stays fresh
   useEffect(() => {
     if (Capacitor.isNativePlatform()) return;
 
@@ -443,23 +418,23 @@ export default function App() {
       if (type === 'ALARM_TAKEN') {
         const med = medicationsRef.current.find(m => m.id === medicationId);
         if (!med) return;
-        // Auto-confirm taken from notification action
-        handleRestartFromAlert(med);
+        void restartFromAlertRef.current(med);
         setAlertQueue(prev => prev.filter(a => a.medication.id !== med.id));
         stopAlarm();
         return;
       }
 
       if (type === 'ALARM_SNOOZED') {
-        // Just stop local alarm sound; SW already rescheduled
         stopAlarm();
-        setAlertQueue(prev => prev.filter(a => a.medication.id !== medicationId));
+        const med =
+          medicationsRef.current.find(m => m.id === medicationId) ||
+          ({ id: medicationId } as MedicationWithTimestamp);
         setAlertQueue(prev => [
-          ...prev,
+          ...prev.filter(a => a.medication.id !== medicationId),
           {
             title: '⏰ به تعویق افتاد',
             message: `یادآوری ${minutes || 10} دقیقه دیگر فعال می‌شود.\nSnoozed for ${minutes || 10} minutes.`,
-            medication: medicationsRef.current.find(m => m.id === medicationId) || ({} as MedicationWithTimestamp),
+            medication: med,
             isMedicationAlert: false,
           },
         ]);
@@ -496,9 +471,6 @@ export default function App() {
     );
   }, [medications]);
 
-  // --------------------------------------------------------------------------
-  // Handlers
-  // --------------------------------------------------------------------------
   const handleAddMedication = async (
     medData: Omit<Medication, 'id' | 'remaining' | 'running' | 'history'>
   ) => {
@@ -621,7 +593,7 @@ export default function App() {
     });
   };
 
-  const handleRestartFromAlert = async (alertMed: MedicationWithTimestamp) => {
+  const handleRestartFromAlert = useCallback(async (alertMed: MedicationWithTimestamp) => {
     const currentMed = medicationsRef.current.find(m => m.id === alertMed.id);
     if (!currentMed) return;
 
@@ -645,7 +617,6 @@ export default function App() {
         setAlertQueue(prev => [...prev, createLowStockAlert(updatedMed)]);
       }
 
-      // Dismiss any pending SW follow-ups
       if (!Capacitor.isNativePlatform()) {
         navigator.serviceWorker?.controller?.postMessage({
           type: 'DISMISS_ALARM',
@@ -653,11 +624,19 @@ export default function App() {
         });
       }
 
-      syncAlarms(medicationsRef.current);
+      // sync with latest list after state update path
+      const nextList = medicationsRef.current.map(m =>
+        m.id === currentMed.id ? updatedMed : m
+      );
+      syncAlarms(nextList);
     } catch (error) {
       console.error('Failed to restart medication:', error);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    restartFromAlertRef.current = handleRestartFromAlert;
+  }, [handleRestartFromAlert]);
 
   const handleCloseAlert = () => {
     setAlertQueue(prev => {
@@ -675,6 +654,8 @@ export default function App() {
       return newQueue;
     });
   };
+
+  const currentAlert = useMemo(() => alertQueue[0] || null, [alertQueue]);
 
   const handleAlertRestart = async () => {
     if (currentAlert?.medication?.id) {
@@ -699,7 +680,6 @@ export default function App() {
         minutes,
       });
     } else {
-      // Native: reschedule a single local notification
       const at = new Date(Date.now() + minutes * 60 * 1000);
       LocalNotifications.schedule({
         notifications: [{
@@ -716,11 +696,8 @@ export default function App() {
     }
 
     stopAlarm();
-    setAlertQueue(prev => prev.slice(1));
-
-    // Optional brief feedback
     setAlertQueue(prev => [
-      ...prev,
+      ...prev.slice(1),
       {
         title: '⏰ به تعویق افتاد',
         message: `یادآوری تا ${minutes} دقیقه دیگر.\nSnoozed for ${minutes} minutes.`,
@@ -730,12 +707,10 @@ export default function App() {
     ]);
   };
 
-  const currentAlert = useMemo(() => alertQueue[0] || null, [alertQueue]);
   const hasActiveMedications = medications.length > 0;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-sky-900 to-slate-900 relative overflow-hidden">
-      {/* Background Effects */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <div className="absolute top-20 left-10 w-72 h-72 bg-cyan-500/10 rounded-full blur-3xl animate-pulse" />
         <div
@@ -746,7 +721,6 @@ export default function App() {
       </div>
 
       <div className="max-w-2xl mx-auto p-4 pb-24 relative z-10">
-        {/* Permission Banner — bilingual + denied guidance */}
         {showPermissionBanner && (
           <div className="mb-4 mt-4 bg-amber-500/10 border border-amber-500/40 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center gap-3 shadow-lg shadow-amber-500/10">
             <span className="text-2xl shrink-0">🔔</span>
@@ -780,7 +754,6 @@ export default function App() {
           </div>
         )}
 
-        {/* Header */}
         <header className="mb-8 pt-4">
           <div className="bg-gradient-to-r from-cyan-500/10 via-blue-500/10 to-cyan-500/10 backdrop-blur-sm rounded-3xl p-6 border border-cyan-500/20 shadow-2xl shadow-cyan-500/10">
             <div className="flex items-center justify-center gap-3">
@@ -800,7 +773,6 @@ export default function App() {
           </div>
         </header>
 
-        {/* Action Buttons / Form */}
         <div className="mb-8">
           {!showForm ? (
             <div className="flex gap-3 justify-center">
@@ -841,7 +813,6 @@ export default function App() {
           )}
         </div>
 
-        {/* Medications List */}
         <div className="space-y-5">
           {!hasActiveMedications ? (
             <div className="text-center py-20 animate-in fade-in zoom-in duration-500">
@@ -876,7 +847,6 @@ export default function App() {
           )}
         </div>
 
-        {/* Footer */}
         <footer className="mt-12 text-center">
           <div className="inline-block bg-gradient-to-r from-cyan-500/5 to-blue-500/5 backdrop-blur-sm rounded-full px-6 py-3 border border-cyan-500/10">
             <p className="text-xs text-cyan-300/40 font-medium flex items-center gap-2">
@@ -888,7 +858,6 @@ export default function App() {
         </footer>
       </div>
 
-      {/* Modals & Popups */}
       {reportMedication && (
         <ReportModal
           medication={reportMedication}
