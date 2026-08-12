@@ -1,9 +1,8 @@
-// public/sw.js — Production-ready medication alarm Service Worker
-const CACHE_NAME = 'medi-reminder-v5';
+// public/sw.js — Service Worker یادآور هوشمند دارو
+const CACHE_NAME = 'medi-reminder-v6';
 const ALARM_DB_NAME = 'MedicationAlarmDB';
 const ALARM_STORE = 'alarms';
-const FOLLOW_UP_INTERVAL = 60_000; // 1 minute between repeat alarms
-const SNOOZE_DEFAULT_MS = 10 * 60 * 1000; // 10 minutes
+const FOLLOW_UP_INTERVAL = 60_000;
 
 const urlsToCache = [
   '/',
@@ -17,7 +16,6 @@ const urlsToCache = [
   '/favicon.ico'
 ];
 
-// ---------- Install & Cache ----------
 self.addEventListener('install', event => {
   event.waitUntil(
     caches.open(CACHE_NAME).then(cache => cache.addAll(urlsToCache))
@@ -42,7 +40,6 @@ self.addEventListener('fetch', event => {
   );
 });
 
-// ---------- IndexedDB helpers ----------
 function openAlarmDB() {
   return new Promise((resolve, reject) => {
     const req = indexedDB.open(ALARM_DB_NAME, 1);
@@ -100,7 +97,6 @@ async function putAlarm(alarm) {
   return withStore('readwrite', store => store.put(alarm));
 }
 
-// ---------- Alarm handling ----------
 const activeTimers = new Map();
 const followUpTimers = new Map();
 
@@ -111,18 +107,15 @@ function clearAllTimers() {
   followUpTimers.clear();
 }
 
-/**
- * Show a rich notification with actions (Taken / Snooze / Dismiss)
- */
 async function showStandardNotification(alarm, isFollowUp = false) {
   const title = isFollowUp
-    ? '🔔 یادآوری مجدد دارو / Medication Reminder'
-    : '🔔 زمان مصرف دارو! / Time to Medicate!';
+    ? '🔔 یادآوری مجدد دارو'
+    : '🔔 زمان مصرف دارو!';
 
   const body = [
-    `💊 ${alarm.name || 'Medication'}`,
-    `⚖️ ${alarm.dosage || ''}`,
-    isFollowUp ? 'هنوز مصرف نکرده‌اید؟ / Still waiting for confirmation' : 'الان مصرف کنید / Take now'
+    `💊 ${alarm.name || 'دارو'}`,
+    alarm.dosage ? `⚖️ ${alarm.dosage}` : '',
+    isFollowUp ? 'هنوز مصرف نکرده‌اید؟' : 'الان مصرف کنید'
   ].filter(Boolean).join('\n');
 
   await self.registration.showNotification(title, {
@@ -157,7 +150,7 @@ async function scheduleAlarm(alarm) {
       return;
     }
 
-    const delay = Math.min(alarm.time - now, 2147483647); // max setTimeout
+    const delay = Math.min(alarm.time - now, 2147483647);
     const timerId = setTimeout(() => triggerAlarm(alarm), delay);
     activeTimers.set(String(alarm.id), timerId);
   } catch (err) {
@@ -243,11 +236,9 @@ async function snoozeAlarm(alarmId, minutes = 10) {
   const notifications = await self.registration.getNotifications({ tag: `med-${alarmId}` });
   notifications.forEach(n => n.close());
 
-  // Find original alarm data if possible
   const all = await getAllStoredAlarms();
   let base = all.find(a => String(a.id) === String(alarmId));
   if (!base) {
-    // try follow-up marker
     base = all.find(a => a.id === `followup-${alarmId}`);
   }
 
@@ -255,7 +246,7 @@ async function snoozeAlarm(alarmId, minutes = 10) {
   const newAlarm = {
     id: alarmId,
     time: Date.now() + snoozeMs,
-    name: base?.name || 'Medication',
+    name: base?.name || 'دارو',
     dosage: base?.dosage || ''
   };
 
@@ -277,7 +268,6 @@ async function rescheduleStoredAlarms() {
   }
 }
 
-// ---------- Messages from page ----------
 self.addEventListener('message', event => {
   event.waitUntil((async () => {
     try {
@@ -312,7 +302,6 @@ self.addEventListener('message', event => {
   })());
 });
 
-// ---------- Notification click / action ----------
 self.addEventListener('notificationclick', event => {
   const medicationId = event.notification.data?.medicationId;
   const action = event.action || 'open';
@@ -332,7 +321,6 @@ self.addEventListener('notificationclick', event => {
       await removeAlarmFromDB(medicationId);
       await notifyClients({ type: 'ALARM_DISMISSED', medicationId });
     } else {
-      // Default: open app and focus
       if (medicationId) stopFollowUpAlarms(medicationId);
       await openOrFocusApp(medicationId);
     }

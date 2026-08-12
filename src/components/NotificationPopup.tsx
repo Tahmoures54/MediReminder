@@ -24,7 +24,6 @@ export function NotificationPopup({
 
   useEffect(() => {
     previousFocusedElementRef.current = document.activeElement as HTMLElement | null;
-
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
 
@@ -47,9 +46,7 @@ export function NotificationPopup({
         const focusableElements = dialogRef.current.querySelectorAll<HTMLElement>(
           'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
         );
-
         if (!focusableElements.length) return;
-
         const firstElement = focusableElements[0];
         const lastElement = focusableElements[focusableElements.length - 1];
         const activeElement = document.activeElement as HTMLElement | null;
@@ -59,30 +56,24 @@ export function NotificationPopup({
             e.preventDefault();
             lastElement.focus();
           }
-        } else {
-          if (activeElement === lastElement || !dialogRef.current.contains(activeElement)) {
-            e.preventDefault();
-            firstElement.focus();
-          }
+        } else if (activeElement === lastElement || !dialogRef.current.contains(activeElement)) {
+          e.preventDefault();
+          firstElement.focus();
         }
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
-
     return () => {
       clearTimeout(focusTimer);
       document.body.style.overflow = previousOverflow;
       window.removeEventListener('keydown', handleKeyDown);
-
-      if (previousFocusedElementRef.current) {
-        previousFocusedElementRef.current.focus();
-      }
+      previousFocusedElementRef.current?.focus();
     };
   }, [onClose, onRestart]);
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4" dir="rtl">
       <div
         ref={dialogRef}
         role="alertdialog"
@@ -93,20 +84,15 @@ export function NotificationPopup({
         aria-atomic="true"
         className="relative w-full max-w-md overflow-hidden rounded-3xl border border-white/20 bg-gradient-to-br from-cyan-600 to-blue-700 shadow-[0_0_40px_rgba(34,211,238,0.3)]"
       >
-        {/* نوار هشدار بالا */}
         <div className="absolute left-0 top-0 h-1.5 w-full bg-gradient-to-r from-orange-400 via-yellow-300 to-orange-400 animate-pulse" />
 
         <div className="p-6 sm:p-8">
-          {/* آیکون */}
           <div className="mb-4 flex justify-center">
             <div className="rounded-full bg-white/10 p-4 shadow-lg ring-4 ring-white/10 animate-pulse">
-              <span className="text-4xl drop-shadow-lg" aria-hidden="true">
-                🔔
-              </span>
+              <span className="text-4xl drop-shadow-lg" aria-hidden="true">🔔</span>
             </div>
           </div>
 
-          {/* عنوان */}
           <h3
             id="alarm-title"
             className="mb-3 text-center text-2xl sm:text-3xl font-extrabold text-white drop-shadow-md"
@@ -114,7 +100,6 @@ export function NotificationPopup({
             {title}
           </h3>
 
-          {/* پیام */}
           <p
             id="alarm-message"
             className="mb-6 sm:mb-8 whitespace-pre-line text-center text-base sm:text-lg font-medium leading-relaxed text-blue-50"
@@ -122,17 +107,16 @@ export function NotificationPopup({
             {message}
           </p>
 
-          {/* دکمه‌ها */}
           <div className="flex flex-col gap-3">
             {onRestart && (
               <button
                 ref={restartButtonRef}
                 onClick={onRestart}
-                className="flex w-full items-center justify-center gap-2 rounded-xl bg-green-500 px-6 py-4 text-base sm:text-lg font-bold text-white shadow-[0_4px_14px_0_rgba(34,197,94,0.4)] transition-all duration-300 hover:-translate-y-0.5 hover:bg-green-400 hover:shadow-[0_6px_20px_rgba(34,197,94,0.3)] active:scale-95 focus:outline-none focus:ring-4 focus:ring-green-200/40"
-                aria-label="Confirm dose taken and restart timer"
+                className="flex w-full items-center justify-center gap-2 rounded-xl bg-green-500 px-6 py-4 text-base sm:text-lg font-bold text-white shadow-[0_4px_14px_0_rgba(34,197,94,0.4)] transition-all duration-300 hover:-translate-y-0.5 hover:bg-green-400 active:scale-95 focus:outline-none focus:ring-4 focus:ring-green-200/40"
+                aria-label="تأیید مصرف و شروع مجدد تایمر"
               >
                 <span aria-hidden="true">✅</span>
-                مصرف کردم · Taken
+                مصرف کردم
               </button>
             )}
 
@@ -142,17 +126,17 @@ export function NotificationPopup({
                   type="button"
                   onClick={() => onSnooze(10)}
                   className="rounded-xl bg-amber-500/95 px-4 py-3.5 text-sm sm:text-base font-bold text-white shadow-md transition-all hover:bg-amber-400 active:scale-95 focus:outline-none focus:ring-4 focus:ring-amber-200/30"
-                  aria-label="Snooze for 10 minutes"
+                  aria-label="یادآوری بعد از ۱۰ دقیقه"
                 >
-                  ⏰ ۱۰ دقیقه
+                  ⏰ ۱۰ دقیقه بعد
                 </button>
                 <button
                   type="button"
                   onClick={() => onSnooze(30)}
                   className="rounded-xl bg-amber-500/95 px-4 py-3.5 text-sm sm:text-base font-bold text-white shadow-md transition-all hover:bg-amber-400 active:scale-95 focus:outline-none focus:ring-4 focus:ring-amber-200/30"
-                  aria-label="Snooze for 30 minutes"
+                  aria-label="یادآوری بعد از ۳۰ دقیقه"
                 >
-                  ⏰ ۳۰ دقیقه
+                  ⏰ ۳۰ دقیقه بعد
                 </button>
               </div>
             )}
@@ -161,14 +145,14 @@ export function NotificationPopup({
               ref={closeButtonRef}
               onClick={onClose}
               className="w-full rounded-xl bg-white px-6 py-3.5 text-base sm:text-lg font-bold text-blue-900 shadow-lg transition-all duration-300 hover:-translate-y-0.5 hover:bg-gray-100 active:scale-95 focus:outline-none focus:ring-4 focus:ring-white/40"
-              aria-label="Dismiss alert"
+              aria-label="بستن هشدار"
             >
-              بعداً · Dismiss
+              بعداً
             </button>
           </div>
 
           <p className="mt-4 text-center text-xs text-blue-100/70">
-            برای بستن <span className="font-semibold">Esc</span> را بزنید
+            برای بستن کلید <span className="font-semibold">Esc</span> را بزنید
           </p>
         </div>
       </div>
