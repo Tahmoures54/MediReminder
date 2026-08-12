@@ -1,8 +1,9 @@
-// public/sw.js
-const CACHE_NAME = 'medi-reminder-v4';
+// public/sw.js — Production-ready medication alarm Service Worker
+const CACHE_NAME = 'medi-reminder-v5';
 const ALARM_DB_NAME = 'MedicationAlarmDB';
 const ALARM_STORE = 'alarms';
 const FOLLOW_UP_INTERVAL = 60_000; // 1 minute between repeat alarms
+const SNOOZE_DEFAULT_MS = 10 * 60 * 1000; // 10 minutes
 
 const urlsToCache = [
   '/',
@@ -37,7 +38,7 @@ self.addEventListener('activate', event => {
 
 self.addEventListener('fetch', event => {
   event.respondWith(
-    caches.match(event.request).then(res => res || fetch(event.request))
+    caches.match(event.request).then(res => res || fetch(event.request).catch(() => caches.match('/')))
   );
 });
 
@@ -95,9 +96,12 @@ async function removeAlarmFromDB(id) {
   return withStore('readwrite', store => store.delete(id));
 }
 
+async function putAlarm(alarm) {
+  return withStore('readwrite', store => store.put(alarm));
+}
+
 // ---------- Alarm handling ----------
 const activeTimers = new Map();
-// Track follow‑up alarms to be able to cancel them
 const followUpTimers = new Map();
 
 function clearAllTimers() {
@@ -108,80 +112,69 @@ function clearAllTimers() {
 }
 
 /**
- * نشان‌دادن یک اعلان (بدون نیاز به trigger خاص)
+ * Show a rich notification with actions (Taken / Snooze / Dismiss)
  */
-async function showStandardNotification(alarm) {
-  await self.registration.showNotification('🔔 Time to Medicate!', {
-    body: `${alarm.name || ''} - ${alarm.dosage || ''}`,
+async function showStandardNotification(alarm, isFollowUp = false) {
+  const title = isFollowUp
+    ? '🔔 یادآوری مجدد دارو / Medication Reminder'
+    : '🔔 زمان مصرف دارو! / Time to Medicate!';
+
+  const body = [
+    `💊 ${alarm.name || 'Medication'}`,
+    `⚖️ ${alarm.dosage || ''}`,
+    isFollowUp ? 'هنوز مصرف نکرده‌اید؟ / Still waiting for confirmation' : 'الان مصرف کنید / Take now'
+  ].filter(Boolean).join('\n');
+
+  await self.registration.showNotification(title, {
+    body,
     icon: '/android-chrome-192x192.png',
     badge: '/android-chrome-192x192.png',
     tag: `med-${alarm.id}`,
     requireInteraction: true,
+    renotify: true,
     vibrate: [200, 100, 200, 100, 200],
-    data: { medicationId: alarm.id, followUp: false }
+    actions: [
+      { action: 'taken', title: '✅ مصرف کردم' },
+      { action: 'snooze', title: '⏰ ۱۰ دقیقه' },
+      { action: 'dismiss', title: 'بعداً' }
+    ],
+    data: {
+      medicationId: alarm.id,
+      name: alarm.name,
+      dosage: alarm.dosage,
+      followUp: isFollowUp
+    }
   });
 }
 
-/**
- * برنامه‌ریزی یک آلارم (با fallback)
- */
 async function scheduleAlarm(alarm) {
   try {
     if (!alarm || typeof alarm.time !== 'number') return;
     const now = Date.now();
 
-    // (Optional) Notification Trigger اگر در آینده پشتیبانی شد
-    if ('showTrigger' in Notification.prototype) {
-      try {
-        await self.registration.showNotification(alarm.name || 'Medication', {
-          body: `${alarm.name || ''} - ${alarm.dosage || ''}`,
-          tag: `med-${alarm.id}`,
-          icon: '/android-chrome-192x192.png',
-          badge: '/android-chrome-192x192.png',
-          showTrigger: new TimestampTrigger(alarm.time),
-          data: { medicationId: alarm.id, followUp: false },
-          requireInteraction: true
-        });
-        // حذف از دیتابیس چون نوتیف خودکار انجام می‌شود
-        await removeAlarmFromDB(alarm.id);
-        return;
-      } catch (err) {
-        console.warn('Notification trigger failed, using fallback', err);
-      }
-    }
-
-    // اگر زمان گذشته، بلافاصله آلارم
     if (alarm.time <= now) {
       await triggerAlarm(alarm);
       return;
     }
 
-    // fallback با setTimeout
-    const delay = alarm.time - now;
+    const delay = Math.min(alarm.time - now, 2147483647); // max setTimeout
     const timerId = setTimeout(() => triggerAlarm(alarm), delay);
-    activeTimers.set(alarm.id, timerId);
+    activeTimers.set(String(alarm.id), timerId);
   } catch (err) {
     console.error('scheduleAlarm error', err);
   }
 }
 
-/**
- * اجرای آلارم اصلی و شروع چرخه یادآوری‌های تکمیلی
- */
 async function triggerAlarm(alarm, isFollowUp = false) {
   try {
-    // نمایش نوتیف اصلی
-    await showStandardNotification(alarm);
+    await showStandardNotification(alarm, isFollowUp);
 
-    // حذف آلارم اصلی از دیتابیس
-    await removeAlarmFromDB(alarm.id);
-    if (activeTimers.has(alarm.id)) {
-      clearTimeout(activeTimers.get(alarm.id));
-      activeTimers.delete(alarm.id);
-    }
-
-    // اگر این یک یادآوری تکمیلی نیست، زنجیره تکرار را شروع کن
     if (!isFollowUp) {
+      await removeAlarmFromDB(alarm.id);
+      if (activeTimers.has(String(alarm.id))) {
+        clearTimeout(activeTimers.get(String(alarm.id)));
+        activeTimers.delete(String(alarm.id));
+      }
       startFollowUpAlarms(alarm);
     }
   } catch (err) {
@@ -189,33 +182,30 @@ async function triggerAlarm(alarm, isFollowUp = false) {
   }
 }
 
-/**
- * ارسال آلارم‌های پی‌درپی تا زمانی که کاربر اقدامی کند
- */
 function startFollowUpAlarms(alarm) {
-  // ابتدا تایمر قبلی را پاک کن
   stopFollowUpAlarms(alarm.id);
 
-  // ذخیره وضعیت در دیتابیس موقت (با id='followup-{alarm.id}')
   withStore('readwrite', store => {
-    store.put({ id: `followup-${alarm.id}`, medicationId: alarm.id, name: alarm.name, dosage: alarm.dosage });
+    store.put({
+      id: `followup-${alarm.id}`,
+      medicationId: alarm.id,
+      name: alarm.name,
+      dosage: alarm.dosage
+    });
   });
 
   const sendFollowUp = () => {
-    // بررسی دوباره آیا هنوز معتبر است (در دیتابیس وجود دارد)
-    withStore('readonly', async store => {
+    withStore('readonly', store => {
       return new Promise(resolve => {
         const req = store.get(`followup-${alarm.id}`);
         req.onsuccess = () => {
           if (req.result) {
-            // هنوز پاک نشده → یک یادآوری دیگر بفرست و تایمر بعدی را تنظیم کن
-            const followUpAlarm = { ...alarm, time: Date.now() }; // بلافاصله
+            const followUpAlarm = { ...alarm, time: Date.now() };
             triggerAlarm(followUpAlarm, true).then(() => {
               const nextTimer = setTimeout(sendFollowUp, FOLLOW_UP_INTERVAL);
-              followUpTimers.set(alarm.id, nextTimer);
+              followUpTimers.set(String(alarm.id), nextTimer);
             });
           } else {
-            // متوقف شده
             stopFollowUpAlarms(alarm.id);
           }
           resolve();
@@ -225,30 +215,52 @@ function startFollowUpAlarms(alarm) {
     });
   };
 
-  // اولین اجرای تاخیری (بعد از ۱ دقیقه)
   const firstTimer = setTimeout(sendFollowUp, FOLLOW_UP_INTERVAL);
-  followUpTimers.set(alarm.id, firstTimer);
+  followUpTimers.set(String(alarm.id), firstTimer);
 }
 
 function stopFollowUpAlarms(alarmId) {
-  if (followUpTimers.has(alarmId)) {
-    clearTimeout(followUpTimers.get(alarmId));
-    followUpTimers.delete(alarmId);
+  const key = String(alarmId);
+  if (followUpTimers.has(key)) {
+    clearTimeout(followUpTimers.get(key));
+    followUpTimers.delete(key);
   }
-  // حذف نشانگر از دیتابیس
   withStore('readwrite', store => store.delete(`followup-${alarmId}`));
 }
 
-/**
- * لغو کامل یک آلارم (هم اصلی و هم تکمیلی)
- */
 async function cancelAlarmCompletely(alarmId) {
-  if (activeTimers.has(alarmId)) {
-    clearTimeout(activeTimers.get(alarmId));
-    activeTimers.delete(alarmId);
+  const key = String(alarmId);
+  if (activeTimers.has(key)) {
+    clearTimeout(activeTimers.get(key));
+    activeTimers.delete(key);
   }
   stopFollowUpAlarms(alarmId);
   await removeAlarmFromDB(alarmId);
+}
+
+async function snoozeAlarm(alarmId, minutes = 10) {
+  stopFollowUpAlarms(alarmId);
+  const notifications = await self.registration.getNotifications({ tag: `med-${alarmId}` });
+  notifications.forEach(n => n.close());
+
+  // Find original alarm data if possible
+  const all = await getAllStoredAlarms();
+  let base = all.find(a => String(a.id) === String(alarmId));
+  if (!base) {
+    // try follow-up marker
+    base = all.find(a => a.id === `followup-${alarmId}`);
+  }
+
+  const snoozeMs = (minutes || 10) * 60 * 1000;
+  const newAlarm = {
+    id: alarmId,
+    time: Date.now() + snoozeMs,
+    name: base?.name || 'Medication',
+    dosage: base?.dosage || ''
+  };
+
+  await putAlarm(newAlarm);
+  await scheduleAlarm(newAlarm);
 }
 
 async function rescheduleStoredAlarms() {
@@ -256,6 +268,7 @@ async function rescheduleStoredAlarms() {
   const alarms = await getAllStoredAlarms();
   const now = Date.now();
   for (const alarm of alarms) {
+    if (String(alarm.id).startsWith('followup-')) continue;
     if (alarm.time > now) {
       await scheduleAlarm(alarm);
     } else {
@@ -270,10 +283,8 @@ self.addEventListener('message', event => {
     try {
       const data = event.data || {};
       if (data.type === 'SCHEDULE_ALARMS') {
-        // برنامه تمام آلارم‌ها را یکجا می‌فرستد
         const alarms = Array.isArray(data.alarms) ? data.alarms : [];
         clearAllTimers();
-        // لغو تمام follow-up های قبلی
         const allAlarms = await getAllStoredAlarms();
         for (const old of allAlarms) {
           stopFollowUpAlarms(old.id);
@@ -285,12 +296,12 @@ self.addEventListener('message', event => {
       } else if (data.type === 'CANCEL_ALARM' && data.id) {
         await cancelAlarmCompletely(data.id);
       } else if (data.type === 'DISMISS_ALARM' && data.id) {
-        // کاربر در برنامه آلارم را تأیید کرد → پیگیری را متوقف کن
         stopFollowUpAlarms(data.id);
         await removeAlarmFromDB(data.id);
-        // اگر نوتیفیکیشنی با آن tag وجود دارد ببند
         const notifications = await self.registration.getNotifications({ tag: `med-${data.id}` });
         notifications.forEach(n => n.close());
+      } else if (data.type === 'SNOOZE_ALARM' && data.id) {
+        await snoozeAlarm(data.id, data.minutes || 10);
       } else if (data.type === 'LIST_ALARMS') {
         const list = await getAllStoredAlarms();
         event.source?.postMessage({ type: 'ALARMS_LIST', alarms: list });
@@ -301,30 +312,50 @@ self.addEventListener('message', event => {
   })());
 });
 
-// ---------- Notification click ----------
+// ---------- Notification click / action ----------
 self.addEventListener('notificationclick', event => {
-  event.notification.close();
   const medicationId = event.notification.data?.medicationId;
+  const action = event.action || 'open';
+
+  event.notification.close();
+
   event.waitUntil((async () => {
-    // لغو یادآورهای تکمیلی
-    if (medicationId) {
+    if (action === 'taken') {
       stopFollowUpAlarms(medicationId);
-    }
-    // باز کردن یا فوکوس برنامه
-    const allClients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
-    let client = allClients.find(c => c.visibilityState === 'visible') || allClients[0];
-    if (client) {
-      client.focus();
-      client.postMessage({ type: 'ALARM_TRIGGERED', medicationId });
+      await removeAlarmFromDB(medicationId);
+      await notifyClients({ type: 'ALARM_TAKEN', medicationId });
+    } else if (action === 'snooze') {
+      await snoozeAlarm(medicationId, 10);
+      await notifyClients({ type: 'ALARM_SNOOZED', medicationId, minutes: 10 });
+    } else if (action === 'dismiss') {
+      stopFollowUpAlarms(medicationId);
+      await removeAlarmFromDB(medicationId);
+      await notifyClients({ type: 'ALARM_DISMISSED', medicationId });
     } else {
-      const newClient = await self.clients.openWindow('/');
-      if (newClient) {
-        // صبر می‌کنیم تا صفحه کامل بارگذاری شود و بعد پیام می‌دهیم
-        newClient.addEventListener('load', () => {
-          newClient.postMessage({ type: 'ALARM_TRIGGERED', medicationId });
-        }, { once: true });
-        newClient.postMessage({ type: 'ALARM_TRIGGERED', medicationId }); // fallback
-      }
+      // Default: open app and focus
+      if (medicationId) stopFollowUpAlarms(medicationId);
+      await openOrFocusApp(medicationId);
     }
   })());
 });
+
+async function notifyClients(payload) {
+  const allClients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+  for (const client of allClients) {
+    client.postMessage(payload);
+  }
+}
+
+async function openOrFocusApp(medicationId) {
+  const allClients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+  let client = allClients.find(c => c.visibilityState === 'visible') || allClients[0];
+  if (client) {
+    await client.focus();
+    client.postMessage({ type: 'ALARM_TRIGGERED', medicationId });
+  } else {
+    const newClient = await self.clients.openWindow('/');
+    if (newClient) {
+      newClient.postMessage({ type: 'ALARM_TRIGGERED', medicationId });
+    }
+  }
+}

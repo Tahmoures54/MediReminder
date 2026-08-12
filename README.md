@@ -1,119 +1,92 @@
-# 💊 AI Medi Reminder
+# 💊 یادآور دارو · MediReminder
 
-A smart medication reminder and tracker web application that works on mobile and desktop devices.
+A smart, offline-first medication reminder and tracker (PWA + Capacitor).
 
-## Features
-
-✅ **Add Multiple Medications** - Track all your medications in one place
-📅 **Custom Intervals** - Set reminder intervals from 4 hours to 1 week or custom periods
-⏱️ **Countdown Timers** - Visual countdown for each medication
-🔔 **Alerts & Notifications** - Audio and browser notifications when it's time to take medicine
-📦 **Stock Tracking** - Monitor remaining pills and get low stock alerts
-💾 **Local Database** - All data stored locally on your device using IndexedDB
-📱 **Mobile Friendly** - Responsive design optimized for mobile devices
-🌙 **Dark Theme** - Easy on the eyes with modern dark UI
-🔄 **Pause/Resume** - Control timers with pause and resume functionality
-📊 **Progress Bars** - Visual progress indicators for each medication
-
-## Database Storage
-
-The application uses **IndexedDB**, a browser-based database that stores all data locally on the user's device:
-
-- ✅ Data persists even after closing the browser
-- ✅ Works offline - no internet connection required
-- ✅ Data stays on your device - privacy-first approach
-- ✅ Automatic sync when you return to the app
-- ✅ Tracks elapsed time even when app is closed
-
-### How It Works
-
-1. **First Visit**: Creates a new IndexedDB database on your device
-2. **Adding Medications**: All medication data is saved locally
-3. **Timer Tracking**: Tracks elapsed time even when you close the browser
-4. **Returning**: Automatically calculates time passed and updates timers
-5. **Offline Support**: Works completely offline after first load
-
-## Installation as Mobile App
-
-This is a Progressive Web App (PWA) that can be installed on your mobile device:
-
-### Android
-1. Open the app in Chrome
-2. Tap the menu (⋮) 
-3. Select "Add to Home screen"
-4. The app will appear as a native app icon
-
-### iOS
-1. Open the app in Safari
-2. Tap the Share button
-3. Select "Add to Home Screen"
-4. The app will appear on your home screen
-
-## How to Use
-
-1. **Add Medication**: Click "Add Medication" button
-2. **Fill Details**: Enter medication name, dosage, quantity, and interval
-3. **Start Timer**: After taking a dose, tap the "▶ Start" button
-4. **Get Alerts**: The app will alert you when it's time for the next dose
-5. **Manage**: Pause, reset, or delete medications as needed
+یک برنامه وب/اپلیکیشن هوشمند برای یادآوری و پیگیری مصرف دارو — کار روی موبایل و دسکتاپ، با اولویت حریم خصوصی.
 
 ---
 
-# 💊 یادآور هوشمند دارو
+## ✨ Features / امکانات
 
-یک برنامه وب برای یادآوری و پیگیری مصرف دارو که روی موبایل و دسکتاپ کار می‌کند.
+| Feature | Description |
+|--------|-------------|
+| 📅 Multiple medications | Track all your meds in one place |
+| ⏱️ Countdown timers | Visual countdown per medication |
+| 🔔 **Smart notifications** | Browser + native alarms with **Taken / Snooze / Dismiss** actions |
+| ⏰ **Snooze** | Postpone reminder by 10 or 30 minutes |
+| 🔁 Follow-up alerts | Repeats until you confirm or dismiss |
+| 📦 Stock tracking | Low-stock alerts |
+| 💾 IndexedDB | Fully local, works offline |
+| 📊 Dose history | On-time / early / late tracking |
+| 🌙 Dark UI | Modern, readable interface |
+| 📱 PWA + APK | Installable on home screen or build with Capacitor |
 
-## امکانات
+---
 
-✅ **افزودن چند دارو** - همه داروهای خود را در یک جا پیگیری کنید
-📅 **بازه‌های سفارشی** - تنظیم یادآوری از 4 ساعت تا 1 هفته یا دوره‌های سفارشی
-⏱️ **تایمرهای معکوس** - شمارش معکوس بصری برای هر دارو
-🔔 **هشدار و اعلان** - صدا و اعلان مرورگر زمان مصرف دارو
-📦 **پیگیری موجودی** - مانیتورینگ قرص‌های باقیمانده و هشدار موجودی کم
-💾 **دیتابیس محلی** - تمام داده‌ها به صورت محلی روی دستگاه شما ذخیره می‌شود
-📱 **موبایل‌پسند** - طراحی واکنش‌گرا بهینه شده برای موبایل
-🌙 **تم تیره** - رابط کاربری مدرن و آرامش‌بخش
-🔄 **توقف/ادامه** - کنترل تایمرها با قابلیت توقف و ادامه
-📊 **نوار پیشرفت** - نشانگرهای بصری پیشرفت برای هر دارو
+## 🔔 Notification system (production)
 
-## ذخیره‌سازی دیتابیس
+- **Web / PWA**: Service Worker schedules alarms, shows rich notifications with actions, and runs follow-ups every ~1 minute until confirmed.
+- **Native (Android)**: Capacitor `LocalNotifications` + high-importance channel with sound & vibration.
+- **In-app popup**: Bilingual (FA/EN), accessible dialog with Taken / Snooze / Dismiss.
+- **Permission UX**: Clear bilingual banner; guidance when permission was previously denied.
 
-این برنامه از **IndexedDB** استفاده می‌کند، یک دیتابیس مبتنی بر مرورگر که تمام داده‌ها را به صورت محلی روی دستگاه کاربر ذخیره می‌کند:
+> **Tip:** For the most reliable background alarms on mobile, install as PWA or use the Android APK build.
 
-- ✅ داده‌ها حتی پس از بستن مرورگر باقی می‌مانند
-- ✅ آفلاین کار می‌کند - نیاز به اینترنت ندارد
-- ✅ داده‌ها روی دستگاه شما می‌ماند - حریم خصوصی اولویت است
-- ✅ همگام‌سازی خودکار هنگام بازگشت به برنامه
-- ✅ پیگیری زمان سپری شده حتی زمانی که برنامه بسته است
+---
 
-### نحوه کار
+## 🚀 Quick start
 
-1. **اولین بازدید**: یک دیتابیس IndexedDB جدید روی دستگاه شما ایجاد می‌شود
-2. **افزودن دارو**: تمام اطلاعات دارو به صورت محلی ذخیره می‌شود
-3. **پیگیری تایمر**: زمان سپری شده را حتی هنگام بستن مرورگر پیگیری می‌کند
-4. **بازگشت**: به طور خودکار زمان گذشته را محاسبه و تایمرها را به‌روزرسانی می‌کند
-5. **پشتیبانی آفلاین**: پس از بارگذاری اول کاملاً آفلاین کار می‌کند
+```bash
+npm install
+npm run dev
+```
 
-## نصب به عنوان اپلیکیشن موبایل
+Build for production:
 
-این یک Progressive Web App (PWA) است که می‌توان آن را روی دستگاه موبایل نصب کرد:
+```bash
+npm run build
+npm run preview
+```
 
-### اندروید
-1. برنامه را در Chrome باز کنید
-2. روی منو (⋮) ضربه بزنید
-3. "Add to Home screen" را انتخاب کنید
-4. برنامه به عنوان یک آیکون اپلیکیشن نیتیو ظاهر می‌شود
+### Android (Capacitor)
 
-### iOS
-1. برنامه را در Safari باز کنید
-2. روی دکمه Share ضربه بزنید
-3. "Add to Home Screen" را انتخاب کنید
-4. برنامه روی صفحه اصلی شما ظاهر می‌شود
+```bash
+npm run build
+npx cap sync android
+npx cap open android
+```
 
-## نحوه استفاده
+Ensure `medication_alarm.wav` is present under  
+`android/app/src/main/res/raw/` for native alarm sound.
 
-1. **افزودن دارو**: روی دکمه "Add Medication" کلیک کنید
-2. **پر کردن جزئیات**: نام دارو، دوز، تعداد و بازه زمانی را وارد کنید
-3. **شروع تایمر**: پس از مصرف دوز، روی دکمه "▶ Start" ضربه بزنید
-4. **دریافت هشدار**: برنامه زمان دوز بعدی به شما هشدار می‌دهد
-5. **مدیریت**: داروها را متوقف، ریست یا حذف کنید
+---
+
+## 📱 Install as app
+
+**Android (Chrome)**  
+Menu → Add to Home screen
+
+**iOS (Safari)**  
+Share → Add to Home Screen
+
+---
+
+## 🛠 Stack
+
+- React 19 + TypeScript + Vite
+- Tailwind CSS 4
+- IndexedDB (local persistence)
+- Service Worker (PWA alarms)
+- Capacitor 8 (Android local notifications, haptics)
+
+---
+
+## 📄 Privacy
+
+All data stays on the device. No accounts, no cloud sync, no tracking.
+
+---
+
+## License
+
+See repository for license details.
