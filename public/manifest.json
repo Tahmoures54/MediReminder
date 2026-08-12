@@ -1,12 +1,15 @@
 {
-  "name": "MediReminder",
+  "name": "یادآور دارو · MediReminder",
   "short_name": "MediReminder",
-  "description": "Smart medication reminder and tracker",
+  "description": "یادآور هوشمند دارو — Smart medication reminder and tracker",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#1f2937",
-  "theme_color": "#00BCD4",
-  "orientation": "portrait",
+  "background_color": "#0c4a6e",
+  "theme_color": "#0c4a6e",
+  "orientation": "portrait-primary",
+  "lang": "fa",
+  "dir": "rtl",
+  "categories": ["health", "medical", "lifestyle"],
   "icons": [
     {
       "src": "/android-chrome-192x192.png",

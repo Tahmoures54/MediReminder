@@ -63,25 +63,23 @@ export async function requestNotificationPermission(): Promise<boolean> {
 
 /**
  * ساخت کانال نوتیفیکیشن اندروید با صدا و ویبره
- * مهم: فایل صدا باید در این مسیر باشد:
- * android/app/src/main/res/raw/medication_alarm.wav
+ * فایل صدا: android/app/src/main/res/raw/medication_alarm.wav
  */
 export async function setupAndroidChannel(): Promise<void> {
   if (Capacitor.getPlatform() !== 'android') return;
 
   try {
-    // اگر قبلاً کانال بدون صدا ساخته شده بود، پاک شود
     try {
       await LocalNotifications.deleteChannel({ id: NOTIFICATION_CHANNEL_ID });
     } catch {
-      // اگر وجود نداشت مشکلی نیست
+      // channel may not exist yet
     }
 
     await LocalNotifications.createChannel({
       id: NOTIFICATION_CHANNEL_ID,
-      name: 'Medication Alarms',
-      description: 'Medication reminder alerts',
-      importance: 5,
+      name: 'هشدار دارو / Medication Alarms',
+      description: 'یادآوری زمان مصرف دارو',
+      importance: 5, // IMPORTANCE_HIGH
       visibility: 1,
       sound: 'medication_alarm.wav',
       vibration: true,
@@ -94,11 +92,9 @@ export async function setupAndroidChannel(): Promise<void> {
 }
 
 /**
- * راه‌اندازی کامل مجوزها
+ * راه‌اندازی کامل مجوزها + کانال اندروید
  */
-export async function initAllPermissions(): Promise<{
-  notification: boolean;
-}> {
+export async function initAllPermissions(): Promise<{ notification: boolean }> {
   const notification = await requestNotificationPermission();
 
   if (notification) {
