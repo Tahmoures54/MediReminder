@@ -82,7 +82,7 @@ export function NotificationPopup({
   }, [onClose, onRestart]);
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/85 backdrop-blur-sm p-4">
       <div
         ref={dialogRef}
         role="alertdialog"
@@ -91,22 +91,19 @@ export function NotificationPopup({
         aria-describedby="alarm-message"
         aria-live="assertive"
         aria-atomic="true"
-        className="relative w-full max-w-md overflow-hidden rounded-3xl border border-white/20 bg-gradient-to-br from-cyan-600 to-blue-700 shadow-[0_0_40px_rgba(34,211,238,0.3)]"
+        className="relative w-full max-w-md overflow-hidden rounded-3xl border border-red-400/40 bg-gradient-to-br from-red-700 via-rose-700 to-orange-700 shadow-[0_0_50px_rgba(239,68,68,0.45)]"
       >
-        {/* نوار هشدار بالا */}
-        <div className="absolute left-0 top-0 h-1.5 w-full bg-gradient-to-r from-orange-400 via-yellow-300 to-orange-400 animate-pulse" />
+        <div className="absolute left-0 top-0 h-2 w-full bg-gradient-to-r from-yellow-300 via-orange-400 to-yellow-300 animate-pulse" />
 
         <div className="p-6 sm:p-8">
-          {/* آیکون */}
           <div className="mb-4 flex justify-center">
-            <div className="rounded-full bg-white/10 p-4 shadow-lg ring-4 ring-white/10 animate-pulse">
-              <span className="text-4xl drop-shadow-lg" aria-hidden="true">
-                🔔
+            <div className="rounded-full bg-white/15 p-4 shadow-lg ring-4 ring-white/20 animate-pulse">
+              <span className="text-5xl drop-shadow-lg" aria-hidden="true">
+                💊
               </span>
             </div>
           </div>
 
-          {/* عنوان */}
           <h3
             id="alarm-title"
             className="mb-3 text-center text-2xl sm:text-3xl font-extrabold text-white drop-shadow-md"
@@ -114,25 +111,29 @@ export function NotificationPopup({
             {title}
           </h3>
 
-          {/* پیام */}
           <p
             id="alarm-message"
-            className="mb-6 sm:mb-8 whitespace-pre-line text-center text-base sm:text-lg font-medium leading-relaxed text-blue-50"
+            className="mb-6 sm:mb-8 whitespace-pre-line text-center text-base sm:text-lg font-medium leading-relaxed text-orange-50"
           >
             {message}
           </p>
 
-          {/* دکمه‌ها */}
+          {isMedicationAlert && (
+            <p className="mb-4 text-center text-sm font-bold text-yellow-200 animate-pulse">
+              زنگ تا تأیید مصرف ادامه دارد
+            </p>
+          )}
+
           <div className="flex flex-col gap-3">
             {onRestart && (
               <button
                 ref={restartButtonRef}
                 onClick={onRestart}
-                className="flex w-full items-center justify-center gap-2 rounded-xl bg-green-500 px-6 py-4 text-base sm:text-lg font-bold text-white shadow-[0_4px_14px_0_rgba(34,197,94,0.4)] transition-all duration-300 hover:-translate-y-0.5 hover:bg-green-400 hover:shadow-[0_6px_20px_rgba(34,197,94,0.3)] active:scale-95 focus:outline-none focus:ring-4 focus:ring-green-200/40"
-                aria-label="Confirm dose taken and restart timer"
+                className="flex w-full items-center justify-center gap-2 rounded-xl bg-green-500 px-6 py-4 text-base sm:text-lg font-bold text-white shadow-[0_4px_14px_0_rgba(34,197,94,0.5)] transition-all duration-300 hover:-translate-y-0.5 hover:bg-green-400 hover:shadow-[0_6px_20px_rgba(34,197,94,0.4)] active:scale-95 focus:outline-none focus:ring-4 focus:ring-green-200/40"
+                aria-label="تأیید مصرف دارو و راه‌اندازی مجدد تایمر"
               >
                 <span aria-hidden="true">✅</span>
-                مصرف کردم · Taken
+                مصرف کردم
               </button>
             )}
 
@@ -142,7 +143,7 @@ export function NotificationPopup({
                   type="button"
                   onClick={() => onSnooze(10)}
                   className="rounded-xl bg-amber-500/95 px-4 py-3.5 text-sm sm:text-base font-bold text-white shadow-md transition-all hover:bg-amber-400 active:scale-95 focus:outline-none focus:ring-4 focus:ring-amber-200/30"
-                  aria-label="Snooze for 10 minutes"
+                  aria-label="به تعویق انداختن به مدت ۱۰ دقیقه"
                 >
                   ⏰ ۱۰ دقیقه
                 </button>
@@ -150,7 +151,7 @@ export function NotificationPopup({
                   type="button"
                   onClick={() => onSnooze(30)}
                   className="rounded-xl bg-amber-500/95 px-4 py-3.5 text-sm sm:text-base font-bold text-white shadow-md transition-all hover:bg-amber-400 active:scale-95 focus:outline-none focus:ring-4 focus:ring-amber-200/30"
-                  aria-label="Snooze for 30 minutes"
+                  aria-label="به تعویق انداختن به مدت ۳۰ دقیقه"
                 >
                   ⏰ ۳۰ دقیقه
                 </button>
@@ -160,15 +161,15 @@ export function NotificationPopup({
             <button
               ref={closeButtonRef}
               onClick={onClose}
-              className="w-full rounded-xl bg-white px-6 py-3.5 text-base sm:text-lg font-bold text-blue-900 shadow-lg transition-all duration-300 hover:-translate-y-0.5 hover:bg-gray-100 active:scale-95 focus:outline-none focus:ring-4 focus:ring-white/40"
-              aria-label="Dismiss alert"
+              className="w-full rounded-xl bg-white/90 px-6 py-3.5 text-base sm:text-lg font-bold text-red-900 shadow-lg transition-all duration-300 hover:-translate-y-0.5 hover:bg-white active:scale-95 focus:outline-none focus:ring-4 focus:ring-white/40"
+              aria-label="بستن هشدار"
             >
-              بعداً · Dismiss
+              بعداً
             </button>
           </div>
 
-          <p className="mt-4 text-center text-xs text-blue-100/70">
-            برای بستن <span className="font-semibold">Esc</span> را بزنید
+          <p className="mt-4 text-center text-xs text-orange-100/80">
+            برای بستن کلید Esc را بزنید
           </p>
         </div>
       </div>
