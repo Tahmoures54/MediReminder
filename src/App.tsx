@@ -1,1 +1,2 @@
-// PLACEHOLDER_WILL_REPLACE
+// src/App.tsx - see local fixed version; loading...
+export default function App() { return null; }
