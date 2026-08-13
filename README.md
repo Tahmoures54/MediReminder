@@ -1,54 +1,45 @@
-# 💊 یادآور دارو · MediReminder
+# 💊 یادآور دارو
 
-A smart, offline-first medication reminder and tracker (PWA + Capacitor).
+برنامه وب/اپلیکیشن هوشمند برای یادآوری و پیگیری مصرف دارو — کار روی موبایل و دسکتاپ، با اولویت حریم خصوصی.
 
-یک برنامه وب/اپلیکیشن هوشمند برای یادآوری و پیگیری مصرف دارو — کار روی موبایل و دسکتاپ، با اولویت حریم خصوصی.
+## امکانات
 
----
-
-## ✨ Features / امکانات
-
-| Feature | Description |
+| امکان | توضیح |
 |--------|-------------|
-| 📅 Multiple medications | Track all your meds in one place |
-| ⏱️ Countdown timers | Visual countdown per medication |
-| 🔔 **Smart notifications** | Browser + native alarms with **Taken / Snooze / Dismiss** actions |
-| ⏰ **Snooze** | Postpone reminder by 10 or 30 minutes |
-| 🔁 Follow-up alerts | Repeats until you confirm or dismiss |
-| 📦 Stock tracking | Low-stock alerts |
-| 💾 IndexedDB | Fully local, works offline |
-| 📊 Dose history | On-time / early / late tracking |
-| 🌙 Dark UI | Modern, readable interface |
-| 📱 PWA + APK | Installable on home screen or build with Capacitor |
+| 📅 چند دارو همزمان | همه داروها در یک جا |
+| ⏱️ تایمر شمارش معکوس | نمایش بصری برای هر دارو |
+| 🔔 اعلان هوشمند و مکرر | زنگ و ویبره تا تأیید «مصرف کردم» |
+| ⏰ به تعویق انداختن | ۱۰ یا ۳۰ دقیقه |
+| 📦 پیگیری موجودی | هشدار موجودی کم |
+| 💾 IndexedDB | کاملاً محلی و آفلاین |
+| 📊 تاریخچه دوز | به‌موقع / زودتر / دیرتر |
+| 🌙 رابط تیره | خوانا و مدرن |
+| 📱 PWA + APK | نصب روی صفحه اصلی یا ساخت با Capacitor |
 
----
+## سیستم اعلان (تولید)
 
-## 🔔 Notification system (production)
+- **وب / PWA**: Service Worker هر حدود ۳۰ ثانیه یادآوری می‌فرستد تا تأیید مصرف.
+- **اندروید (نیتیو)**: اعلان‌های LocalNotifications با صدای آلارم و ویبره + دنباله یادآوری.
+- **داخل اپ**: صدای بوق تکراری + ویبره مداوم تا زدن «مصرف کردم» یا اسنوز.
+- رابط کاملاً فارسی.
 
-- **Web / PWA**: Service Worker schedules alarms, shows rich notifications with actions, and runs follow-ups every ~1 minute until confirmed.
-- **Native (Android)**: Capacitor `LocalNotifications` + high-importance channel with sound & vibration.
-- **In-app popup**: Bilingual (FA/EN), accessible dialog with Taken / Snooze / Dismiss.
-- **Permission UX**: Clear bilingual banner; guidance when permission was previously denied.
+> برای اطمینان بیشتر از اعلان پس‌زمینه روی موبایل، به‌عنوان PWA نصب کنید یا APK بسازید.
 
-> **Tip:** For the most reliable background alarms on mobile, install as PWA or use the Android APK build.
-
----
-
-## 🚀 Quick start
+## شروع سریع
 
 ```bash
 npm install
 npm run dev
 ```
 
-Build for production:
+ساخت نسخه تولید:
 
 ```bash
 npm run build
 npm run preview
 ```
 
-### Android (Capacitor)
+### اندروید (Capacitor)
 
 ```bash
 npm run build
@@ -56,37 +47,29 @@ npx cap sync android
 npx cap open android
 ```
 
-Ensure `medication_alarm.wav` is present under  
-`android/app/src/main/res/raw/` for native alarm sound.
+فایل صدا باید در مسیر زیر باشد:  
+`android/app/src/main/res/raw/medication_alarm.wav`
 
----
+## نصب به‌عنوان اپ
 
-## 📱 Install as app
-
-**Android (Chrome)**  
-Menu → Add to Home screen
+**اندروید (Chrome)**  
+منو ← افزودن به صفحه اصلی
 
 **iOS (Safari)**  
-Share → Add to Home Screen
+اشتراک‌گذاری ← افزودن به صفحه اصلی
 
----
-
-## 🛠 Stack
+## فناوری
 
 - React 19 + TypeScript + Vite
 - Tailwind CSS 4
-- IndexedDB (local persistence)
-- Service Worker (PWA alarms)
-- Capacitor 8 (Android local notifications, haptics)
+- IndexedDB
+- Service Worker (اعلان PWA)
+- Capacitor 8 (اعلان و ویبره نیتیو)
 
----
+## حریم خصوصی
 
-## 📄 Privacy
+همه داده‌ها روی دستگاه می‌ماند. بدون حساب کاربری، بدون همگام‌سازی ابری، بدون ردیابی.
 
-All data stays on the device. No accounts, no cloud sync, no tracking.
+## مجوز
 
----
-
-## License
-
-See repository for license details.
+جزئیات مجوز در مخزن موجود است.

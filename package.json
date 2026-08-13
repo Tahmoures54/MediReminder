@@ -1,8 +1,9 @@
 {
-  "name": "react-vite-tailwind",
+  "name": "medi-reminder",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
   "type": "module",
+  "description": "یادآور هوشمند دارو",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
