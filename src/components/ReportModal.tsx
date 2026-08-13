@@ -25,16 +25,16 @@ function formatDateTime(timestamp: number): string {
     date.getMonth() === today.getMonth() &&
     date.getFullYear() === today.getFullYear();
 
-  const timeString = date.toLocaleTimeString([], {
+  const timeString = date.toLocaleTimeString('fa-IR', {
     hour: '2-digit',
     minute: '2-digit',
   });
 
   if (isToday) {
-    return `Today at ${timeString}`;
+    return `امروز ساعت ${timeString}`;
   }
 
-  return `${date.toLocaleDateString()} - ${timeString}`;
+  return `${date.toLocaleDateString('fa-IR')} - ${timeString}`;
 }
 
 function getStatusDisplay(status: HistoryRecord['status']) {
@@ -42,28 +42,28 @@ function getStatusDisplay(status: HistoryRecord['status']) {
     case 'on-time':
       return {
         icon: '🟢',
-        text: 'On Time',
+        text: 'به‌موقع',
         color: 'text-green-400',
         bg: 'bg-green-400/10',
       };
     case 'early':
       return {
         icon: '🟡',
-        text: 'Early',
+        text: 'زودتر',
         color: 'text-yellow-400',
         bg: 'bg-yellow-400/10',
       };
     case 'late':
       return {
         icon: '🔴',
-        text: 'Late',
+        text: 'دیرتر',
         color: 'text-red-400',
         bg: 'bg-red-400/10',
       };
     default:
       return {
         icon: '⚪',
-        text: 'Unknown',
+        text: 'نامشخص',
         color: 'text-gray-400',
         bg: 'bg-gray-400/10',
       };
@@ -71,10 +71,10 @@ function getStatusDisplay(status: HistoryRecord['status']) {
 }
 
 function getAdherenceLabel(score: number, total: number) {
-  if (total === 0) return 'No data yet';
-  if (score >= 80) return '🌟 Excellent';
-  if (score >= 50) return '👍 Good';
-  return '⚠️ Needs Attention';
+  if (total === 0) return 'هنوز داده‌ای نیست';
+  if (score >= 80) return '🌟 عالی';
+  if (score >= 50) return '👍 خوب';
+  return '⚠️ نیاز به توجه';
 }
 
 function sanitizeFileName(name: string) {
@@ -146,25 +146,25 @@ function buildReportText(
             return `- ${formatDateTime(record.takenAt)} — ${status.text}`;
           })
           .join('\n')
-      : '- No doses recorded yet';
+      : '- هنوز دوزی ثبت نشده';
 
-  const adherenceText = stats.total > 0 ? `${stats.score}%` : 'No data';
+  const adherenceText = stats.total > 0 ? `${stats.score}٪` : 'بدون داده';
 
-  return `📊 Medication Report
+  return `📊 گزارش مصرف دارو
 
-💊 Name: ${medication.name}
-⚖️ Dosage: ${medication.dosage}
-⭐ Adherence: ${adherenceText}
-📦 Recorded Doses: ${stats.total}
-🟢 On Time: ${stats.onTimeCount}
-🟡 Early: ${stats.earlyCount}
-🔴 Late: ${stats.lateCount}
-🕒 Last Dose: ${stats.lastDose}
+💊 نام: ${medication.name}
+⚖️ دوز: ${medication.dosage}
+⭐ پایبندی: ${adherenceText}
+📦 دوزهای ثبت‌شده: ${stats.total}
+🟢 به‌موقع: ${stats.onTimeCount}
+🟡 زودتر: ${stats.earlyCount}
+🔴 دیرتر: ${stats.lateCount}
+🕒 آخرین دوز: ${stats.lastDose}
 
-📝 Recent Doses:
+📝 دوزهای اخیر:
 ${recentLines}
 
-🔗 Generated with MediReminder
+🔗 ساخته‌شده با یادآور دارو
 ${window.location.origin}`;
 }
 
@@ -197,7 +197,7 @@ export function ReportModal({ medication, onClose }: ReportModalProps) {
     const earlyCount = sortedHistory.filter(h => h.status === 'early').length;
     const lateCount = sortedHistory.filter(h => h.status === 'late').length;
     const score = total > 0 ? Math.round((onTimeCount / total) * 100) : 0;
-    const lastDose = total > 0 ? formatDateTime(sortedHistory[0].takenAt) : 'N/A';
+    const lastDose = total > 0 ? formatDateTime(sortedHistory[0].takenAt) : '—';
 
     return {
       total,
@@ -252,13 +252,13 @@ export function ReportModal({ medication, onClose }: ReportModalProps) {
     try {
       const copied = await copyTextToClipboard(reportText);
       if (copied) {
-        showFeedback('success', '📋 Report copied to clipboard.');
+        showFeedback('success', '📋 گزارش در حافظه کپی شد.');
       } else {
-        showFeedback('error', '⚠️ Unable to copy report.');
+        showFeedback('error', '⚠️ امکان کپی گزارش وجود نداشت.');
       }
     } catch (error) {
-      console.error('Copy failed:', error);
-      showFeedback('error', '⚠️ Unable to copy report.');
+      console.error('خطای کپی:', error);
+      showFeedback('error', '⚠️ امکان کپی گزارش وجود نداشت.');
     } finally {
       setIsCopying(false);
     }
@@ -267,12 +267,12 @@ export function ReportModal({ medication, onClose }: ReportModalProps) {
   const handleDownloadReport = async () => {
     setIsDownloading(true);
     try {
-      const filename = `${sanitizeFileName(medication.name || 'medication')}-report.txt`;
+      const filename = `${sanitizeFileName(medication.name || 'دارو')}-گزارش.txt`;
       downloadTextFile(filename, reportText);
-      showFeedback('success', '⬇️ Report downloaded successfully.');
+      showFeedback('success', '⬇️ گزارش با موفقیت دانلود شد.');
     } catch (error) {
-      console.error('Download failed:', error);
-      showFeedback('error', '⚠️ Unable to download report.');
+      console.error('خطای دانلود:', error);
+      showFeedback('error', '⚠️ امکان دانلود گزارش وجود نداشت.');
     } finally {
       setIsDownloading(false);
     }
@@ -282,69 +282,65 @@ export function ReportModal({ medication, onClose }: ReportModalProps) {
     setIsSharing(true);
 
     try {
-      // 1) تلاش برای اشتراک‌گذاری از طریق Capacitor Share
       try {
         const canShare = await Share.canShare();
 
         if (canShare.value) {
           await Share.share({
-            title: `${medication.name} - Medication Report`,
+            title: `گزارش مصرف ${medication.name}`,
             text: reportText,
             url: window.location.origin,
-            dialogTitle: 'Share medication report',
+            dialogTitle: 'اشتراک‌گذاری گزارش دارو',
           });
 
-          showFeedback('success', '📤 Share menu opened.');
+          showFeedback('success', '📤 منوی اشتراک باز شد.');
           return;
         }
       } catch (pluginError) {
-        console.warn('Capacitor Share not available, falling back...', pluginError);
+        console.warn('اشتراک نیتیو در دسترس نیست:', pluginError);
       }
 
-      // 2) تلاش برای Web Share API
       if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
         await navigator.share({
-          title: `${medication.name} - Medication Report`,
+          title: `گزارش مصرف ${medication.name}`,
           text: reportText,
           url: window.location.origin,
         });
 
-        showFeedback('success', '📤 Share menu opened.');
+        showFeedback('success', '📤 منوی اشتراک باز شد.');
         return;
       }
 
-      // 3) fallback: کپی
       const copied = await copyTextToClipboard(reportText);
       if (copied) {
-        showFeedback('info', '📋 Sharing unavailable. Report copied instead.');
+        showFeedback('info', '📋 اشتراک در دسترس نیست. گزارش کپی شد.');
         return;
       }
 
-      // 4) fallback نهایی: دانلود
-      const filename = `${sanitizeFileName(medication.name || 'medication')}-report.txt`;
+      const filename = `${sanitizeFileName(medication.name || 'دارو')}-گزارش.txt`;
       downloadTextFile(filename, reportText);
-      showFeedback('info', '⬇️ Sharing unavailable. Report downloaded instead.');
+      showFeedback('info', '⬇️ اشتراک در دسترس نیست. گزارش دانلود شد.');
     } catch (error) {
       if (isUserCancelledShare(error)) {
         setIsSharing(false);
         return;
       }
 
-      console.error('Share failed:', error);
+      console.error('خطای اشتراک:', error);
 
       try {
         const copied = await copyTextToClipboard(reportText);
         if (copied) {
-          showFeedback('info', '📋 Share failed. Report copied instead.');
+          showFeedback('info', '📋 اشتراک ناموفق. گزارش کپی شد.');
           return;
         }
 
-        const filename = `${sanitizeFileName(medication.name || 'medication')}-report.txt`;
+        const filename = `${sanitizeFileName(medication.name || 'دارو')}-گزارش.txt`;
         downloadTextFile(filename, reportText);
-        showFeedback('info', '⬇️ Share failed. Report downloaded instead.');
+        showFeedback('info', '⬇️ اشتراک ناموفق. گزارش دانلود شد.');
       } catch (fallbackError) {
-        console.error('Fallback share failed:', fallbackError);
-        showFeedback('error', '⚠️ Unable to share the report.');
+        console.error('خطای جایگزین اشتراک:', fallbackError);
+        showFeedback('error', '⚠️ امکان اشتراک گزارش وجود نداشت.');
       }
     } finally {
       setIsSharing(false);
@@ -363,28 +359,26 @@ export function ReportModal({ medication, onClose }: ReportModalProps) {
         className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-2xl border border-gray-700 bg-gray-800 p-6 shadow-2xl animate-in zoom-in-95 duration-200 custom-scrollbar"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Header */}
         <div className="mb-5 flex items-start justify-between gap-3">
           <div>
             <h2 id="modal-title" className="flex items-center gap-2 text-xl font-bold text-white">
-              📊 {medication.name} Report
+              📊 گزارش {medication.name}
             </h2>
             <p className="mt-1 text-xs text-gray-400">
-              Shareable summary for doctor or caregiver
+              خلاصه قابل اشتراک برای پزشک یا مراقب
             </p>
           </div>
 
           <button
             onClick={onClose}
             className="flex items-center justify-center rounded-lg bg-gray-700/50 p-2.5 text-gray-400 transition-colors hover:bg-gray-700 hover:text-white"
-            title="Close"
-            aria-label="Close modal"
+            title="بستن"
+            aria-label="بستن پنجره"
           >
             ✕
           </button>
         </div>
 
-        {/* Feedback */}
         {feedback && (
           <div
             aria-live="polite"
@@ -400,10 +394,9 @@ export function ReportModal({ medication, onClose }: ReportModalProps) {
           </div>
         )}
 
-        {/* Score Card */}
         <div className="mb-4 flex items-center justify-between rounded-xl border border-gray-700 bg-gray-900 p-4">
           <div>
-            <p className="mb-1 text-sm text-gray-400">Overall Adherence</p>
+            <p className="mb-1 text-sm text-gray-400">پایبندی کلی</p>
             <p className="text-sm text-gray-200">
               {getAdherenceLabel(stats.score, stats.total)}
             </p>
@@ -420,60 +413,57 @@ export function ReportModal({ medication, onClose }: ReportModalProps) {
                 : 'text-red-400'
             }`}
           >
-            {stats.total > 0 ? `${stats.score}%` : '-'}
+            {stats.total > 0 ? `${stats.score}٪` : '-'}
           </div>
         </div>
 
-        {/* Quick Stats */}
         <div className="mb-6 grid grid-cols-2 gap-3">
           <div className="rounded-xl border border-gray-700 bg-gray-900 p-4">
-            <p className="mb-1 text-xs text-gray-400">Dosage</p>
+            <p className="mb-1 text-xs text-gray-400">دوز</p>
             <p className="text-sm font-semibold text-white">{medication.dosage}</p>
           </div>
 
           <div className="rounded-xl border border-gray-700 bg-gray-900 p-4">
-            <p className="mb-1 text-xs text-gray-400">Recorded Doses</p>
+            <p className="mb-1 text-xs text-gray-400">دوزهای ثبت‌شده</p>
             <p className="text-sm font-semibold text-white">{stats.total}</p>
           </div>
 
           <div className="col-span-2 rounded-xl border border-gray-700 bg-gray-900 p-4">
-            <p className="mb-1 text-xs text-gray-400">Last Dose</p>
+            <p className="mb-1 text-xs text-gray-400">آخرین دوز</p>
             <p className="text-sm font-semibold text-white">{stats.lastDose}</p>
           </div>
         </div>
 
-        {/* Counters */}
         <div className="mb-6 grid grid-cols-3 gap-3">
           <div className="rounded-xl border border-green-500/20 bg-green-500/10 p-3 text-center">
             <div className="text-lg">🟢</div>
             <div className="text-sm font-bold text-green-300">{stats.onTimeCount}</div>
-            <div className="text-xs text-green-200/70">On Time</div>
+            <div className="text-xs text-green-200/70">به‌موقع</div>
           </div>
 
           <div className="rounded-xl border border-yellow-500/20 bg-yellow-500/10 p-3 text-center">
             <div className="text-lg">🟡</div>
             <div className="text-sm font-bold text-yellow-300">{stats.earlyCount}</div>
-            <div className="text-xs text-yellow-200/70">Early</div>
+            <div className="text-xs text-yellow-200/70">زودتر</div>
           </div>
 
           <div className="rounded-xl border border-red-500/20 bg-red-500/10 p-3 text-center">
             <div className="text-lg">🔴</div>
             <div className="text-sm font-bold text-red-300">{stats.lateCount}</div>
-            <div className="text-xs text-red-200/70">Late</div>
+            <div className="text-xs text-red-200/70">دیرتر</div>
           </div>
         </div>
 
-        {/* History */}
         <div className="mb-6 space-y-3 pr-1">
           <h3 className="mb-2 text-sm font-semibold text-gray-400">
-            Last {RECENT_DOSES_LIMIT} Doses:
+            آخرین {RECENT_DOSES_LIMIT} دوز:
           </h3>
 
           {recentHistory.length === 0 ? (
             <div className="rounded-xl border border-gray-700 bg-gray-900 py-6 text-center text-sm text-gray-500">
-              No doses recorded yet.
+              هنوز دوزی ثبت نشده.
               <br />
-              Start the timer to track your history.
+              تایمر را شروع کنید تا تاریخچه ساخته شود.
             </div>
           ) : (
             recentHistory.map((record, index) => {
@@ -502,14 +492,13 @@ export function ReportModal({ medication, onClose }: ReportModalProps) {
           )}
         </div>
 
-        {/* Actions */}
         <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
           <button
             onClick={handleShareReport}
             disabled={isSharing}
             className="rounded-xl bg-blue-600 px-4 py-3 font-bold text-white transition-colors duration-200 hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {isSharing ? 'Sharing...' : '📤 Share'}
+            {isSharing ? 'در حال اشتراک...' : '📤 اشتراک'}
           </button>
 
           <button
@@ -517,7 +506,7 @@ export function ReportModal({ medication, onClose }: ReportModalProps) {
             disabled={isCopying}
             className="rounded-xl bg-cyan-600 px-4 py-3 font-bold text-white transition-colors duration-200 hover:bg-cyan-500 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {isCopying ? 'Copying...' : '📋 Copy'}
+            {isCopying ? 'در حال کپی...' : '📋 کپی'}
           </button>
 
           <button
@@ -525,16 +514,15 @@ export function ReportModal({ medication, onClose }: ReportModalProps) {
             disabled={isDownloading}
             className="rounded-xl bg-emerald-600 px-4 py-3 font-bold text-white transition-colors duration-200 hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {isDownloading ? 'Preparing...' : '⬇️ Download'}
+            {isDownloading ? 'در حال آماده‌سازی...' : '⬇️ دانلود'}
           </button>
         </div>
 
-        {/* Close */}
         <button
           onClick={onClose}
           className="w-full rounded-lg bg-gray-700 px-4 py-3 font-bold text-white transition-colors duration-300 hover:bg-gray-600"
         >
-          Close Report
+          بستن گزارش
         </button>
       </div>
     </div>
