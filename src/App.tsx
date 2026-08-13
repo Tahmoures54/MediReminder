@@ -1,2 +1,1 @@
-// src/App.tsx - see local fixed version; loading...
-export default function App() { return null; }
+// RESTORE_PENDING - content too large for single message, use local /tmp/final_app.tsx
