@@ -59,14 +59,22 @@ export function MedicationCard({
     : 'border-gray-600';
 
   const cardTitleId = `medication-title-${medication.id ?? index}`;
-  const timerLabel = `${formatTime(safeRemaining)} remaining`;
+  const timerLabel = `${formatTime(safeRemaining)} باقی‌مانده`;
+
+  const intervalLabel =
+    medication.intervalHours === 1
+      ? 'هر ۱ ساعت'
+      : medication.intervalHours === 24
+      ? 'هر ۲۴ ساعت (روزانه)'
+      : medication.intervalHours === 168
+      ? 'هر هفته'
+      : `هر ${medication.intervalHours} ساعت`;
 
   return (
     <article
       className={`relative rounded-2xl border-l-4 bg-gray-800 p-5 shadow-xl transition-all duration-300 hover:shadow-2xl ${cardBorderClass}`}
       aria-labelledby={cardTitleId}
     >
-      {/* Header */}
       <div className="mb-3 flex justify-between items-start gap-3">
         <div className="flex-1 min-w-0">
           <h3
@@ -78,11 +86,11 @@ export function MedicationCard({
           </h3>
 
           <p className="mt-1 text-sm text-gray-300">
-            💊 Dosage: {medication.dosage}
+            💊 دوز: {medication.dosage}
           </p>
 
           <p className="mt-1 text-sm text-gray-300">
-            ⏱ Every {medication.intervalHours} hour{medication.intervalHours !== 1 ? 's' : ''}
+            ⏱ {intervalLabel}
           </p>
 
           <p
@@ -92,7 +100,7 @@ export function MedicationCard({
                 : 'text-gray-300'
             }`}
           >
-            📦 Remaining: {medication.quantity} {isLowStock ? '⚠️' : ''}
+            📦 موجودی: {medication.quantity} عدد {isLowStock ? '⚠️ کم' : ''}
           </p>
         </div>
 
@@ -104,7 +112,7 @@ export function MedicationCard({
                   ? 'bg-red-400 shadow-[0_0_10px_rgba(248,113,113,0.8)]'
                   : 'bg-cyan-400 shadow-[0_0_10px_rgba(34,211,238,0.8)]'
               } animate-pulse`}
-              title={isTimeCritical ? 'Medication time is very close' : 'Timer is running'}
+              title={isTimeCritical ? 'زمان مصرف نزدیک است' : 'تایمر فعال است'}
               aria-hidden="true"
             />
           )}
@@ -112,8 +120,8 @@ export function MedicationCard({
           <button
             type="button"
             onClick={onShowReport}
-            aria-label={`View history report for ${medication.name}`}
-            title="View History Report"
+            aria-label={`مشاهده گزارش تاریخچه ${medication.name}`}
+            title="گزارش تاریخچه"
             className="flex items-center justify-center rounded-lg bg-gray-700 p-2.5 text-lg shadow-lg transition-all duration-200 hover:scale-105 hover:bg-gray-600 focus:outline-none focus:ring-4 focus:ring-cyan-400/30"
           >
             📊
@@ -121,7 +129,6 @@ export function MedicationCard({
         </div>
       </div>
 
-      {/* Timer */}
       <div className="my-4 text-center">
         <div
           className={`text-5xl font-bold transition-all duration-300 ${timerColorClass}`}
@@ -135,25 +142,24 @@ export function MedicationCard({
         <p className="mt-2 text-xs text-gray-400">
           {isRunning
             ? isFinished
-              ? 'Dose time reached'
+              ? 'زمان مصرف فرا رسیده'
               : isTimeCritical
-              ? 'Time is almost up'
-              : 'Timer is active'
-            : 'Timer is paused'}
+              ? 'زمان تقریباً تمام شده'
+              : 'تایمر فعال است'
+            : 'تایمر متوقف است'}
         </p>
       </div>
 
-      {/* Progress */}
       <div
         className="mb-4 h-2 w-full overflow-hidden rounded-full bg-gray-700"
         role="progressbar"
-        aria-label={`Timer progress for ${medication.name}`}
+        aria-label={`پیشرفت تایمر ${medication.name}`}
         aria-valuenow={Math.round(progressPercentage)}
         aria-valuemin={0}
         aria-valuemax={100}
-        aria-valuetext={`${Math.round(progressPercentage)} percent remaining, ${formatTime(
+        aria-valuetext={`${Math.round(progressPercentage)} درصد باقی‌مانده، ${formatTime(
           safeRemaining
-        )} left`}
+        )}`}
       >
         <div
           className={`h-full transition-all duration-1000 ${progressBarClass}`}
@@ -161,12 +167,11 @@ export function MedicationCard({
         />
       </div>
 
-      {/* Actions */}
       <div className="flex gap-2">
         <button
           type="button"
           onClick={onToggle}
-          aria-label={isRunning ? `Pause ${medication.name} timer` : `Start ${medication.name} timer`}
+          aria-label={isRunning ? `توقف تایمر ${medication.name}` : `شروع تایمر ${medication.name}`}
           aria-pressed={isRunning}
           className={`flex-1 rounded-lg px-4 py-3 font-bold transition-all duration-300 focus:outline-none focus:ring-4 ${
             isRunning
@@ -174,25 +179,25 @@ export function MedicationCard({
               : 'bg-green-500 text-white shadow-lg shadow-green-500/30 hover:scale-[1.02] hover:bg-green-600 hover:shadow-green-500/50 focus:ring-green-300/30'
           }`}
         >
-          {isRunning ? '⏸ Pause' : '▶ Start'}
+          {isRunning ? '⏸ توقف' : '▶ شروع'}
         </button>
 
         <button
           type="button"
           onClick={onReset}
           disabled={isResetDisabled}
-          aria-label={`Reset ${medication.name} timer`}
-          title="Reset timer"
+          aria-label={`ریست تایمر ${medication.name}`}
+          title="ریست تایمر"
           className="rounded-lg bg-gray-600 px-4 py-3 font-bold text-white transition-all duration-300 hover:scale-105 hover:bg-gray-700 focus:outline-none focus:ring-4 focus:ring-gray-300/20 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:scale-100"
         >
-          ↺ Reset
+          ↺ ریست
         </button>
 
         <button
           type="button"
           onClick={onDelete}
-          aria-label={`Delete ${medication.name}`}
-          title="Delete medication"
+          aria-label={`حذف ${medication.name}`}
+          title="حذف دارو"
           className="rounded-lg bg-red-500 px-4 py-3 font-bold text-white shadow-lg shadow-red-500/30 transition-all duration-300 hover:scale-105 hover:bg-red-600 hover:shadow-red-500/50 focus:outline-none focus:ring-4 focus:ring-red-300/30"
         >
           🗑
