@@ -1,7 +1,7 @@
 {
-  "name": "یادآور دارو · MediReminder",
-  "short_name": "MediReminder",
-  "description": "یادآور هوشمند دارو — Smart medication reminder and tracker",
+  "name": "یادآور دارو",
+  "short_name": "یادآور دارو",
+  "description": "یادآور هوشمند دارو — آفلاین، امن و با هشدار مکرر تا تأیید مصرف",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#0c4a6e",
