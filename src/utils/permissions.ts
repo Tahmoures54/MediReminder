@@ -12,7 +12,7 @@ export type AppNotificationPermission =
   | 'unavailable';
 
 /**
- * بررسی وضعیت فعلی مجوز نوتیفیکیشن
+ * بررسی وضعیت فعلی مجوز اعلان
  */
 export async function checkNotificationPermission(): Promise<AppNotificationPermission> {
   if (Capacitor.isNativePlatform()) {
@@ -20,7 +20,7 @@ export async function checkNotificationPermission(): Promise<AppNotificationPerm
       const result = await LocalNotifications.checkPermissions();
       return (result.display ?? 'prompt') as AppNotificationPermission;
     } catch (error) {
-      console.error('checkPermissions error:', error);
+      console.error('خطا در بررسی مجوز:', error);
       return 'unavailable';
     }
   }
@@ -37,7 +37,7 @@ export async function checkNotificationPermission(): Promise<AppNotificationPerm
 }
 
 /**
- * درخواست مجوز نوتیفیکیشن
+ * درخواست مجوز اعلان
  */
 export async function requestNotificationPermission(): Promise<boolean> {
   if (Capacitor.isNativePlatform()) {
@@ -45,7 +45,7 @@ export async function requestNotificationPermission(): Promise<boolean> {
       const result = await LocalNotifications.requestPermissions();
       return result.display === 'granted';
     } catch (error) {
-      console.error('requestPermissions error:', error);
+      console.error('خطا در درخواست مجوز:', error);
       return false;
     }
   }
@@ -62,8 +62,7 @@ export async function requestNotificationPermission(): Promise<boolean> {
 }
 
 /**
- * ساخت کانال نوتیفیکیشن اندروید با صدا و ویبره
- * فایل صدا: android/app/src/main/res/raw/medication_alarm.wav
+ * ساخت کانال اعلان اندروید با صدا و ویبره قوی
  */
 export async function setupAndroidChannel(): Promise<void> {
   if (Capacitor.getPlatform() !== 'android') return;
@@ -72,14 +71,14 @@ export async function setupAndroidChannel(): Promise<void> {
     try {
       await LocalNotifications.deleteChannel({ id: NOTIFICATION_CHANNEL_ID });
     } catch {
-      // channel may not exist yet
+      // کانال ممکن است هنوز وجود نداشته باشد
     }
 
     await LocalNotifications.createChannel({
       id: NOTIFICATION_CHANNEL_ID,
-      name: 'هشدار دارو / Medication Alarms',
-      description: 'یادآوری زمان مصرف دارو',
-      importance: 5, // IMPORTANCE_HIGH
+      name: 'هشدار مصرف دارو',
+      description: 'یادآوری مکرر زمان مصرف دارو تا تأیید کاربر',
+      importance: 5,
       visibility: 1,
       sound: 'medication_alarm.wav',
       vibration: true,
@@ -87,7 +86,7 @@ export async function setupAndroidChannel(): Promise<void> {
       lightColor: '#DC2626',
     });
   } catch (error) {
-    console.error('createChannel error:', error);
+    console.error('خطا در ساخت کانال اعلان:', error);
   }
 }
 
