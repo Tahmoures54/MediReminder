@@ -25,13 +25,13 @@ export function ConfirmDialog({ title, message, onConfirm, onCancel }: ConfirmDi
               onClick={onConfirm}
               className="flex-1 bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-6 rounded-xl transition-all duration-300 shadow-lg shadow-green-500/30 active:scale-95 focus:outline-none focus:ring-4 focus:ring-green-300/30"
             >
-              بله · Yes
+              بله
             </button>
             <button
               onClick={onCancel}
               className="flex-1 bg-gray-600 hover:bg-gray-500 text-white font-bold py-3 px-6 rounded-xl transition-all duration-300 shadow-lg active:scale-95 focus:outline-none focus:ring-4 focus:ring-gray-300/20"
             >
-              انصراف · Cancel
+              انصراف
             </button>
           </div>
         </div>
