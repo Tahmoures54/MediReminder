@@ -1,21 +1,14 @@
-name: Build Signed AAB & APK
+name: Build Signed AAB and APK
 
 on:
   push:
-    branches: [ main ]
+    branches:
+      - main
   workflow_dispatch:
-
-# Secrets (optional — for production signing):
-#   ANDROID_KEYSTORE_BASE64
-#   ANDROID_KEYSTORE_PASSWORD
-#   ANDROID_KEY_ALIAS
-#   ANDROID_KEY_PASSWORD
-# If missing, a temporary keystore is used (testing only).
 
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -26,7 +19,7 @@ jobs:
           node-version: "22"
           cache: npm
 
-      - name: Install deps and build web
+      - name: Install and build web app
         run: |
           npm install
           npm run build
@@ -45,53 +38,41 @@ jobs:
           $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager "build-tools;34.0.0" --sdk_root=$ANDROID_SDK_ROOT
           yes | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --licenses
 
-      - name: Add Android platform
+      - name: Add Capacitor Android platform
         run: npx cap add android
 
-      - name: Check alarm sound file
+      - name: Copy alarm sound
         run: |
-          if [ ! -f "src/main/res/raw/medication_alarm.wav" ]; then
-            echo "Alarm sound not found"
-            exit 1
-          fi
-
-      - name: Copy alarm sound to Android res
-        run: |
+          test -f src/main/res/raw/medication_alarm.wav
           mkdir -p android/app/src/main/res/raw
           cp src/main/res/raw/medication_alarm.wav android/app/src/main/res/raw/medication_alarm.wav
 
       - name: Patch AndroidManifest permissions
         run: |
-          MANIFEST="android/app/src/main/AndroidManifest.xml"
-          if [ ! -f "$MANIFEST" ]; then
-            echo "AndroidManifest.xml not found"
-            exit 1
-          fi
-          if ! grep -q "POST_NOTIFICATIONS" "$MANIFEST"; then
+          MANIFEST=android/app/src/main/AndroidManifest.xml
+          test -f "$MANIFEST"
+          if ! grep -q POST_NOTIFICATIONS "$MANIFEST"; then
             sed -i 's|<uses-permission android:name="android.permission.INTERNET" />|<uses-permission android:name="android.permission.INTERNET" />\n    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />\n    <uses-permission android:name="android.permission.VIBRATE" />\n    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />\n    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />\n    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />|' "$MANIFEST"
           fi
 
-      - name: Generate Android icons
+      - name: Generate icons
         run: |
-          if [ ! -f "public/icon-512.png" ]; then
-            echo "public/icon-512.png not found"
-            exit 1
-          fi
+          test -f public/icon-512.png
           mkdir -p assets
           cp public/icon-512.png assets/icon.png
           cp public/icon-512.png assets/icon-only.png
           npx @capacitor/assets generate --android || true
 
-      - name: Cap sync
+      - name: Capacitor sync
         run: npx cap sync android
 
-      - name: Set versionName and versionCode
+      - name: Set version 1.0.1 code 2
         run: |
-          BUILD_GRADLE="android/app/build.gradle"
-          test -f "$BUILD_GRADLE"
-          sed -i 's/versionCode [0-9][0-9]*/versionCode 2/' "$BUILD_GRADLE"
-          sed -i 's/versionName "[^"]*"/versionName "1.0.1"/' "$BUILD_GRADLE"
-          grep -E 'versionCode|versionName' "$BUILD_GRADLE" || true
+          BG=android/app/build.gradle
+          test -f "$BG"
+          sed -i 's/versionCode [0-9][0-9]*/versionCode 2/' "$BG"
+          sed -i 's/versionName "[^"]*"/versionName "1.0.1"/' "$BG"
+          grep -E 'versionCode|versionName' "$BG" || true
 
       - name: Prepare keystore
         env:
@@ -105,60 +86,46 @@ jobs:
             echo "KEYSTORE_PASSWORD=$ANDROID_KEYSTORE_PASSWORD" >> "$GITHUB_ENV"
             echo "KEY_ALIAS=$ANDROID_KEY_ALIAS" >> "$GITHUB_ENV"
             echo "KEY_PASSWORD=$ANDROID_KEY_PASSWORD" >> "$GITHUB_ENV"
-            echo "USING_PRODUCTION_KEYSTORE=true" >> "$GITHUB_ENV"
-            echo "Using production keystore from Secrets"
+            echo "Using production keystore"
           else
-            echo "Secrets not set — generating temporary keystore"
-            keytool -genkey -v \
-              -keystore release.keystore \
-              -alias upload \
-              -keyalg RSA \
-              -keysize 2048 \
-              -validity 10000 \
-              -storepass android \
-              -keypass android \
-              -dname "CN=MediReminder, OU=Dev, O=Charity, L=City, S=State, C=IR"
+            keytool -genkey -v -keystore release.keystore -alias upload -keyalg RSA -keysize 2048 -validity 10000 -storepass android -keypass android -dname "CN=MediReminder, OU=Dev, O=Charity, L=City, S=State, C=IR"
             echo "KEYSTORE_PASSWORD=android" >> "$GITHUB_ENV"
             echo "KEY_ALIAS=upload" >> "$GITHUB_ENV"
             echo "KEY_PASSWORD=android" >> "$GITHUB_ENV"
-            echo "USING_PRODUCTION_KEYSTORE=false" >> "$GITHUB_ENV"
+            echo "Using temporary keystore"
           fi
+          cp release.keystore android/release.keystore
 
-      - name: Inject signing config into Gradle
+      - name: Write keystore.properties
         run: |
-          BUILD_GRADLE="android/app/build.gradle"
-          cat > android/keystore.properties << EOF
-          storeFile=../release.keystore
-          storePassword=${KEYSTORE_PASSWORD}
-          keyAlias=${KEY_ALIAS}
-          keyPassword=${KEY_PASSWORD}
-          EOF
-          # strip leading spaces from properties file
-          sed -i 's/^[[:space:]]*//' android/keystore.properties
+          printf '%s\n' "storeFile=../release.keystore" "storePassword=${KEYSTORE_PASSWORD}" "keyAlias=${KEY_ALIAS}" "keyPassword=${KEY_PASSWORD}" > android/keystore.properties
+          cat android/keystore.properties
 
-          python3 -c '
+      - name: Inject signingConfigs into build.gradle
+        run: |
+          python3 << 'ENDSCRIPT'
           import re
           path = "android/app/build.gradle"
           with open(path) as f:
               content = f.read()
           if "signingConfigs" in content:
-              print("signingConfigs already present")
+              print("already has signingConfigs")
           else:
-              block = """
-      signingConfigs {
-          release {
-              def ks = rootProject.file("keystore.properties")
-              if (ks.exists()) {
-                  def p = new Properties()
-                  p.load(new FileInputStream(ks))
-                  storeFile file(p["storeFile"])
-                  storePassword p["storePassword"]
-                  keyAlias p["keyAlias"]
-                  keyPassword p["keyPassword"]
-              }
-          }
-      }
-          """
+              block = (
+                  "\n    signingConfigs {\n"
+                  "        release {\n"
+                  "            def ks = rootProject.file(\"keystore.properties\")\n"
+                  "            if (ks.exists()) {\n"
+                  "                def p = new Properties()\n"
+                  "                p.load(new FileInputStream(ks))\n"
+                  "                storeFile file(p[\"storeFile\"])\n"
+                  "                storePassword p[\"storePassword\"]\n"
+                  "                keyAlias p[\"keyAlias\"]\n"
+                  "                keyPassword p[\"keyPassword\"]\n"
+                  "            }\n"
+                  "        }\n"
+                  "    }\n"
+              )
               content = re.sub(r"(android\s*\{)", r"\1" + block, content, count=1)
               if "signingConfig signingConfigs.release" not in content:
                   content = re.sub(
@@ -169,21 +136,19 @@ jobs:
                   )
               with open(path, "w") as f:
                   f.write(content)
-              print("signingConfigs injected")
-          '
-          cp release.keystore android/release.keystore
+              print("injected signingConfigs")
+          ENDSCRIPT
 
       - name: Build AAB
         run: |
           cd android
+          chmod +x gradlew
           ./gradlew bundleRelease --stacktrace
-          find app/build/outputs -name "*.aab" -ls || true
 
       - name: Build APK
         run: |
           cd android
           ./gradlew assembleRelease --stacktrace
-          find app/build/outputs -name "*.apk" -ls || true
 
       - name: Collect artifacts
         run: |
@@ -191,43 +156,24 @@ jobs:
           AAB=$(find android/app/build/outputs/bundle -name "*.aab" 2>/dev/null | head -1 || true)
           APK=$(find android/app/build/outputs/apk -name "*release*.apk" 2>/dev/null | grep -v unsigned | head -1 || true)
           UNSIGNED=$(find android/app/build/outputs/apk -name "*unsigned*.apk" 2>/dev/null | head -1 || true)
-
-          if [ -n "$AAB" ]; then
-            cp "$AAB" dist-artifacts/MediReminder-1.0.1.aab
-            echo "AAB ready"
-          fi
-
+          if [ -n "$AAB" ]; then cp "$AAB" dist-artifacts/MediReminder-1.0.1.aab; fi
           if [ -n "$APK" ]; then
             cp "$APK" dist-artifacts/MediReminder-1.0.1.apk
-            echo "APK ready"
           elif [ -n "$UNSIGNED" ]; then
-            $ANDROID_SDK_ROOT/build-tools/34.0.0/apksigner sign \
-              --ks release.keystore \
-              --ks-pass "pass:${KEYSTORE_PASSWORD}" \
-              --ks-key-alias "${KEY_ALIAS}" \
-              --key-pass "pass:${KEY_PASSWORD}" \
-              --out dist-artifacts/MediReminder-1.0.1.apk \
-              "$UNSIGNED"
-            echo "APK signed manually"
+            $ANDROID_SDK_ROOT/build-tools/34.0.0/apksigner sign --ks release.keystore --ks-pass "pass:${KEYSTORE_PASSWORD}" --ks-key-alias "${KEY_ALIAS}" --key-pass "pass:${KEY_PASSWORD}" --out dist-artifacts/MediReminder-1.0.1.apk "$UNSIGNED"
           fi
-
           ls -la dist-artifacts/ || true
 
-      - name: Upload AAB
+      - name: Upload AAB artifact
         uses: actions/upload-artifact@v4
         with:
           name: MediReminder-AAB-1.0.1
           path: dist-artifacts/MediReminder-1.0.1.aab
           if-no-files-found: warn
 
-      - name: Upload APK
+      - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: MediReminder-APK-1.0.1
           path: dist-artifacts/MediReminder-1.0.1.apk
           if-no-files-found: warn
-
-      - name: Summary
-        run: |
-          echo "Version: 1.0.1 (versionCode 2)"
-          echo "Production keystore: ${USING_PRODUCTION_KEYSTORE}"
