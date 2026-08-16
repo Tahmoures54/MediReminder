@@ -12,6 +12,8 @@ import { Capacitor } from '@capacitor/core';
 import { LocalNotifications } from '@capacitor/local-notifications';
 
 const SUPPORT_WEBSITE = "https://mediremind-brown.vercel.app/";
+/** نسخه نمایش‌داده‌شده در رابط (هم‌راستا با package.json) */
+const APP_VERSION = "1.0.1";
 const LOW_STOCK_THRESHOLD = 5;
 const TIMER_INTERVAL = 1000;
 const EARLY_THRESHOLD_MS = 30 * 60 * 1000;
@@ -382,8 +384,8 @@ export default function App() {
                   index={index + 1}
                   onToggle={() => handleToggleMedication(med)}
                   onReset={() => handleResetMedication(med)}
-                  onDelete={() => handleDeleteMedication(med)}
                   onShowReport={() => setReportMedication(med)}
+                  onDelete={() => handleDeleteMedication(med)}
                 />
               </div>
             ))
@@ -396,6 +398,9 @@ export default function App() {
               <span className="text-sm">✨</span>
               <span>ساخته‌شده با دقت برای سلامت شما</span>
               <span className="text-sm">✨</span>
+            </p>
+            <p className="mt-1 text-[10px] text-cyan-300/30 tracking-wide">
+              نسخه {APP_VERSION}
             </p>
           </div>
         </footer>
