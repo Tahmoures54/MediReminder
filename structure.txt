@@ -1,0 +1,64 @@
+MediReminder-2.0.0-Production:
+|   .gitignore
+|   capacitor.config.ts
+|   DEPLOYMENT.md
+|   DOCUMENTATION_INDEX.md
+|   FEATURES.md
+|   index.html
+|   main.jpg
+|   package-lock.json
+|   package.json
+|   PROJECT_SUMMARY.md
+|   QUICKSTART.md
+|   README.md
+|   report.jpg
+|   structure.txt
+|   TECHNICAL_DOCS.md
+|   tsconfig.json
+|   USAGE_GUIDE.md
+|   vite.config.ts
+|   
++---.github
+|   \---workflows
+|           build-apk.yml
+|           
++---public
+|       about.txt
+|       android-chrome-192x192.png
+|       android-chrome-512x512.png
+|       apple-touch-icon.png
+|       favicon-16x16.png
+|       favicon-32x32.png
+|       favicon.ico
+|       icon-192.png
+|       icon-512.png
+|       manifest.json
+|       sw.js
+|       
+\---src
+    |   App.tsx
+    |   index.css
+    |   main.tsx
+    |   
+    +---components
+    |       AddMedicationForm.tsx
+    |       ConfirmDialog.tsx
+    |       MedicationCard.tsx
+    |       NotificationPopup.tsx
+    |       ReportModal.tsx
+    |       
+    +---db
+    |       database.ts
+    |       
+    +---main
+    |   |   AndroidManifest.xml
+    |   |   
+    |   \---res
+    |       \---raw
+    |               medication_alarm.wav
+    |               
+    \---utils
+            audio.ts
+            cn.ts
+            permissions.ts
+            

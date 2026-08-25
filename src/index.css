@@ -1,0 +1,206 @@
+@import "tailwindcss";
+
+/* ==========================================================================
+   Base
+   ========================================================================== */
+:root {
+  color-scheme: dark;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+html {
+  background-color: #0f172a;
+}
+
+body {
+  margin: 0;
+  background-color: #0f172a;
+  color: #e5e7eb;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+::selection {
+  background: rgba(34, 211, 238, 0.28);
+  color: #ffffff;
+}
+
+/* ==========================================================================
+   Custom Utilities / Animations
+   ========================================================================== */
+@layer utilities {
+  /* ------------------------------------------------------------------------
+     Generic "animate-in" system
+     This supports combining classes like:
+     animate-in fade-in zoom-in slide-in-from-top duration-300
+     ------------------------------------------------------------------------ */
+  @keyframes enter {
+    from {
+      opacity: var(--enter-opacity, 1);
+      transform:
+        translate3d(
+          var(--enter-translate-x, 0),
+          var(--enter-translate-y, 0),
+          0
+        )
+        scale3d(
+          var(--enter-scale, 1),
+          var(--enter-scale, 1),
+          1
+        );
+    }
+    to {
+      opacity: 1;
+      transform: translate3d(0, 0, 0) scale3d(1, 1, 1);
+    }
+  }
+
+  @keyframes scale-in {
+    from {
+      opacity: 0;
+      transform: scale(0.9);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+
+  @keyframes bounce-in {
+    0% {
+      opacity: 0;
+      transform: scale(0.3);
+    }
+    50% {
+      transform: scale(1.05);
+    }
+    70% {
+      transform: scale(0.94);
+    }
+    100% {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+
+  .animate-in {
+    animation: enter 0.3s cubic-bezier(0.16, 1, 0.3, 1) both;
+    will-change: opacity, transform;
+  }
+
+  .fade-in {
+    --enter-opacity: 0;
+  }
+
+  .zoom-in {
+    --enter-scale: 0.95;
+  }
+
+  .zoom-in-95 {
+    --enter-scale: 0.95;
+  }
+
+  .slide-in-from-top {
+    --enter-translate-y: -16px;
+  }
+
+  .slide-in-from-top-2 {
+    --enter-translate-y: -8px;
+  }
+
+  .slide-in-from-bottom {
+    --enter-translate-y: 16px;
+  }
+
+  .animate-scale-in {
+    animation: scale-in 0.2s ease-out both;
+    will-change: opacity, transform;
+  }
+
+  .animate-bounce-in {
+    animation: bounce-in 0.5s ease-out both;
+    will-change: opacity, transform;
+  }
+
+  /* Utility scrollbar class for specific containers */
+  .custom-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: #4b5563 #1f2937;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: #1f2937;
+    border-radius: 9999px;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background: #4b5563;
+    border-radius: 9999px;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: #6b7280;
+  }
+}
+
+/* ==========================================================================
+   Global Scrollbar
+   ========================================================================== */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #4b5563 #1f2937;
+}
+
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+*::-webkit-scrollbar-track {
+  background: #1f2937;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: #4b5563;
+  border-radius: 9999px;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: #6b7280;
+}
+
+/* ==========================================================================
+   Reduced Motion Accessibility
+   ========================================================================== */
+@media (prefers-reduced-motion: reduce) {
+  html:focus-within {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
