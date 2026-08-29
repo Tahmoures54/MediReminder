@@ -1,4 +1,39 @@
-node_modules/ 
-dist/ 
-android/ 
-release.keystore 
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+android/
+ios/
+.capacitor/
+
+# Secrets & signing
+*.keystore
+*.jks
+release.keystore
+local.properties
+google-services.json
+
+# IDE / OS
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Logs & caches
+*.log
+npm-debug.log*
+.npm
+.cache/
+.turbo/
+
+# Env
+.env
+.env.*
+!.env.example
+
+# Test / coverage
+coverage/
+*.lcov
