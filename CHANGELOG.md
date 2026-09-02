@@ -1,48 +1,37 @@
 # Changelog
 
-All notable changes to MediReminder are documented in this file.
+## [3.0.0] — 2026-09-02 — Final release
+
+### Added
+- **PermissionsBanner**: in-app guidance to enable notifications (and Android battery tips)
+- One-tap «فعال‌سازی اعلان‌ها»; banner reappears if permission is still missing
+- `RELEASE.md` production checklist for users and publishers
+- Re-check notification permission when app returns to foreground
+
+### Included from 2.2.x
+- Persistent repeating alerts until dose confirmed
+- Confirm («مصرف کردم») → immediately start next-interval timer
+- Web Service Worker + native LocalNotifications bridge
+- Dismiss does not stop reminders
+
+### Notes
+- This is the recommended **production publish** line.
+- Tag: `v3.0.0`
 
 ## [2.2.0] — 2026-09-02
 
-### Added
-- **Persistent repeating alerts until dose is confirmed**
-  - Web/PWA: Service Worker follow-ups every ~45s with action buttons (مصرف کردم / اسنوز / بعداً)
-  - Native Android: pre-scheduled follow-ups every ~2 minutes while `pendingDose` is true
-  - In-app popup re-opens automatically if closed without confirmation
-- Full bridge between App ↔ Service Worker (`src/utils/alarms.ts`)
-- Native notification action types: Taken / Snooze 10m / Dismiss
-
-### Behavior
-- **«مصرف کردم»**: stops all follow-ups **and immediately starts** the next-interval timer
-- **«اسنوز»**: stops current nags, schedules a new alarm in 10 or 30 minutes
-- **«بعداً» / بستن اعلان**: does **not** stop reminders — patient must confirm or snooze
-- Background: SW + LocalNotifications keep notifying even when the app is not in the foreground
-
-### Fixed
-- App was not syncing schedules to the Service Worker (web alarms were incomplete)
-- Pending doses no longer stop notifying after the first alert
+- Persistent repeating alerts (SW ~45s, native ~2min)
+- App ↔ Service Worker full sync
+- Native action buttons Taken / Snooze / Dismiss
 
 ## [2.1.1] — 2026-09-02
 
-### Fixed
-- Edit medication fully wired; form supports create + edit
-- Snooze 10 / 30 minutes from NotificationPopup
-- Version badge aligned; quantity 0 allowed on edit
-- Proportional remaining time when interval changes while running
+- Edit medication wired; snooze 10/30; version sync
 
 ## [2.1.0] — 2026-08-29
 
-### Added
-- Edit medication from the card
-- 10 / 30 minute snooze from the alarm popup
+- Edit, snooze, absolute-time scheduling polish
 
-### Changed
-- Absolute-time scheduling as source of truth
-- MIT LICENSE
+## [2.0.0]
 
-## [2.0.0] — previous
-
-- Absolute-time dose scheduling
-- Dose lifecycle: scheduled → due → taken / snoozed
-- Native Android local notifications
-- Low-stock, history, JSON backup/restore
+- Absolute-time model, history, backup, PWA + Capacitor foundation

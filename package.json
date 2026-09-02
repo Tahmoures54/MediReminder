@@ -1,9 +1,9 @@
 {
   "name": "medi-reminder",
   "private": true,
-  "version": "2.2.0",
+  "version": "3.0.0",
   "type": "module",
-  "description": "Offline-first medication reminder and dose tracking app",
+  "description": "Offline-first medication reminder with persistent alerts until dose confirmed",
   "scripts": {
     "dev": "vite",
     "build": "vite build",

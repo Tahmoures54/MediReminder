@@ -6,8 +6,14 @@ import { AddMedicationForm } from './components/AddMedicationForm';
 import { ConfirmDialog } from './components/ConfirmDialog';
 import { NotificationPopup } from './components/NotificationPopup';
 import { ReportModal } from './components/ReportModal';
+import { PermissionsBanner } from './components/PermissionsBanner';
 import { db, Medication, HistoryRecord } from './db/database';
-import { initAllPermissions, checkNotificationPermission } from './utils/permissions';
+import {
+  initAllPermissions,
+  checkNotificationPermission,
+  requestNotificationPermission,
+  setupAndroidChannel,
+} from './utils/permissions';
 import { playAlarm, stopAlarm, triggerHaptics } from './utils/audio';
 import {
   syncAllAlarms,
@@ -17,9 +23,9 @@ import {
   dismissSwFollowUps,
 } from './utils/alarms';
 
-const APP_VERSION = '2.2.0';
-/** Re-open in-app alert while dose is still pending (ms). */
+const APP_VERSION = '3.0.0';
 const IN_APP_NAG_MS = 45_000;
+const PERM_DISMISS_KEY = 'medireminder-perm-banner-dismissed';
 
 type AlertItem = { medication: Medication; title: string; message: string };
 
@@ -64,12 +70,18 @@ export default function App() {
   const [report, setReport] = useState<Medication | null>(null);
   const [permission, setPermission] = useState('unknown');
   const [isNative, setIsNative] = useState(false);
+  const [permBannerHidden, setPermBannerHidden] = useState(() => {
+    try {
+      return sessionStorage.getItem(PERM_DISMISS_KEY) === '1';
+    } catch {
+      return false;
+    }
+  });
 
   const medsRef = useRef<Medication[]>([]);
   const alertId = useRef<number | null>(null);
   const syncKey = useRef('');
   const nagTimer = useRef<number | null>(null);
-  // Stable refs so SW / native listeners always call latest handlers
   const takeDoseRef = useRef<(m: Medication) => Promise<void>>(async () => {});
   const snoozeRef = useRef<(m: Medication, minutes?: number) => Promise<void>>(async () => {});
 
@@ -86,22 +98,23 @@ export default function App() {
     setMedications(all);
   }, []);
 
-  const openAlert = useCallback((m: Medication, force = false) => {
-    if (!force && alertId.current === m.id && alert) return;
-    alertId.current = m.id ?? null;
-    setAlert({
-      medication: m,
-      title: 'زمان مصرف دارو',
-      message: `وقت مصرف ${m.name} (${m.dosage}) فرا رسیده است.\nلطفاً پس از مصرف، دکمه «مصرف کردم» را بزنید.`,
-    });
-    playAlarm();
-    triggerHaptics();
-  }, [alert]);
+  const openAlert = useCallback(
+    (m: Medication, force = false) => {
+      if (!force && alertId.current === m.id && alert) return;
+      alertId.current = m.id ?? null;
+      setAlert({
+        medication: m,
+        title: 'زمان مصرف دارو',
+        message: `وقت مصرف ${m.name} (${m.dosage}) فرا رسیده است.\nلطفاً پس از مصرف، دکمه «مصرف کردم» را بزنید.`,
+      });
+      playAlarm();
+      triggerHaptics();
+    },
+    [alert]
+  );
 
-  /** Close popup UI only — does NOT clear pendingDose (reminders continue). */
   const closeAlertUi = useCallback(() => {
     stopAlarm();
-    // Keep alertId so we know which med is due; allow re-nag via force
     setAlert(null);
   }, []);
 
@@ -112,14 +125,12 @@ export default function App() {
     }
   };
 
-  // While any dose is pending and popup is closed, re-open it periodically
   useEffect(() => {
     clearNagTimer();
     const pending = medications.filter((m) => m.pendingDose);
     if (pending.length === 0) return;
 
     if (!alert) {
-      // Popup closed but dose still pending → re-open after short delay
       nagTimer.current = window.setTimeout(() => {
         const still = medsRef.current.find((m) => m.pendingDose);
         if (still) openAlert(still, true);
@@ -134,13 +145,47 @@ export default function App() {
       const native = Capacitor.isNativePlatform();
       setIsNative(native);
       const p = await initAllPermissions();
-      setPermission(p.notification ? 'granted' : await checkNotificationPermission());
+      const status = p.notification ? 'granted' : await checkNotificationPermission();
+      setPermission(status);
       await registerNotificationActions();
       await load();
     })();
   }, [load]);
 
-  // Absolute-time tick: detect due doses → mark pendingDose + open alert
+  // Re-check permission when app returns to foreground
+  useEffect(() => {
+    const onVisible = async () => {
+      if (document.visibilityState !== 'visible') return;
+      const status = await checkNotificationPermission();
+      setPermission(status);
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, []);
+
+  const handleRequestPermission = async () => {
+    const ok = await requestNotificationPermission();
+    if (ok) {
+      await setupAndroidChannel();
+      setPermission('granted');
+      setPermBannerHidden(false);
+      try {
+        sessionStorage.removeItem(PERM_DISMISS_KEY);
+      } catch {}
+      // Re-sync alarms now that permission is available
+      await syncAllAlarms(medsRef.current);
+    } else {
+      setPermission(await checkNotificationPermission());
+    }
+  };
+
+  const dismissPermBanner = () => {
+    setPermBannerHidden(true);
+    try {
+      sessionStorage.setItem(PERM_DISMISS_KEY, '1');
+    } catch {}
+  };
+
   useEffect(() => {
     const tick = async () => {
       const now = Date.now();
@@ -170,7 +215,6 @@ export default function App() {
     return () => window.clearInterval(id);
   }, [openAlert, persist]);
 
-  // Keep background alarms in sync (SW on web, LocalNotifications on native)
   useEffect(() => {
     const key = medications
       .map((m) => `${m.id}:${m.running}:${m.nextDoseAt}:${m.pendingDose}:${m.name}`)
@@ -180,11 +224,9 @@ export default function App() {
     syncAllAlarms(medications).catch((e) => console.warn('syncAllAlarms', e));
   }, [medications]);
 
-  // On load: if anything already pending, open alert immediately
   useEffect(() => {
     const due = medications.find((m) => m.pendingDose);
     if (due) openAlert(due, true);
-    // only on first meaningful load
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [medications.length > 0]);
 
@@ -198,7 +240,6 @@ export default function App() {
         status: statusFor(m, now),
         snoozeCount: m.snoozeCount || 0,
       };
-      // Immediately start next interval timer after confirmation
       const updated: Medication = {
         ...m,
         quantity: Math.max(0, m.quantity - 1),
@@ -214,7 +255,6 @@ export default function App() {
       setMedications((v) => v.map((x) => (x.id === m.id ? updated : x)));
       await persist(updated);
 
-      // Stop all repeating alerts for this med
       if (m.id != null) {
         await cancelMedNotifications(m.id);
         dismissSwFollowUps(m.id);
@@ -256,7 +296,6 @@ export default function App() {
   takeDoseRef.current = takeDose;
   snoozeRef.current = snooze;
 
-  // Service Worker → App (web/PWA notification actions)
   useEffect(() => {
     return onSwMessage((msg) => {
       const id = Number(msg.medicationId);
@@ -267,18 +306,13 @@ export default function App() {
       if (msg.type === 'ALARM_TAKEN') {
         takeDoseRef.current({ ...m, pendingDose: true, running: false, remaining: 0 });
       } else if (msg.type === 'ALARM_SNOOZED') {
-        snoozeRef.current(
-          { ...m, pendingDose: true, running: false, remaining: 0 },
-          msg.minutes ?? 10
-        );
+        snoozeRef.current({ ...m, pendingDose: true, running: false, remaining: 0 }, msg.minutes ?? 10);
       } else if (msg.type === 'ALARM_TRIGGERED' || msg.type === 'ALARM_DISMISSED') {
-        // Open in-app confirm UI; follow-ups keep running until Taken/Snooze
         openAlert({ ...m, pendingDose: true, running: false, remaining: 0 }, true);
       }
     });
   }, [openAlert]);
 
-  // Native notification listeners
   useEffect(() => {
     if (!isNative) return;
 
@@ -286,7 +320,6 @@ export default function App() {
       const id = Number(n.extra?.medicationId);
       const m = medsRef.current.find((x) => x.id === id);
       if (m) {
-        // Mark pending if not already
         if (!m.pendingDose) {
           const due = { ...m, running: false, pendingDose: true, remaining: 0, updatedAt: Date.now() };
           setMedications((v) => v.map((x) => (x.id === m.id ? due : x)));
@@ -309,7 +342,6 @@ export default function App() {
       } else if (act === 'snooze') {
         snoozeRef.current({ ...m, pendingDose: true, running: false, remaining: 0 }, 10);
       } else {
-        // tap / dismiss → open app UI; keep pending + follow-ups
         openAlert({ ...m, pendingDose: true, running: false, remaining: 0 }, true);
       }
     });
@@ -502,6 +534,7 @@ export default function App() {
   const activeCount = useMemo(() => medications.filter((m) => m.running).length, [medications]);
   const dueCount = useMemo(() => medications.filter((m) => m.pendingDose).length, [medications]);
   const formVisible = showAdd || editing !== null;
+  const showPermBanner = permission !== 'granted' && permission !== 'unknown' && !permBannerHidden;
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-gray-950 via-gray-900 to-slate-950 text-white">
@@ -550,10 +583,12 @@ export default function App() {
             </button>
           </div>
 
-          {permission !== 'granted' && (
-            <p className="mt-3 rounded-xl border border-amber-500/20 bg-amber-500/10 p-3 text-xs text-amber-300">
-              اعلان‌ها فعال نیستند. برای یادآوری در پس‌زمینه، مجوز اعلان را فعال کنید.
-            </p>
+          {showPermBanner && (
+            <PermissionsBanner
+              permission={permission}
+              onRequest={handleRequestPermission}
+              onDismiss={dismissPermBanner}
+            />
           )}
 
           {dueCount > 0 && (
@@ -604,8 +639,12 @@ export default function App() {
           )}
         </div>
 
-        <footer className="mt-8 pb-8 text-center text-xs text-gray-500">
-          داده‌ها فقط روی همین دستگاه ذخیره می‌شوند. تا تأیید «مصرف کردم»، یادآوری تکرار می‌شود و سپس تایمر دوز بعدی بلافاصله شروع می‌شود.
+        <footer className="mt-8 space-y-2 pb-8 text-center text-xs text-gray-500">
+          <p>
+            داده‌ها فقط روی همین دستگاه ذخیره می‌شوند. تا تأیید «مصرف کردم»، یادآوری تکرار می‌شود و سپس تایمر دوز بعدی
+            بلافاصله شروع می‌شود.
+          </p>
+          <p className="text-gray-600">MediReminder v{APP_VERSION} — ابزار یادآوری است و جایگزین توصیه پزشک نیست.</p>
         </footer>
       </div>
 

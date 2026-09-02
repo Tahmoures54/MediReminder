@@ -1,4 +1,4 @@
-# MediReminder 2.2.0
+# MediReminder 3.0.0
 
 **یادآور دارو** — Offline-first medication reminder & dose tracker  
 Built with React 19 · TypeScript · Vite · Capacitor · IndexedDB
@@ -12,42 +12,40 @@ Built with React 19 · TypeScript · Vite · Capacitor · IndexedDB
 | Feature | Description |
 |--------|-------------|
 | 📅 Multi-med | Unlimited medications in one place |
-| ⏱️ Absolute-time scheduling | `nextDoseAt` is the source of truth (not UI timers) |
-| 🔔 **Persistent repeating alerts** | Keep notifying until the patient confirms the dose |
-| ✅ Confirm → next timer | «مصرف کردم» stops nags and **immediately starts** the next interval |
+| ⏱️ Absolute-time scheduling | `nextDoseAt` is the source of truth |
+| 🔔 **Persistent repeating alerts** | Keep notifying until the patient confirms |
+| ✅ Confirm → next timer | «مصرف کردم» stops nags and starts the next interval |
 | ⏰ Snooze | 10 or 30 minutes |
-| ✏️ Edit | Change name, dose, quantity, interval anytime |
-| 📦 Low-stock | Visual warning when quantity ≤ 5 |
-| 📊 History | On-time / early / late with adherence score |
-| 💾 Backup | JSON export & restore, no server |
-| 🌙 Dark UI | Modern, readable, reduced-motion friendly |
-| 📱 PWA + APK | Install as PWA or build with Capacitor |
+| ⚙️ **Setup guidance** | In-app reminder to enable notifications & battery settings |
+| ✏️ Edit | Name, dose, quantity, interval |
+| 📦 Low-stock | Warning when quantity ≤ 5 |
+| 📊 History | On-time / early / late + adherence |
+| 💾 Backup | JSON export & restore |
+| 📱 PWA + APK | Install as PWA or Capacitor Android |
 
-## Alert policy / سیاست هشدار
+## First-run setup (مهم برای کاربر)
 
-1. When a dose is due → in-app alarm + system notification.
-2. Until the patient taps **«مصرف کردم»** or **Snooze**, reminders **repeat**:
-   - Web/PWA: ~every 45 seconds (Service Worker)
-   - Android APK: ~every 2 minutes (LocalNotifications)
-3. **«بعداً»** only closes the banner — it does **not** stop reminders.
-4. After **«مصرف کردم»** the next-interval timer starts immediately.
+1. **مجوز اعلان** را بدهید (دکمه «فعال‌سازی اعلان‌ها» داخل برنامه).
+2. **اندروید:** تنظیمات ← برنامه‌ها ← یادآور دارو ← باتری ← بدون محدودیت / عدم بهینه‌سازی.
+3. صدای اعلان و ویبره را خاموش نکنید.
+4. در وب: اعلان مرورگر را Allow کنید؛ در صورت امکان PWA را نصب کنید.
 
-## Important / مهم
+بدون این تنظیمات، هشدار در پس‌زمینه ممکن است از دست برود.
 
-MediReminder is a **reminder and tracking tool**.  
-It does **not** diagnose, prescribe, or replace a physician or pharmacist.
+## Alert policy
 
-داده‌های دارو فقط روی دستگاه شما ذخیره می‌شوند و به هیچ سروری ارسال نمی‌شوند.
-
----
+1. Dose due → in-app alarm + system notification  
+2. Until **Taken** or **Snooze** → reminders repeat (Web ~45s / Android ~2min)  
+3. **Dismiss** does not stop reminders  
+4. **Taken** → next interval timer starts immediately  
 
 ## Quick start
 
 ```bash
 npm ci
 npm run typecheck
-npm run dev          # http://localhost:5173
-npm run build        # production build
+npm run build
+npm run dev
 ```
 
 ### Android
@@ -57,42 +55,10 @@ npx cap sync android
 npx cap open android
 ```
 
-Release builds **require** a production keystore (see `DEPLOYMENT.md` and CI workflow).
-
-For reliable background alerts on Android, grant notification permission and disable battery optimization for the app when possible.
-
----
-
-## Architecture highlights
-
-- **Absolute time**: schedule lives in `nextDoseAt` (ms epoch).
-- **Dose lifecycle**: `scheduled → due (pendingDose) → taken | snoozed`.
-- **Web**: Service Worker stores alarms, shows notifications, and runs follow-ups until confirmed.
-- **Native**: Capacitor LocalNotifications with action buttons; pending doses get a burst of follow-up schedules.
-- **Storage**: IndexedDB (`MedicationReminderDB`), schema version 4, JSON backup/restore.
-
----
-
-## Project structure
-
-```
-src/
-├── components/
-├── db/
-├── utils/          # audio, permissions, alarms (SW + native bridge)
-├── App.tsx
-└── main.tsx
-public/
-├── sw.js           # PWA service worker + repeating alarms
-└── manifest.json
-```
-
----
-
-## Changelog
-
-See [CHANGELOG.md](./CHANGELOG.md) for 2.2.0 and earlier notes.
+See [DEPLOYMENT.md](./DEPLOYMENT.md) and [RELEASE.md](./RELEASE.md).
 
 ## License
 
 MIT — see [LICENSE](./LICENSE).
+
+MediReminder is a reminder tool only — not medical advice.
