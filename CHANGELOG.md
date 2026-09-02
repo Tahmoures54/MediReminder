@@ -2,50 +2,47 @@
 
 All notable changes to MediReminder are documented in this file.
 
+## [2.2.0] — 2026-09-02
+
+### Added
+- **Persistent repeating alerts until dose is confirmed**
+  - Web/PWA: Service Worker follow-ups every ~45s with action buttons (مصرف کردم / اسنوز / بعداً)
+  - Native Android: pre-scheduled follow-ups every ~2 minutes while `pendingDose` is true
+  - In-app popup re-opens automatically if closed without confirmation
+- Full bridge between App ↔ Service Worker (`src/utils/alarms.ts`)
+- Native notification action types: Taken / Snooze 10m / Dismiss
+
+### Behavior
+- **«مصرف کردم»**: stops all follow-ups **and immediately starts** the next-interval timer
+- **«اسنوز»**: stops current nags, schedules a new alarm in 10 or 30 minutes
+- **«بعداً» / بستن اعلان**: does **not** stop reminders — patient must confirm or snooze
+- Background: SW + LocalNotifications keep notifying even when the app is not in the foreground
+
+### Fixed
+- App was not syncing schedules to the Service Worker (web alarms were incomplete)
+- Pending doses no longer stop notifying after the first alert
+
 ## [2.1.1] — 2026-09-02
 
 ### Fixed
-- **Edit medication fully wired**: `MedicationCard` now receives `onEdit`; form supports create **and** edit modes.
-- **Snooze 10 / 30 minutes**: `NotificationPopup` passes minutes correctly; App respects the chosen duration.
-- Version badge and `package.json` aligned to **2.1.1** (was still showing 2.0.0 in UI).
-- Quantity validation on edit allows `0` (empty stock).
-- Dose status (`early` / `on-time` / `late`) now prefers `scheduledAt` / `nextDoseAt` for accuracy.
-
-### Improved
-- Changing interval while a timer is running keeps **proportional remaining time**.
-- Clearer form titles and labels in Persian for edit vs create.
+- Edit medication fully wired; form supports create + edit
+- Snooze 10 / 30 minutes from NotificationPopup
+- Version badge aligned; quantity 0 allowed on edit
+- Proportional remaining time when interval changes while running
 
 ## [2.1.0] — 2026-08-29
 
 ### Added
-- **Edit medication**: edit name, dosage, quantity and interval from the card (✏️ button).
-- Interval change while a timer is running keeps proportional remaining time.
-- Proper 10 / 30 minute snooze from the alarm popup (native + in-app).
+- Edit medication from the card
+- 10 / 30 minute snooze from the alarm popup
 
 ### Changed
-- Version bump to 2.1.0.
-- Refactored `App.tsx` for readability and maintainability.
-- Improved `AddMedicationForm` to support both create and edit modes.
-- Cleaner `MedicationCard` layout with dedicated edit action.
-- More accurate dose status calculation (early / on-time / late) based on scheduled time.
-- Expanded `.gitignore` for safer Android / signing workflows.
-- Added MIT LICENSE.
-
-### Fixed
-- Snooze handler signature mismatch between `NotificationPopup` and `App`.
-- Quantity validation now allows 0 (empty stock) instead of forcing > 0 on edit.
-
-### Notes for release
-- Offline-first, local-only data model unchanged.
-- Android production builds still require a proper release keystore.
-- PWA + Capacitor Android paths both supported.
+- Absolute-time scheduling as source of truth
+- MIT LICENSE
 
 ## [2.0.0] — previous
 
-- Absolute-time dose scheduling as source of truth.
-- Explicit dose lifecycle: scheduled → due → taken / snoozed.
-- Persistent pending-dose state across restarts.
-- Native Android local notifications (synced only on schedule change).
-- Low-stock visibility and dose history.
-- JSON backup / restore.
-- Accessibility and reduced-motion foundations.
+- Absolute-time dose scheduling
+- Dose lifecycle: scheduled → due → taken / snoozed
+- Native Android local notifications
+- Low-stock, history, JSON backup/restore

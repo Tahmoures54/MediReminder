@@ -1,10 +1,10 @@
-// public/sw.js — Service Worker یادآور دارو (تولید)
-const CACHE_NAME = 'medi-reminder-v6';
+// public/sw.js — Service Worker یادآور دارو
+// هشدارهای تکرارشونده تا تأیید «مصرف کردم» یا اسنوز
+const CACHE_NAME = 'medi-reminder-v7';
 const ALARM_DB_NAME = 'MedicationAlarmDB';
 const ALARM_STORE = 'alarms';
-/** فاصله تکرار اعلان تا تأیید مصرف (۳۰ ثانیه) */
-const FOLLOW_UP_INTERVAL = 30_000;
-const SNOOZE_DEFAULT_MS = 10 * 60 * 1000;
+/** فاصله تکرار اعلان تا تأیید مصرف */
+const FOLLOW_UP_INTERVAL = 45_000; // 45 seconds
 
 const urlsToCache = [
   '/',
@@ -74,7 +74,7 @@ async function storeAlarms(alarms) {
   return withStore('readwrite', store => {
     store.clear();
     for (const alarm of alarms) {
-      if (!alarm.id) alarm.id = crypto.randomUUID();
+      if (alarm.id == null) alarm.id = crypto.randomUUID();
       if (typeof alarm.time !== 'number') continue;
       store.put(alarm);
     }
@@ -111,13 +111,15 @@ function clearAllTimers() {
 
 async function showStandardNotification(alarm, isFollowUp = false) {
   const title = isFollowUp
-    ? '🔔 یادآوری مجدد دارو'
+    ? '🔔 یادآوری مجدد دارو — لطفاً تأیید کنید'
     : '🔔 زمان مصرف دارو!';
 
   const body = [
     `💊 ${alarm.name || 'دارو'}`,
     `⚖️ ${alarm.dosage || ''}`,
-    isFollowUp ? 'هنوز مصرف نکرده‌اید؟ لطفاً تأیید کنید.' : 'الان مصرف کنید'
+    isFollowUp
+      ? 'هنوز مصرف را تأیید نکرده‌اید. لطفاً «مصرف کردم» را بزنید.'
+      : 'الان مصرف کنید و سپس تأیید کنید.'
   ].filter(Boolean).join('\n');
 
   await self.registration.showNotification(title, {
@@ -170,6 +172,7 @@ async function triggerAlarm(alarm, isFollowUp = false) {
         clearTimeout(activeTimers.get(String(alarm.id)));
         activeTimers.delete(String(alarm.id));
       }
+      // Start repeating until Taken or Snooze
       startFollowUpAlarms(alarm);
     }
   } catch (err) {
@@ -185,7 +188,8 @@ function startFollowUpAlarms(alarm) {
       id: `followup-${alarm.id}`,
       medicationId: alarm.id,
       name: alarm.name,
-      dosage: alarm.dosage
+      dosage: alarm.dosage,
+      pending: true
     });
   });
 
@@ -220,7 +224,9 @@ function stopFollowUpAlarms(alarmId) {
     clearTimeout(followUpTimers.get(key));
     followUpTimers.delete(key);
   }
-  withStore('readwrite', store => store.delete(`followup-${alarmId}`));
+  withStore('readwrite', store => {
+    store.delete(`followup-${alarmId}`);
+  });
 }
 
 async function cancelAlarmCompletely(alarmId) {
@@ -231,12 +237,18 @@ async function cancelAlarmCompletely(alarmId) {
   }
   stopFollowUpAlarms(alarmId);
   await removeAlarmFromDB(alarmId);
+  try {
+    const notifications = await self.registration.getNotifications({ tag: `med-${alarmId}` });
+    notifications.forEach(n => n.close());
+  } catch {}
 }
 
 async function snoozeAlarm(alarmId, minutes = 10) {
   stopFollowUpAlarms(alarmId);
-  const notifications = await self.registration.getNotifications({ tag: `med-${alarmId}` });
-  notifications.forEach(n => n.close());
+  try {
+    const notifications = await self.registration.getNotifications({ tag: `med-${alarmId}` });
+    notifications.forEach(n => n.close());
+  } catch {}
 
   const all = await getAllStoredAlarms();
   let base = all.find(a => String(a.id) === String(alarmId));
@@ -261,7 +273,17 @@ async function rescheduleStoredAlarms() {
   const alarms = await getAllStoredAlarms();
   const now = Date.now();
   for (const alarm of alarms) {
-    if (String(alarm.id).startsWith('followup-')) continue;
+    if (String(alarm.id).startsWith('followup-')) {
+      // Resume pending follow-ups after SW restart
+      const medId = alarm.medicationId ?? String(alarm.id).replace(/^followup-/, '');
+      startFollowUpAlarms({
+        id: medId,
+        name: alarm.name,
+        dosage: alarm.dosage,
+        time: now
+      });
+      continue;
+    }
     if (alarm.time > now) {
       await scheduleAlarm(alarm);
     } else {
@@ -285,14 +307,17 @@ self.addEventListener('message', event => {
         for (const alarm of alarms) {
           await scheduleAlarm(alarm);
         }
-      } else if (data.type === 'CANCEL_ALARM' && data.id) {
+      } else if (data.type === 'CANCEL_ALARM' && data.id != null) {
         await cancelAlarmCompletely(data.id);
-      } else if (data.type === 'DISMISS_ALARM' && data.id) {
+      } else if (data.type === 'DISMISS_ALARM' && data.id != null) {
+        // Full stop of follow-ups (used after Taken)
         stopFollowUpAlarms(data.id);
         await removeAlarmFromDB(data.id);
-        const notifications = await self.registration.getNotifications({ tag: `med-${data.id}` });
-        notifications.forEach(n => n.close());
-      } else if (data.type === 'SNOOZE_ALARM' && data.id) {
+        try {
+          const notifications = await self.registration.getNotifications({ tag: `med-${data.id}` });
+          notifications.forEach(n => n.close());
+        } catch {}
+      } else if (data.type === 'SNOOZE_ALARM' && data.id != null) {
         await snoozeAlarm(data.id, data.minutes || 10);
       } else if (data.type === 'LIST_ALARMS') {
         const list = await getAllStoredAlarms();
@@ -312,23 +337,29 @@ self.addEventListener('notificationclick', event => {
 
   event.waitUntil((async () => {
     if (action === 'taken') {
+      // Stop all nags; tell the app to start next timer
       stopFollowUpAlarms(medicationId);
       await removeAlarmFromDB(medicationId);
       await notifyClients({ type: 'ALARM_TAKEN', medicationId });
+      await openOrFocusApp(medicationId);
     } else if (action === 'snooze') {
       await snoozeAlarm(medicationId, 10);
       await notifyClients({ type: 'ALARM_SNOOZED', medicationId, minutes: 10 });
-    } else if (action === 'dismiss') {
-      // dismiss فقط اعلان را می‌بندد؛ follow-up ادامه دارد تا Taken یا Snooze
-      await notifyClients({ type: 'ALARM_DISMISSED', medicationId });
-      // follow-up عمداً متوقف نمی‌شود
-    } else {
-      if (medicationId) {
-        // فقط اپ را باز می‌کنیم؛ follow-up ادامه دارد
-      }
       await openOrFocusApp(medicationId);
+    } else if (action === 'dismiss') {
+      // Dismiss does NOT stop follow-ups — patient must confirm or snooze
+      await notifyClients({ type: 'ALARM_DISMISSED', medicationId });
+      await openOrFocusApp(medicationId);
+    } else {
+      await openOrFocusApp(medicationId);
+      await notifyClients({ type: 'ALARM_TRIGGERED', medicationId });
     }
   })());
+});
+
+// Some browsers fire notificationclose; we intentionally do not stop follow-ups here.
+self.addEventListener('notificationclose', () => {
+  // no-op: closing the banner must not mean the dose was taken
 });
 
 async function notifyClients(payload) {
@@ -347,7 +378,10 @@ async function openOrFocusApp(medicationId) {
   } else {
     const newClient = await self.clients.openWindow('/');
     if (newClient) {
-      newClient.postMessage({ type: 'ALARM_TRIGGERED', medicationId });
+      // slight delay so the page can attach the message listener
+      setTimeout(() => {
+        newClient.postMessage({ type: 'ALARM_TRIGGERED', medicationId });
+      }, 500);
     }
   }
 }

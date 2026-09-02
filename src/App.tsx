@@ -9,8 +9,17 @@ import { ReportModal } from './components/ReportModal';
 import { db, Medication, HistoryRecord } from './db/database';
 import { initAllPermissions, checkNotificationPermission } from './utils/permissions';
 import { playAlarm, stopAlarm, triggerHaptics } from './utils/audio';
+import {
+  syncAllAlarms,
+  onSwMessage,
+  registerNotificationActions,
+  cancelMedNotifications,
+  dismissSwFollowUps,
+} from './utils/alarms';
 
-const APP_VERSION = '2.1.1';
+const APP_VERSION = '2.2.0';
+/** Re-open in-app alert while dose is still pending (ms). */
+const IN_APP_NAG_MS = 45_000;
 
 type AlertItem = { medication: Medication; title: string; message: string };
 
@@ -37,14 +46,11 @@ function normalize(m: Medication): Medication {
   };
 }
 
-/** Determine dose status relative to the scheduled time when available. */
 function statusFor(m: Medication, takenAt: number): HistoryRecord['status'] {
   const scheduled = m.nextDoseAt ?? m.lastTakenAt;
   if (!scheduled) return 'on-time';
   const delta = takenAt - scheduled;
-  // Early if more than 30 minutes before scheduled time
   if (delta < -30 * 60 * 1000) return 'early';
-  // Late if more than 60 minutes after scheduled time
   if (delta > 60 * 60 * 1000) return 'late';
   return 'on-time';
 }
@@ -62,6 +68,10 @@ export default function App() {
   const medsRef = useRef<Medication[]>([]);
   const alertId = useRef<number | null>(null);
   const syncKey = useRef('');
+  const nagTimer = useRef<number | null>(null);
+  // Stable refs so SW / native listeners always call latest handlers
+  const takeDoseRef = useRef<(m: Medication) => Promise<void>>(async () => {});
+  const snoozeRef = useRef<(m: Medication, minutes?: number) => Promise<void>>(async () => {});
 
   useEffect(() => {
     medsRef.current = medications;
@@ -76,34 +86,61 @@ export default function App() {
     setMedications(all);
   }, []);
 
-  const openAlert = useCallback((m: Medication) => {
-    if (alertId.current === m.id) return;
+  const openAlert = useCallback((m: Medication, force = false) => {
+    if (!force && alertId.current === m.id && alert) return;
     alertId.current = m.id ?? null;
     setAlert({
       medication: m,
       title: 'زمان مصرف دارو',
-      message: `وقت مصرف ${m.name} (${m.dosage}) فرا رسیده است.`,
+      message: `وقت مصرف ${m.name} (${m.dosage}) فرا رسیده است.\nلطفاً پس از مصرف، دکمه «مصرف کردم» را بزنید.`,
     });
     playAlarm();
     triggerHaptics();
-  }, []);
+  }, [alert]);
 
-  const closeAlert = useCallback(() => {
+  /** Close popup UI only — does NOT clear pendingDose (reminders continue). */
+  const closeAlertUi = useCallback(() => {
     stopAlarm();
-    alertId.current = null;
+    // Keep alertId so we know which med is due; allow re-nag via force
     setAlert(null);
   }, []);
 
+  const clearNagTimer = () => {
+    if (nagTimer.current != null) {
+      window.clearTimeout(nagTimer.current);
+      nagTimer.current = null;
+    }
+  };
+
+  // While any dose is pending and popup is closed, re-open it periodically
+  useEffect(() => {
+    clearNagTimer();
+    const pending = medications.filter((m) => m.pendingDose);
+    if (pending.length === 0) return;
+
+    if (!alert) {
+      // Popup closed but dose still pending → re-open after short delay
+      nagTimer.current = window.setTimeout(() => {
+        const still = medsRef.current.find((m) => m.pendingDose);
+        if (still) openAlert(still, true);
+      }, IN_APP_NAG_MS);
+    }
+
+    return clearNagTimer;
+  }, [medications, alert, openAlert]);
+
   useEffect(() => {
     (async () => {
-      setIsNative(Capacitor.isNativePlatform());
+      const native = Capacitor.isNativePlatform();
+      setIsNative(native);
       const p = await initAllPermissions();
       setPermission(p.notification ? 'granted' : await checkNotificationPermission());
+      await registerNotificationActions();
       await load();
     })();
   }, [load]);
 
-  // Recalculate from absolute timestamps; UI tick is never the source of truth.
+  // Absolute-time tick: detect due doses → mark pendingDose + open alert
   useEffect(() => {
     const tick = async () => {
       const now = Date.now();
@@ -114,7 +151,7 @@ export default function App() {
         if (n.running && n.nextDoseAt && n.nextDoseAt <= now) {
           changed = true;
           const due = { ...n, running: false, pendingDose: true, remaining: 0, updatedAt: now };
-          openAlert(due);
+          openAlert(due, true);
           return due;
         }
         if (n.running && n.remaining !== m.remaining) {
@@ -133,58 +170,23 @@ export default function App() {
     return () => window.clearInterval(id);
   }, [openAlert, persist]);
 
-  // Native notifications are scheduled only when schedule identity changes.
+  // Keep background alarms in sync (SW on web, LocalNotifications on native)
   useEffect(() => {
-    if (!isNative) return;
     const key = medications
-      .map((m) => `${m.id}:${m.running}:${m.nextDoseAt}:${m.pendingDose}`)
+      .map((m) => `${m.id}:${m.running}:${m.nextDoseAt}:${m.pendingDose}:${m.name}`)
       .join('|');
     if (key === syncKey.current) return;
     syncKey.current = key;
-    (async () => {
-      try {
-        const ids = medications.flatMap((m) =>
-          [0, 1, 2, 3].map((slot) => Math.max(1, (m.id ?? 0) * 10 + slot + 100))
-        );
-        await LocalNotifications.cancel({ notifications: ids.map((id) => ({ id })) });
-        const list = medications
-          .filter((m) => m.running && m.nextDoseAt && m.nextDoseAt > Date.now())
-          .flatMap((m) =>
-            [0, 1, 2, 3].map((slot) => ({
-              id: Math.max(1, (m.id ?? 0) * 10 + slot + 100),
-              title: slot === 0 ? '💊 زمان مصرف دارو' : '🔔 یادآوری مجدد دارو',
-              body: `${m.name} — ${m.dosage}`,
-              schedule: { at: new Date(m.nextDoseAt! + slot * 10 * 60 * 1000) },
-              channelId: 'medication-alarms',
-              sound: 'medication_alarm.wav',
-              extra: { medicationId: m.id, reminderSlot: slot },
-            }))
-          );
-        if (list.length) await LocalNotifications.schedule({ notifications: list });
-      } catch (e) {
-        console.warn('Notification sync failed', e);
-      }
-    })();
-  }, [medications, isNative]);
+    syncAllAlarms(medications).catch((e) => console.warn('syncAllAlarms', e));
+  }, [medications]);
 
+  // On load: if anything already pending, open alert immediately
   useEffect(() => {
-    if (!isNative) return;
-    const listeners = [
-      LocalNotifications.addListener('localNotificationReceived', (n) => {
-        const id = Number(n.extra?.medicationId);
-        const m = medsRef.current.find((x) => x.id === id);
-        if (m) openAlert({ ...m, pendingDose: true, running: false, remaining: 0 });
-      }),
-      LocalNotifications.addListener('localNotificationActionPerformed', (e) => {
-        const id = Number(e.notification.extra?.medicationId);
-        const m = medsRef.current.find((x) => x.id === id);
-        if (m) openAlert({ ...m, pendingDose: true, running: false, remaining: 0 });
-      }),
-    ];
-    return () => {
-      listeners.forEach((p) => p.then((x) => x.remove()));
-    };
-  }, [isNative, openAlert]);
+    const due = medications.find((m) => m.pendingDose);
+    if (due) openAlert(due, true);
+    // only on first meaningful load
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [medications.length > 0]);
 
   const takeDose = useCallback(
     async (m: Medication) => {
@@ -196,6 +198,7 @@ export default function App() {
         status: statusFor(m, now),
         snoozeCount: m.snoozeCount || 0,
       };
+      // Immediately start next interval timer after confirmation
       const updated: Medication = {
         ...m,
         quantity: Math.max(0, m.quantity - 1),
@@ -210,12 +213,19 @@ export default function App() {
       };
       setMedications((v) => v.map((x) => (x.id === m.id ? updated : x)));
       await persist(updated);
-      closeAlert();
+
+      // Stop all repeating alerts for this med
+      if (m.id != null) {
+        await cancelMedNotifications(m.id);
+        dismissSwFollowUps(m.id);
+      }
+      alertId.current = null;
+      stopAlarm();
+      setAlert(null);
     },
-    [closeAlert, persist]
+    [persist]
   );
 
-  /** Snooze by a specific number of minutes (10 or 30 from the popup). */
   const snooze = useCallback(
     async (m: Medication, minutes = 10) => {
       const now = Date.now();
@@ -231,10 +241,84 @@ export default function App() {
       };
       setMedications((v) => v.map((x) => (x.id === m.id ? updated : x)));
       await persist(updated);
-      closeAlert();
+
+      if (m.id != null) {
+        await cancelMedNotifications(m.id);
+        dismissSwFollowUps(m.id);
+      }
+      alertId.current = null;
+      stopAlarm();
+      setAlert(null);
     },
-    [closeAlert, persist]
+    [persist]
   );
+
+  takeDoseRef.current = takeDose;
+  snoozeRef.current = snooze;
+
+  // Service Worker → App (web/PWA notification actions)
+  useEffect(() => {
+    return onSwMessage((msg) => {
+      const id = Number(msg.medicationId);
+      if (!Number.isFinite(id)) return;
+      const m = medsRef.current.find((x) => x.id === id);
+      if (!m) return;
+
+      if (msg.type === 'ALARM_TAKEN') {
+        takeDoseRef.current({ ...m, pendingDose: true, running: false, remaining: 0 });
+      } else if (msg.type === 'ALARM_SNOOZED') {
+        snoozeRef.current(
+          { ...m, pendingDose: true, running: false, remaining: 0 },
+          msg.minutes ?? 10
+        );
+      } else if (msg.type === 'ALARM_TRIGGERED' || msg.type === 'ALARM_DISMISSED') {
+        // Open in-app confirm UI; follow-ups keep running until Taken/Snooze
+        openAlert({ ...m, pendingDose: true, running: false, remaining: 0 }, true);
+      }
+    });
+  }, [openAlert]);
+
+  // Native notification listeners
+  useEffect(() => {
+    if (!isNative) return;
+
+    const received = LocalNotifications.addListener('localNotificationReceived', (n) => {
+      const id = Number(n.extra?.medicationId);
+      const m = medsRef.current.find((x) => x.id === id);
+      if (m) {
+        // Mark pending if not already
+        if (!m.pendingDose) {
+          const due = { ...m, running: false, pendingDose: true, remaining: 0, updatedAt: Date.now() };
+          setMedications((v) => v.map((x) => (x.id === m.id ? due : x)));
+          persist(due);
+          openAlert(due, true);
+        } else {
+          openAlert(m, true);
+        }
+      }
+    });
+
+    const action = LocalNotifications.addListener('localNotificationActionPerformed', (e) => {
+      const id = Number(e.notification.extra?.medicationId);
+      const m = medsRef.current.find((x) => x.id === id);
+      if (!m) return;
+      const act = e.actionId;
+
+      if (act === 'taken') {
+        takeDoseRef.current({ ...m, pendingDose: true, running: false, remaining: 0 });
+      } else if (act === 'snooze') {
+        snoozeRef.current({ ...m, pendingDose: true, running: false, remaining: 0 }, 10);
+      } else {
+        // tap / dismiss → open app UI; keep pending + follow-ups
+        openAlert({ ...m, pendingDose: true, running: false, remaining: 0 }, true);
+      }
+    });
+
+    return () => {
+      received.then((l) => l.remove());
+      action.then((l) => l.remove());
+    };
+  }, [isNative, openAlert, persist]);
 
   const toggle = async (m: Medication) => {
     const now = Date.now();
@@ -249,6 +333,10 @@ export default function App() {
     };
     setMedications((v) => v.map((x) => (x.id === m.id ? updated : x)));
     await persist(updated);
+    if (!running && m.id != null) {
+      await cancelMedNotifications(m.id);
+      dismissSwFollowUps(m.id);
+    }
   };
 
   const reset = async (m: Medication) => {
@@ -263,6 +351,15 @@ export default function App() {
     };
     setMedications((v) => v.map((x) => (x.id === m.id ? updated : x)));
     await persist(updated);
+    if (m.id != null) {
+      await cancelMedNotifications(m.id);
+      dismissSwFollowUps(m.id);
+    }
+    if (alertId.current === m.id) {
+      alertId.current = null;
+      stopAlarm();
+      setAlert(null);
+    }
   };
 
   const add = async (d: {
@@ -293,7 +390,6 @@ export default function App() {
     setShowAdd(false);
   };
 
-  /** Edit existing medication; proportional remaining when interval changes while running. */
   const saveEdit = async (d: {
     name: string;
     dosage: string;
@@ -309,20 +405,20 @@ export default function App() {
     let remaining = editing.remaining;
     let nextDoseAt = editing.nextDoseAt;
     let running = editing.running;
+    let pendingDose = editing.pendingDose;
 
     if (editing.running && newInterval !== oldInterval) {
-      // Keep proportional progress when interval is changed mid-timer
       const ratio = remaining / oldInterval;
       remaining = Math.max(1, Math.round(ratio * newInterval));
       nextDoseAt = now + remaining * 1000;
-    } else if (!editing.running) {
+    } else if (!editing.running && !editing.pendingDose) {
       remaining = newInterval;
       nextDoseAt = undefined;
     }
 
-    // startImmediately only applies meaningfully when not already running
-    if (d.startImmediately && !running) {
+    if (d.startImmediately && !running && !pendingDose) {
       running = true;
+      pendingDose = false;
       remaining = newInterval;
       nextDoseAt = now + newInterval * 1000;
     }
@@ -336,6 +432,7 @@ export default function App() {
       interval: newInterval,
       remaining,
       running,
+      pendingDose,
       nextDoseAt,
       updatedAt: now,
     };
@@ -350,10 +447,18 @@ export default function App() {
       title: 'حذف دارو',
       message: `آیا از حذف «${m.name}» مطمئن هستید؟`,
       onConfirm: async () => {
-        if (m.id) await db.deleteMedication(m.id);
+        if (m.id != null) {
+          await db.deleteMedication(m.id);
+          await cancelMedNotifications(m.id);
+          dismissSwFollowUps(m.id);
+        }
         setMedications((v) => v.filter((x) => x.id !== m.id));
         setConfirm(null);
-        if (alert?.medication.id === m.id) closeAlert();
+        if (alertId.current === m.id) {
+          alertId.current = null;
+          stopAlarm();
+          setAlert(null);
+        }
         if (editing?.id === m.id) setEditing(null);
       },
     });
@@ -396,7 +501,6 @@ export default function App() {
 
   const activeCount = useMemo(() => medications.filter((m) => m.running).length, [medications]);
   const dueCount = useMemo(() => medications.filter((m) => m.pendingDose).length, [medications]);
-
   const formVisible = showAdd || editing !== null;
 
   return (
@@ -406,7 +510,7 @@ export default function App() {
           <div className="flex items-start justify-between gap-3">
             <div>
               <h1 className="text-3xl font-black text-cyan-300">💊 MediReminder</h1>
-              <p className="mt-1 text-sm text-gray-400">یادآوری، ثبت و پیگیری مصرف دارو</p>
+              <p className="mt-1 text-sm text-gray-400">یادآوری مکرر تا تأیید مصرف دارو</p>
             </div>
             <span className="rounded-full border border-cyan-500/20 bg-cyan-500/10 px-3 py-1 text-xs text-cyan-300">
               v{APP_VERSION}
@@ -448,7 +552,13 @@ export default function App() {
 
           {permission !== 'granted' && (
             <p className="mt-3 rounded-xl border border-amber-500/20 bg-amber-500/10 p-3 text-xs text-amber-300">
-              اعلان‌ها فعال نیستند. برای یادآوری مطمئن، مجوز اعلان و صدای دستگاه را فعال کنید.
+              اعلان‌ها فعال نیستند. برای یادآوری در پس‌زمینه، مجوز اعلان را فعال کنید.
+            </p>
+          )}
+
+          {dueCount > 0 && (
+            <p className="mt-3 rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-200">
+              {dueCount} دارو منتظر تأیید مصرف است. هشدارها تا زدن «مصرف کردم» یا «اسنوز» ادامه می‌یابند.
             </p>
           )}
         </header>
@@ -495,7 +605,7 @@ export default function App() {
         </div>
 
         <footer className="mt-8 pb-8 text-center text-xs text-gray-500">
-          داده‌های دارو روی همین دستگاه نگهداری می‌شوند. MediReminder ابزار یادآوری است و جایگزین توصیه پزشک نیست.
+          داده‌ها فقط روی همین دستگاه ذخیره می‌شوند. تا تأیید «مصرف کردم»، یادآوری تکرار می‌شود و سپس تایمر دوز بعدی بلافاصله شروع می‌شود.
         </footer>
       </div>
 
@@ -503,7 +613,7 @@ export default function App() {
         <NotificationPopup
           title={alert.title}
           message={alert.message}
-          onClose={closeAlert}
+          onClose={closeAlertUi}
           onRestart={() => takeDose(alert.medication)}
           onSnooze={(minutes) => snooze(alert.medication, minutes)}
           isMedicationAlert

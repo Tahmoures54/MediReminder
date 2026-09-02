@@ -1,4 +1,4 @@
-# MediReminder 2.1.1
+# MediReminder 2.2.0
 
 **یادآور دارو** — Offline-first medication reminder & dose tracker  
 Built with React 19 · TypeScript · Vite · Capacitor · IndexedDB
@@ -13,14 +13,24 @@ Built with React 19 · TypeScript · Vite · Capacitor · IndexedDB
 |--------|-------------|
 | 📅 Multi-med | Unlimited medications in one place |
 | ⏱️ Absolute-time scheduling | `nextDoseAt` is the source of truth (not UI timers) |
-| 🔔 Persistent alarms | Survive app restarts; native Android LocalNotifications |
-| ⏰ Snooze | 10 or 30 minutes from the alarm dialog |
+| 🔔 **Persistent repeating alerts** | Keep notifying until the patient confirms the dose |
+| ✅ Confirm → next timer | «مصرف کردم» stops nags and **immediately starts** the next interval |
+| ⏰ Snooze | 10 or 30 minutes |
 | ✏️ Edit | Change name, dose, quantity, interval anytime |
 | 📦 Low-stock | Visual warning when quantity ≤ 5 |
 | 📊 History | On-time / early / late with adherence score |
 | 💾 Backup | JSON export & restore, no server |
 | 🌙 Dark UI | Modern, readable, reduced-motion friendly |
 | 📱 PWA + APK | Install as PWA or build with Capacitor |
+
+## Alert policy / سیاست هشدار
+
+1. When a dose is due → in-app alarm + system notification.
+2. Until the patient taps **«مصرف کردم»** or **Snooze**, reminders **repeat**:
+   - Web/PWA: ~every 45 seconds (Service Worker)
+   - Android APK: ~every 2 minutes (LocalNotifications)
+3. **«بعداً»** only closes the banner — it does **not** stop reminders.
+4. After **«مصرف کردم»** the next-interval timer starts immediately.
 
 ## Important / مهم
 
@@ -49,15 +59,17 @@ npx cap open android
 
 Release builds **require** a production keystore (see `DEPLOYMENT.md` and CI workflow).
 
+For reliable background alerts on Android, grant notification permission and disable battery optimization for the app when possible.
+
 ---
 
 ## Architecture highlights
 
-- **Absolute time**: schedule lives in `nextDoseAt` (ms epoch). The 1-second UI tick only reflects it.
+- **Absolute time**: schedule lives in `nextDoseAt` (ms epoch).
 - **Dose lifecycle**: `scheduled → due (pendingDose) → taken | snoozed`.
-- **Native sync**: Android notifications are cancelled/rescheduled only when the schedule identity changes.
-- **Web / PWA**: Service Worker handles periodic reminders while the page is closed.
-- **Storage**: IndexedDB (`MedicationReminderDB`), schema version 4, with JSON backup/restore.
+- **Web**: Service Worker stores alarms, shows notifications, and runs follow-ups until confirmed.
+- **Native**: Capacitor LocalNotifications with action buttons; pending doses get a burst of follow-up schedules.
+- **Storage**: IndexedDB (`MedicationReminderDB`), schema version 4, JSON backup/restore.
 
 ---
 
@@ -65,33 +77,21 @@ Release builds **require** a production keystore (see `DEPLOYMENT.md` and CI wor
 
 ```
 src/
-├── components/     # MedicationCard, AddMedicationForm, NotificationPopup, ReportModal, ConfirmDialog
-├── db/             # IndexedDB wrapper + types
-├── utils/          # audio (alarm), permissions, cn
-├── App.tsx         # Main app logic & scheduling
-└── main.tsx        # Bootstrap + Service Worker registration
+├── components/
+├── db/
+├── utils/          # audio, permissions, alarms (SW + native bridge)
+├── App.tsx
+└── main.tsx
 public/
-├── sw.js           # PWA service worker + alarm helpers
+├── sw.js           # PWA service worker + repeating alarms
 └── manifest.json
 ```
 
 ---
 
-## Scripts
-
-| Command | Purpose |
-|---------|---------|
-| `npm run dev` | Vite dev server |
-| `npm run typecheck` | `tsc --noEmit` |
-| `npm run build` | Production build (single-file capable) |
-| `npm run check` | typecheck + build |
-| `npm run preview` | Preview production build |
-
----
-
 ## Changelog
 
-See [CHANGELOG.md](./CHANGELOG.md) for 2.1.1 and earlier notes.
+See [CHANGELOG.md](./CHANGELOG.md) for 2.2.0 and earlier notes.
 
 ## License
 
