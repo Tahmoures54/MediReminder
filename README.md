@@ -1,4 +1,4 @@
-# MediReminder 2.1.0
+# MediReminder 2.1.1
 
 **یادآور دارو** — Offline-first medication reminder & dose tracker  
 Built with React 19 · TypeScript · Vite · Capacitor · IndexedDB
@@ -91,7 +91,7 @@ public/
 
 ## Changelog
 
-See [CHANGELOG.md](./CHANGELOG.md) for 2.1.0 and earlier notes.
+See [CHANGELOG.md](./CHANGELOG.md) for 2.1.1 and earlier notes.
 
 ## License
 

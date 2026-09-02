@@ -2,6 +2,19 @@
 
 All notable changes to MediReminder are documented in this file.
 
+## [2.1.1] — 2026-09-02
+
+### Fixed
+- **Edit medication fully wired**: `MedicationCard` now receives `onEdit`; form supports create **and** edit modes.
+- **Snooze 10 / 30 minutes**: `NotificationPopup` passes minutes correctly; App respects the chosen duration.
+- Version badge and `package.json` aligned to **2.1.1** (was still showing 2.0.0 in UI).
+- Quantity validation on edit allows `0` (empty stock).
+- Dose status (`early` / `on-time` / `late`) now prefers `scheduledAt` / `nextDoseAt` for accuracy.
+
+### Improved
+- Changing interval while a timer is running keeps **proportional remaining time**.
+- Clearer form titles and labels in Persian for edit vs create.
+
 ## [2.1.0] — 2026-08-29
 
 ### Added
