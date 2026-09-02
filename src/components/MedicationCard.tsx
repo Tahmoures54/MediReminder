@@ -31,7 +31,8 @@ export function MedicationCard({
   const progress = Math.min(100, Math.max(0, (remaining / interval) * 100));
   const due = Boolean(medication.pendingDose);
   const running = Boolean(medication.running);
-  const low = medication.quantity <= LOW_STOCK_THRESHOLD;
+  const empty = medication.quantity <= 0;
+  const low = !empty && medication.quantity <= LOW_STOCK_THRESHOLD;
   const next = medication.nextDoseAt
     ? new Date(medication.nextDoseAt).toLocaleTimeString('fa-IR', {
         hour: '2-digit',
@@ -50,8 +51,8 @@ export function MedicationCard({
       }`}
     >
       <div className="flex items-start justify-between gap-3">
-        <div>
-          <h3 className="text-xl font-bold">
+        <div className="min-w-0 flex-1">
+          <h3 className="truncate text-xl font-bold">
             #{index} {medication.name}
           </h3>
           <p className="mt-1 text-sm text-gray-300">
@@ -59,28 +60,35 @@ export function MedicationCard({
           </p>
           <p
             className={`mt-1 text-sm ${
-              low ? 'font-bold text-amber-300' : 'text-gray-400'
+              empty
+                ? 'font-bold text-red-300'
+                : low
+                  ? 'font-bold text-amber-300'
+                  : 'text-gray-400'
             }`}
           >
-            📦 {medication.quantity} عدد {low ? '· موجودی کم' : ''}
+            📦 {medication.quantity} عدد
+            {empty ? ' · موجودی تمام شده — شارژ کنید' : low ? ' · موجودی کم' : ''}
           </p>
         </div>
-        <div className="flex gap-1">
+        <div className="flex shrink-0 gap-1">
           <button
+            type="button"
             onClick={onEdit}
-            className="rounded-lg bg-gray-700 px-3 py-2"
+            className="rounded-lg bg-gray-700 px-3 py-2 text-sm"
             aria-label={`ویرایش ${medication.name}`}
             title="ویرایش"
           >
-            ✏️
+            ✏️ ویرایش
           </button>
           <button
+            type="button"
             onClick={onShowReport}
-            className="rounded-lg bg-gray-700 px-3 py-2"
+            className="rounded-lg bg-gray-700 px-3 py-2 text-sm"
             aria-label={`گزارش ${medication.name}`}
             title="گزارش"
           >
-            📊
+            📊 گزارش
           </button>
         </div>
       </div>
@@ -89,14 +97,12 @@ export function MedicationCard({
         {due ? (
           <>
             <div className="text-3xl font-black text-red-400">زمان مصرف</div>
-            <p className="mt-1 text-sm text-gray-400">
-              دوز بعدی نیاز به تأیید شما دارد.
-            </p>
+            <p className="mt-1 text-sm text-gray-400">لطفاً پس از مصرف، تأیید کنید.</p>
           </>
         ) : (
           <>
             <div
-              className={`text-5xl font-black ${
+              className={`text-5xl font-black tabular-nums ${
                 running ? 'text-cyan-300' : 'text-gray-500'
               }`}
               role="timer"
@@ -123,41 +129,46 @@ export function MedicationCard({
       {due ? (
         <div className="grid grid-cols-2 gap-2">
           <button
+            type="button"
             onClick={onTake}
-            className="rounded-xl bg-emerald-500 py-3 font-bold text-gray-950"
+            className="rounded-xl bg-emerald-500 py-3.5 text-base font-bold text-gray-950"
           >
             ✓ مصرف کردم
           </button>
           <button
+            type="button"
             onClick={onSnooze}
-            className="rounded-xl bg-amber-500 py-3 font-bold text-gray-950"
+            className="rounded-xl bg-amber-500 py-3.5 text-base font-bold text-gray-950"
           >
             ⏰ ۱۰ دقیقه
           </button>
         </div>
       ) : (
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <button
+            type="button"
             onClick={onToggle}
-            className={`flex-1 rounded-xl py-3 font-bold ${
+            className={`min-w-[7rem] flex-1 rounded-xl py-3.5 text-base font-bold ${
               running ? 'bg-orange-500' : 'bg-emerald-500'
             }`}
           >
             {running ? '⏸ توقف' : '▶ شروع'}
           </button>
           <button
+            type="button"
             onClick={onReset}
-            className="rounded-xl bg-gray-700 px-4 py-3"
+            className="rounded-xl bg-gray-700 px-4 py-3.5 text-sm font-semibold"
             aria-label="ریست تایمر"
           >
-            ↺
+            ↺ ریست
           </button>
           <button
+            type="button"
             onClick={onDelete}
-            className="rounded-xl bg-red-600 px-4 py-3"
+            className="rounded-xl bg-red-600 px-4 py-3.5 text-sm font-semibold"
             aria-label={`حذف ${medication.name}`}
           >
-            🗑
+            🗑 حذف
           </button>
         </div>
       )}

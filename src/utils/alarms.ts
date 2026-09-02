@@ -1,7 +1,6 @@
 /**
- * Bridge between the React app and:
- *  - Web/PWA Service Worker (background alarms + follow-ups)
- *  - Capacitor LocalNotifications (native Android)
+ * Bridge: React app ↔ Service Worker (web) ↔ Capacitor LocalNotifications (Android)
+ * Production: long pending follow-ups + stable notification id ranges
  */
 import { Capacitor } from '@capacitor/core';
 import { LocalNotifications } from '@capacitor/local-notifications';
@@ -10,10 +9,12 @@ import { NOTIFICATION_CHANNEL_ID } from './permissions';
 
 const ACTION_TYPE_ID = 'MED_ALARM_ACTIONS';
 
-/** How often native re-notifies while a dose is still pending (ms). */
-export const NATIVE_FOLLOW_UP_MS = 2 * 60 * 1000; // 2 minutes
-/** How many native follow-up slots to pre-schedule while pending. */
-export const NATIVE_FOLLOW_UP_SLOTS = 30; // ~1 hour of nags
+/** Re-notify every 2 minutes while dose is pending (native). */
+export const NATIVE_FOLLOW_UP_MS = 2 * 60 * 1000;
+/** ~6 hours of pre-scheduled nags; app resync on foreground extends further. */
+export const NATIVE_FOLLOW_UP_SLOTS = 180;
+/** Safety follow-ups after a future scheduled dose. */
+export const NATIVE_SCHEDULE_EXTRA_SLOTS = 6;
 
 export type SwMessage =
   | { type: 'ALARM_TAKEN'; medicationId: number | string }
@@ -26,7 +27,6 @@ function isNative() {
   return Capacitor.isNativePlatform();
 }
 
-/** Register Android notification action buttons once. */
 export async function registerNotificationActions(): Promise<void> {
   if (!isNative()) return;
   try {
@@ -47,14 +47,12 @@ export async function registerNotificationActions(): Promise<void> {
   }
 }
 
-/** Stable notification id ranges per medication. */
 function notifIdsFor(medId: number): number[] {
-  // reserve 0..NATIVE_FOLLOW_UP_SLOTS for pending nags, + a few for schedule
   const base = Math.max(1, medId) * 1000 + 100;
-  return Array.from({ length: NATIVE_FOLLOW_UP_SLOTS + 4 }, (_, i) => base + i);
+  const count = Math.max(NATIVE_FOLLOW_UP_SLOTS, NATIVE_SCHEDULE_EXTRA_SLOTS) + 4;
+  return Array.from({ length: count }, (_, i) => base + i);
 }
 
-/** Cancel every scheduled notification belonging to a medication. */
 export async function cancelMedNotifications(medId: number): Promise<void> {
   if (!isNative()) {
     postToSw({ type: 'CANCEL_ALARM', id: medId });
@@ -62,14 +60,14 @@ export async function cancelMedNotifications(medId: number): Promise<void> {
     return;
   }
   try {
-    const ids = notifIdsFor(medId).map((id) => ({ id }));
-    await LocalNotifications.cancel({ notifications: ids });
+    await LocalNotifications.cancel({
+      notifications: notifIdsFor(medId).map((id) => ({ id })),
+    });
   } catch (e) {
     console.warn('cancelMedNotifications', e);
   }
 }
 
-/** Tell the Service Worker to stop follow-ups for this med (web). */
 export function dismissSwFollowUps(medId: number | string): void {
   postToSw({ type: 'DISMISS_ALARM', id: medId });
 }
@@ -81,17 +79,12 @@ function postToSw(payload: Record<string, unknown>): void {
   if (ctrl) {
     ctrl.postMessage(payload);
   } else {
-    navigator.serviceWorker.ready.then((reg) => {
-      reg.active?.postMessage(payload);
-    }).catch(() => {});
+    navigator.serviceWorker.ready
+      .then((reg) => reg.active?.postMessage(payload))
+      .catch(() => {});
   }
 }
 
-/**
- * Sync the full medication schedule to SW (web) or LocalNotifications (native).
- * - running + future nextDoseAt → schedule primary alarm
- * - pendingDose → schedule repeating follow-up nags until confirmed
- */
 export async function syncAllAlarms(medications: Medication[]): Promise<void> {
   if (isNative()) {
     await syncNative(medications);
@@ -106,38 +99,20 @@ function syncWeb(medications: Medication[]): void {
     .filter((m) => m.id != null)
     .flatMap((m) => {
       const id = m.id!;
-      // Primary future alarm
       if (m.running && m.nextDoseAt && m.nextDoseAt > now) {
-        return [
-          {
-            id,
-            time: m.nextDoseAt,
-            name: m.name,
-            dosage: m.dosage,
-          },
-        ];
+        return [{ id, time: m.nextDoseAt, name: m.name, dosage: m.dosage }];
       }
-      // Already due → trigger immediately (SW will start follow-ups)
       if (m.pendingDose) {
-        return [
-          {
-            id,
-            time: now - 1000, // in the past → SW triggers + starts follow-ups
-            name: m.name,
-            dosage: m.dosage,
-          },
-        ];
+        return [{ id, time: now - 1000, name: m.name, dosage: m.dosage }];
       }
       return [];
     });
-
   postToSw({ type: 'SCHEDULE_ALARMS', alarms });
 }
 
 async function syncNative(medications: Medication[]): Promise<void> {
   const now = Date.now();
 
-  // Cancel everything we manage, then re-schedule from current state
   try {
     const allIds = medications
       .filter((m) => m.id != null)
@@ -149,7 +124,7 @@ async function syncNative(medications: Medication[]): Promise<void> {
     console.warn('native cancel all', e);
   }
 
-  const toSchedule: Array<{
+  type Sched = {
     id: number;
     title: string;
     body: string;
@@ -158,21 +133,21 @@ async function syncNative(medications: Medication[]): Promise<void> {
     sound: string;
     actionTypeId: string;
     extra: Record<string, unknown>;
-  }> = [];
+  };
+
+  const toSchedule: Sched[] = [];
 
   for (const m of medications) {
     if (m.id == null) continue;
     const ids = notifIdsFor(m.id);
 
     if (m.pendingDose) {
-      // Aggressive follow-ups starting now, every NATIVE_FOLLOW_UP_MS
       for (let slot = 0; slot < NATIVE_FOLLOW_UP_SLOTS; slot++) {
-        const at = new Date(now + slot * NATIVE_FOLLOW_UP_MS + 500);
         toSchedule.push({
           id: ids[slot],
           title: slot === 0 ? '💊 زمان مصرف دارو' : '🔔 یادآوری مجدد — لطفاً تأیید کنید',
           body: `${m.name} — ${m.dosage}\nهنوز مصرف را تأیید نکرده‌اید.`,
-          schedule: { at },
+          schedule: { at: new Date(now + slot * NATIVE_FOLLOW_UP_MS + 800) },
           channelId: NOTIFICATION_CHANNEL_ID,
           sound: 'medication_alarm.wav',
           actionTypeId: ACTION_TYPE_ID,
@@ -183,14 +158,12 @@ async function syncNative(medications: Medication[]): Promise<void> {
     }
 
     if (m.running && m.nextDoseAt && m.nextDoseAt > now) {
-      // Primary + a few safety follow-ups after due time (in case first is missed)
-      for (let slot = 0; slot < 4; slot++) {
-        const at = new Date(m.nextDoseAt + slot * NATIVE_FOLLOW_UP_MS);
+      for (let slot = 0; slot < NATIVE_SCHEDULE_EXTRA_SLOTS; slot++) {
         toSchedule.push({
           id: ids[slot],
           title: slot === 0 ? '💊 زمان مصرف دارو' : '🔔 یادآوری مجدد دارو',
           body: `${m.name} — ${m.dosage}`,
-          schedule: { at },
+          schedule: { at: new Date(m.nextDoseAt + slot * NATIVE_FOLLOW_UP_MS) },
           channelId: NOTIFICATION_CHANNEL_ID,
           sound: 'medication_alarm.wav',
           actionTypeId: ACTION_TYPE_ID,
@@ -200,16 +173,18 @@ async function syncNative(medications: Medication[]): Promise<void> {
     }
   }
 
-  if (toSchedule.length) {
+  // Cap batch size for OEM stability (schedule in chunks if huge)
+  const CHUNK = 64;
+  for (let i = 0; i < toSchedule.length; i += CHUNK) {
+    const chunk = toSchedule.slice(i, i + CHUNK);
     try {
-      await LocalNotifications.schedule({ notifications: toSchedule as any });
+      await LocalNotifications.schedule({ notifications: chunk as any });
     } catch (e) {
-      console.warn('native schedule failed', e);
+      console.warn('native schedule chunk failed', e);
     }
   }
 }
 
-/** Subscribe to Service Worker messages (web only). Returns unsubscribe. */
 export function onSwMessage(handler: (msg: SwMessage) => void): () => void {
   if (isNative() || typeof navigator === 'undefined' || !('serviceWorker' in navigator)) {
     return () => {};
@@ -221,4 +196,34 @@ export function onSwMessage(handler: (msg: SwMessage) => void): () => void {
   };
   navigator.serviceWorker.addEventListener('message', listener);
   return () => navigator.serviceWorker.removeEventListener('message', listener);
+}
+
+/** Debounce helper for high-churn medication state updates. */
+export function createDebouncedSync(delayMs = 350) {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  let latest: Medication[] = [];
+
+  return {
+    schedule(medications: Medication[]) {
+      latest = medications;
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => {
+        timer = null;
+        syncAllAlarms(latest).catch((e) => console.warn('debounced sync', e));
+      }, delayMs);
+    },
+    flush() {
+      if (timer) {
+        clearTimeout(timer);
+        timer = null;
+      }
+      return syncAllAlarms(latest);
+    },
+    cancel() {
+      if (timer) {
+        clearTimeout(timer);
+        timer = null;
+      }
+    },
+  };
 }

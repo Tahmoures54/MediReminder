@@ -6,15 +6,16 @@ interface Props {
   onDismiss?: () => void;
 }
 
-/**
- * Reminds the user to grant notification (and related) settings
- * so background / repeating medication alerts can work reliably.
- */
 export function PermissionsBanner({ permission, onRequest, onDismiss }: Props) {
   if (permission === 'granted') return null;
 
   const isNative = Capacitor.isNativePlatform();
   const isAndroid = Capacitor.getPlatform() === 'android';
+  const isIOS =
+    Capacitor.getPlatform() === 'ios' ||
+    (!isNative &&
+      typeof navigator !== 'undefined' &&
+      /iPad|iPhone|iPod/.test(navigator.userAgent));
   const denied = permission === 'denied';
 
   return (
@@ -32,27 +33,35 @@ export function PermissionsBanner({ permission, onRequest, onDismiss }: Props) {
 
           {denied ? (
             <p className="leading-relaxed text-amber-100/90">
-              مجوز اعلان قبلاً رد شده است. لطفاً از تنظیمات سیستم، اعلان‌های «یادآور دارو» را فعال کنید؛ در غیر این
-              صورت هشدار در پس‌زمینه کار نمی‌کند.
+              مجوز اعلان قبلاً رد شده است. از تنظیمات سیستم، اعلان‌های «یادآور دارو» را فعال کنید؛ وگرنه هشدار
+              پس‌زمینه کار نمی‌کند.
             </p>
           ) : (
             <p className="leading-relaxed text-amber-100/90">
-              برای اینکه حتی وقتی برنامه بسته است هم زمان مصرف دارو به شما یادآوری شود، باید مجوز اعلان را بدهید.
+              برای یادآوری حتی وقتی برنامه بسته است، مجوز اعلان را بدهید.
             </p>
           )}
 
           <ul className="list-inside list-disc space-y-1 text-xs text-amber-100/80">
-            <li>مجوز <strong>اعلان‌ها (Notifications)</strong> را فعال کنید</li>
+            <li>
+              مجوز <strong>اعلان‌ها</strong> را فعال کنید
+            </li>
             {isAndroid && (
               <>
                 <li>
-                  در تنظیمات باتری، <strong>بهینه‌سازی باتری</strong> را برای این برنامه خاموش کنید (بدون محدودیت)
+                  باتری را روی <strong>بدون محدودیت</strong> بگذارید (عدم بهینه‌سازی)
                 </li>
-                <li>صدا و ویبره اعلان را در کانال «هشدار مصرف دارو» باز بگذارید</li>
+                <li>صدا و ویبره کانال «هشدار مصرف دارو» را باز بگذارید</li>
               </>
             )}
-            {!isNative && (
-              <li>در مرورگر، اعلان را Allow کنید و در صورت امکان برنامه را به صفحه اصلی نصب (PWA) کنید</li>
+            {!isNative && !isIOS && (
+              <li>در مرورگر Allow بزنید و ترجیحاً برنامه را به صفحه اصلی نصب (PWA) کنید</li>
+            )}
+            {isIOS && (
+              <li className="text-amber-200/90">
+                در iOS، اعلان پس‌زمینه مرورگر محدود است؛ برای بهترین نتیجه از نسخه اندروید یا باز نگه داشتن
+                برنامه استفاده کنید
+              </li>
             )}
           </ul>
 
@@ -68,7 +77,7 @@ export function PermissionsBanner({ permission, onRequest, onDismiss }: Props) {
             )}
             {denied && isNative && (
               <p className="text-xs text-amber-200/80">
-                مسیر معمول اندروید: تنظیمات ← برنامه‌ها ← یادآور دارو ← اعلان‌ها
+                اندروید: تنظیمات ← برنامه‌ها ← یادآور دارو ← اعلان‌ها
               </p>
             )}
             {onDismiss && (
