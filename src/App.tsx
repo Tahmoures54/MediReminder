@@ -26,6 +26,9 @@ import {
 const APP_VERSION = '3.0.0';
 const IN_APP_NAG_MS = 45_000;
 const PERM_DISMISS_KEY = 'medireminder-perm-banner-dismissed';
+/** WhatsApp support — digits only for wa.me */
+const SUPPORT_WHATSAPP = '989160684552';
+const SUPPORT_WHATSAPP_URL = `https://wa.me/${SUPPORT_WHATSAPP}?text=${encodeURIComponent('سلام، درباره MediReminder نیاز به پشتیبانی دارم.')}`;
 
 type AlertItem = { medication: Medication; title: string; message: string };
 
@@ -59,6 +62,10 @@ function statusFor(m: Medication, takenAt: number): HistoryRecord['status'] {
   if (delta < -30 * 60 * 1000) return 'early';
   if (delta > 60 * 60 * 1000) return 'late';
   return 'on-time';
+}
+
+function openSupportWhatsApp() {
+  window.open(SUPPORT_WHATSAPP_URL, '_blank', 'noopener,noreferrer');
 }
 
 export default function App() {
@@ -152,7 +159,6 @@ export default function App() {
     })();
   }, [load]);
 
-  // Re-check permission when app returns to foreground
   useEffect(() => {
     const onVisible = async () => {
       if (document.visibilityState !== 'visible') return;
@@ -172,7 +178,6 @@ export default function App() {
       try {
         sessionStorage.removeItem(PERM_DISMISS_KEY);
       } catch {}
-      // Re-sync alarms now that permission is available
       await syncAllAlarms(medsRef.current);
     } else {
       setPermission(await checkNotificationPermission());
@@ -581,6 +586,15 @@ export default function App() {
             <button onClick={importBackup} className="rounded-xl border border-gray-700 bg-gray-800 px-4 py-3 text-sm">
               ⬆ بازیابی
             </button>
+            <button
+              type="button"
+              onClick={openSupportWhatsApp}
+              className="rounded-xl border border-emerald-600/50 bg-emerald-600/20 px-4 py-3 text-sm font-semibold text-emerald-300 hover:bg-emerald-600/30"
+              aria-label="پشتیبانی واتساپ"
+              title="پشتیبانی واتساپ"
+            >
+              💬 پشتیبانی
+            </button>
           </div>
 
           {showPermBanner && (
@@ -639,11 +653,19 @@ export default function App() {
           )}
         </div>
 
-        <footer className="mt-8 space-y-2 pb-8 text-center text-xs text-gray-500">
+        <footer className="mt-8 space-y-3 pb-8 text-center text-xs text-gray-500">
           <p>
             داده‌ها فقط روی همین دستگاه ذخیره می‌شوند. تا تأیید «مصرف کردم»، یادآوری تکرار می‌شود و سپس تایمر دوز بعدی
             بلافاصله شروع می‌شود.
           </p>
+          <button
+            type="button"
+            onClick={openSupportWhatsApp}
+            className="inline-flex items-center gap-2 rounded-full border border-emerald-600/40 bg-emerald-600/10 px-4 py-2 text-sm font-medium text-emerald-300 transition hover:bg-emerald-600/20"
+          >
+            <span aria-hidden="true">💬</span>
+            پشتیبانی واتساپ
+          </button>
           <p className="text-gray-600">MediReminder v{APP_VERSION} — ابزار یادآوری است و جایگزین توصیه پزشک نیست.</p>
         </footer>
       </div>
