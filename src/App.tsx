@@ -16,19 +16,21 @@ import {
 } from './utils/permissions';
 import { playAlarm, stopAlarm, triggerHaptics } from './utils/audio';
 import {
-  syncAllAlarms,
   onSwMessage,
   registerNotificationActions,
   cancelMedNotifications,
   dismissSwFollowUps,
+  createDebouncedSync,
+  syncAllAlarms,
 } from './utils/alarms';
 
-const APP_VERSION = '3.0.0';
+const APP_VERSION = '3.1.0';
 const IN_APP_NAG_MS = 45_000;
 const PERM_DISMISS_KEY = 'medireminder-perm-banner-dismissed';
-/** WhatsApp support — digits only for wa.me */
 const SUPPORT_WHATSAPP = '989160684552';
-const SUPPORT_WHATSAPP_URL = `https://wa.me/${SUPPORT_WHATSAPP}?text=${encodeURIComponent('سلام، درباره MediReminder نیاز به پشتیبانی دارم.')}`;
+const SUPPORT_WHATSAPP_URL = `https://wa.me/${SUPPORT_WHATSAPP}?text=${encodeURIComponent(
+  'سلام، درباره MediReminder نیاز به پشتیبانی دارم.'
+)}`;
 
 type AlertItem = { medication: Medication; title: string; message: string };
 
@@ -55,8 +57,9 @@ function normalize(m: Medication): Medication {
   };
 }
 
-function statusFor(m: Medication, takenAt: number): HistoryRecord['status'] {
-  const scheduled = m.nextDoseAt ?? m.lastTakenAt;
+/** Prefer scheduled time of this dose when available. */
+function statusFor(m: Medication, takenAt: number, scheduledAt?: number): HistoryRecord['status'] {
+  const scheduled = scheduledAt ?? m.nextDoseAt ?? m.lastTakenAt;
   if (!scheduled) return 'on-time';
   const delta = takenAt - scheduled;
   if (delta < -30 * 60 * 1000) return 'early';
@@ -84,13 +87,14 @@ export default function App() {
       return false;
     }
   });
+  const [bootDone, setBootDone] = useState(false);
 
   const medsRef = useRef<Medication[]>([]);
   const alertId = useRef<number | null>(null);
-  const syncKey = useRef('');
   const nagTimer = useRef<number | null>(null);
   const takeDoseRef = useRef<(m: Medication) => Promise<void>>(async () => {});
   const snoozeRef = useRef<(m: Medication, minutes?: number) => Promise<void>>(async () => {});
+  const debouncedSync = useRef(createDebouncedSync(400));
 
   useEffect(() => {
     medsRef.current = medications;
@@ -105,20 +109,17 @@ export default function App() {
     setMedications(all);
   }, []);
 
-  const openAlert = useCallback(
-    (m: Medication, force = false) => {
-      if (!force && alertId.current === m.id && alert) return;
-      alertId.current = m.id ?? null;
-      setAlert({
-        medication: m,
-        title: 'زمان مصرف دارو',
-        message: `وقت مصرف ${m.name} (${m.dosage}) فرا رسیده است.\nلطفاً پس از مصرف، دکمه «مصرف کردم» را بزنید.`,
-      });
-      playAlarm();
-      triggerHaptics();
-    },
-    [alert]
-  );
+  const openAlert = useCallback((m: Medication, force = false) => {
+    if (!force && alertId.current === m.id) return;
+    alertId.current = m.id ?? null;
+    setAlert({
+      medication: m,
+      title: 'زمان مصرف دارو',
+      message: `وقت مصرف ${m.name} (${m.dosage}) فرا رسیده است.\nلطفاً پس از مصرف، دکمه «مصرف کردم» را بزنید.`,
+    });
+    playAlarm();
+    triggerHaptics();
+  }, []);
 
   const closeAlertUi = useCallback(() => {
     stopAlarm();
@@ -134,15 +135,13 @@ export default function App() {
 
   useEffect(() => {
     clearNagTimer();
-    const pending = medications.filter((m) => m.pendingDose);
-    if (pending.length === 0) return;
+    if (!medications.some((m) => m.pendingDose)) return;
+    if (alert) return;
 
-    if (!alert) {
-      nagTimer.current = window.setTimeout(() => {
-        const still = medsRef.current.find((m) => m.pendingDose);
-        if (still) openAlert(still, true);
-      }, IN_APP_NAG_MS);
-    }
+    nagTimer.current = window.setTimeout(() => {
+      const still = medsRef.current.find((m) => m.pendingDose);
+      if (still) openAlert(still, true);
+    }, IN_APP_NAG_MS);
 
     return clearNagTimer;
   }, [medications, alert, openAlert]);
@@ -156,14 +155,21 @@ export default function App() {
       setPermission(status);
       await registerNotificationActions();
       await load();
+      setBootDone(true);
     })();
+    return () => debouncedSync.current.cancel();
   }, [load]);
 
+  // Foreground: refresh permission + extend native follow-ups if still pending
   useEffect(() => {
     const onVisible = async () => {
       if (document.visibilityState !== 'visible') return;
       const status = await checkNotificationPermission();
       setPermission(status);
+      const current = medsRef.current;
+      if (current.some((m) => m.pendingDose || m.running)) {
+        await syncAllAlarms(current);
+      }
     };
     document.addEventListener('visibilitychange', onVisible);
     return () => document.removeEventListener('visibilitychange', onVisible);
@@ -191,6 +197,7 @@ export default function App() {
     } catch {}
   };
 
+  // Absolute-time tick
   useEffect(() => {
     const tick = async () => {
       const now = Date.now();
@@ -220,29 +227,29 @@ export default function App() {
     return () => window.clearInterval(id);
   }, [openAlert, persist]);
 
+  // Debounced background alarm sync
   useEffect(() => {
-    const key = medications
-      .map((m) => `${m.id}:${m.running}:${m.nextDoseAt}:${m.pendingDose}:${m.name}`)
-      .join('|');
-    if (key === syncKey.current) return;
-    syncKey.current = key;
-    syncAllAlarms(medications).catch((e) => console.warn('syncAllAlarms', e));
-  }, [medications]);
+    if (!bootDone) return;
+    debouncedSync.current.schedule(medications);
+  }, [medications, bootDone]);
 
+  // Open pending alerts after first load
   useEffect(() => {
+    if (!bootDone) return;
     const due = medications.find((m) => m.pendingDose);
     if (due) openAlert(due, true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [medications.length > 0]);
+  }, [bootDone]);
 
   const takeDose = useCallback(
     async (m: Medication) => {
       const now = Date.now();
+      const scheduledAt = m.nextDoseAt;
       const record: HistoryRecord = {
         id: crypto.randomUUID(),
         takenAt: now,
-        scheduledAt: m.nextDoseAt,
-        status: statusFor(m, now),
+        scheduledAt,
+        status: statusFor(m, now, scheduledAt),
         snoozeCount: m.snoozeCount || 0,
       };
       const updated: Medication = {
@@ -324,15 +331,14 @@ export default function App() {
     const received = LocalNotifications.addListener('localNotificationReceived', (n) => {
       const id = Number(n.extra?.medicationId);
       const m = medsRef.current.find((x) => x.id === id);
-      if (m) {
-        if (!m.pendingDose) {
-          const due = { ...m, running: false, pendingDose: true, remaining: 0, updatedAt: Date.now() };
-          setMedications((v) => v.map((x) => (x.id === m.id ? due : x)));
-          persist(due);
-          openAlert(due, true);
-        } else {
-          openAlert(m, true);
-        }
+      if (!m) return;
+      if (!m.pendingDose) {
+        const due = { ...m, running: false, pendingDose: true, remaining: 0, updatedAt: Date.now() };
+        setMedications((v) => v.map((x) => (x.id === m.id ? due : x)));
+        persist(due);
+        openAlert(due, true);
+      } else {
+        openAlert(m, true);
       }
     });
 
@@ -572,6 +578,7 @@ export default function App() {
 
           <div className="mt-4 flex flex-wrap gap-2">
             <button
+              type="button"
               onClick={() => {
                 setEditing(null);
                 setShowAdd(true);
@@ -580,10 +587,18 @@ export default function App() {
             >
               + افزودن دارو
             </button>
-            <button onClick={exportBackup} className="rounded-xl border border-gray-700 bg-gray-800 px-4 py-3 text-sm">
+            <button
+              type="button"
+              onClick={exportBackup}
+              className="rounded-xl border border-gray-700 bg-gray-800 px-4 py-3 text-sm"
+            >
               ⬇ پشتیبان
             </button>
-            <button onClick={importBackup} className="rounded-xl border border-gray-700 bg-gray-800 px-4 py-3 text-sm">
+            <button
+              type="button"
+              onClick={importBackup}
+              className="rounded-xl border border-gray-700 bg-gray-800 px-4 py-3 text-sm"
+            >
               ⬆ بازیابی
             </button>
             <button
@@ -591,7 +606,6 @@ export default function App() {
               onClick={openSupportWhatsApp}
               className="rounded-xl border border-emerald-600/50 bg-emerald-600/20 px-4 py-3 text-sm font-semibold text-emerald-300 hover:bg-emerald-600/30"
               aria-label="پشتیبانی واتساپ"
-              title="پشتیبانی واتساپ"
             >
               💬 پشتیبانی
             </button>
@@ -607,7 +621,7 @@ export default function App() {
 
           {dueCount > 0 && (
             <p className="mt-3 rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-200">
-              {dueCount} دارو منتظر تأیید مصرف است. هشدارها تا زدن «مصرف کردم» یا «اسنوز» ادامه می‌یابند.
+              {dueCount} دارو منتظر تأیید مصرف است. هشدارها تا «مصرف کردم» یا «اسنوز» ادامه دارند.
             </p>
           )}
         </header>
@@ -655,16 +669,15 @@ export default function App() {
 
         <footer className="mt-8 space-y-3 pb-8 text-center text-xs text-gray-500">
           <p>
-            داده‌ها فقط روی همین دستگاه ذخیره می‌شوند. تا تأیید «مصرف کردم»، یادآوری تکرار می‌شود و سپس تایمر دوز بعدی
-            بلافاصله شروع می‌شود.
+            داده‌ها فقط روی همین دستگاه ذخیره می‌شوند. تا تأیید مصرف، یادآوری تکرار می‌شود و سپس تایمر دوز بعدی
+            شروع می‌شود.
           </p>
           <button
             type="button"
             onClick={openSupportWhatsApp}
             className="inline-flex items-center gap-2 rounded-full border border-emerald-600/40 bg-emerald-600/10 px-4 py-2 text-sm font-medium text-emerald-300 transition hover:bg-emerald-600/20"
           >
-            <span aria-hidden="true">💬</span>
-            پشتیبانی واتساپ
+            💬 پشتیبانی واتساپ
           </button>
           <p className="text-gray-600">MediReminder v{APP_VERSION} — ابزار یادآوری است و جایگزین توصیه پزشک نیست.</p>
         </footer>

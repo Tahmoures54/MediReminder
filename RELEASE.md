@@ -1,62 +1,53 @@
-# MediReminder 3.0.0 — نسخه نهایی انتشار
+# MediReminder 3.1.0 — Production release
 
-تاریخ: ۲۰۲۶-۰۹-۰۲
+## What shipped
 
-## خلاصه محصول
+Hardened offline medication reminder for broad distribution:
 
-یادآور داروی آفلاین با هشدار **تکرارشونده تا تأیید مصرف**، شروع فوری تایمر دوز بعدی پس از تأیید، پشتیبانی PWA و APK اندروید.
+- Long native follow-up window (~6h) + foreground resync
+- Debounced notification scheduling
+- Clearer UI labels and empty-stock warning
+- Permission / iOS guidance
+- WhatsApp support button
+- CI version 3.1.0
 
-## چک‌لیست تنظیمات کاربر (حتماً به کاربر بگویید)
+## Publisher checklist
 
-### همه پلتفرم‌ها
-- [ ] مجوز **اعلان** را Allow / Allow کنید
-- [ ] صدای دستگاه را بی‌صدا نگذارید (یا حداقل ویبره فعال باشد)
-
-### اندروید (APK)
-- [ ] تنظیمات ← برنامه‌ها ← **یادآور دارو** ← اعلان‌ها ← فعال
-- [ ] باتری ← **بدون محدودیت** / عدم بهینه‌سازی باتری برای این برنامه
-- [ ] کانال اعلان «هشدار مصرف دارو» ← صدا و پاپ‌آپ روشن
-
-### وب / PWA
-- [ ] در مرورگر اعلان را Allow کنید
-- [ ] ترجیحاً «Add to Home Screen» / نصب PWA
-- [ ] در iOS Safari محدودیت اعلان پس‌زمینه وجود دارد؛ بهترین تجربه با اندروید یا دسکتاپ است
-
-برنامه خودش با بنر راهنما این موارد را یادآوری می‌کند.
-
-## بیلد انتشار
+### Build
 
 ```bash
-npm ci
-npm run check          # typecheck + build
-# خروجی: dist/
-
-# اندروید
+npm ci && npm run check
+npm run build
 npx cap sync android
-# سپس در Android Studio → Generate Signed Bundle / APK
 ```
 
-Secrets لازم برای CI امضای اندروید در `DEPLOYMENT.md` آمده است.
+Tag: `v3.1.0` (triggers signed AAB/APK when secrets are set).
 
-## تست پیش از انتشار
+Secrets: `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`.
 
-1. نصب روی گوشی واقعی  
-2. دادن مجوز اعلان + خاموش کردن بهینه‌سازی باتری  
-3. دارو با بازه کوتاه (مثلاً ۱ دقیقه در حالت تست دستی با تغییر موقت، یا چند دقیقه)  
-4. قفل صفحه → دریافت اعلان  
-5. «مصرف کردم» از اعلان → تایمر بعدی شروع شود  
-6. بستن اعلان بدون تأیید → یادآوری مجدد بیاید  
-7. کشتن برنامه و باز کردن → `pendingDose` حفظ شود  
-8. پشتیبان‌گیری / بازیابی JSON  
+### Device QA (must pass)
 
-## نسخه
+- [ ] Notification permission granted
+- [ ] Android battery unrestricted
+- [ ] Due alert with screen locked
+- [ ] Taken from notification → next timer
+- [ ] Dismiss → follow-up returns
+- [ ] Kill process → pending restored
+- [ ] Edit / backup / WhatsApp support
+- [ ] Low / empty stock UI
 
-| مورد | مقدار |
-|------|--------|
-| Version | **3.0.0** |
-| Tag پیشنهادی | `v3.0.0` |
-| License | MIT |
+### Store listing notes
 
-## سلب مسئولیت
+- Explain notification + battery setup
+- Disclaimer: not a medical device / not a substitute for a clinician
+- Privacy: data stays on device
 
-این نرم‌افزار فقط ابزار یادآوری و پیگیری است و جایگزین پزشک یا داروساز نیست.
+### Support
+
+WhatsApp: +989160684552
+
+## Known platform limits
+
+- iOS Safari / PWA: weak background notification reliability
+- Some OEMs still kill background work without unrestricted battery
+- Web requires granted notification permission and a living service worker

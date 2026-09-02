@@ -1,64 +1,45 @@
-# MediReminder 3.0.0
+# MediReminder 3.1.0
 
-**یادآور دارو** — Offline-first medication reminder & dose tracker  
-Built with React 19 · TypeScript · Vite · Capacitor · IndexedDB
+**یادآور دارو** — Offline-first · persistent alerts until dose confirmed  
+React 19 · TypeScript · Vite · Capacitor · IndexedDB
 
 [![Live demo](https://img.shields.io/badge/demo-Vercel-black?style=flat-square)](https://medi-reminder-nu.vercel.app)
 
----
+## Highlights
 
-## Features / امکانات
+- Absolute-time scheduling (`nextDoseAt`)
+- Repeating alerts until **Taken** or **Snooze**
+- Taken → next interval starts immediately
+- Web SW + Android LocalNotifications
+- In-app permission / battery guidance
+- WhatsApp support: +98 916 068 4552
+- Local-only data (no server)
 
-| Feature | Description |
-|--------|-------------|
-| 📅 Multi-med | Unlimited medications in one place |
-| ⏱️ Absolute-time scheduling | `nextDoseAt` is the source of truth |
-| 🔔 **Persistent repeating alerts** | Keep notifying until the patient confirms |
-| ✅ Confirm → next timer | «مصرف کردم» stops nags and starts the next interval |
-| ⏰ Snooze | 10 or 30 minutes |
-| ⚙️ **Setup guidance** | In-app reminder to enable notifications & battery settings |
-| ✏️ Edit | Name, dose, quantity, interval |
-| 📦 Low-stock | Warning when quantity ≤ 5 |
-| 📊 History | On-time / early / late + adherence |
-| 💾 Backup | JSON export & restore |
-| 📱 PWA + APK | Install as PWA or Capacitor Android |
+## User setup (required for reliable alerts)
 
-## First-run setup (مهم برای کاربر)
+1. Allow **notifications**
+2. Android: battery **unrestricted** for this app
+3. Keep alarm channel sound on
+4. iOS browser: limited background alerts — prefer Android APK when possible
 
-1. **مجوز اعلان** را بدهید (دکمه «فعال‌سازی اعلان‌ها» داخل برنامه).
-2. **اندروید:** تنظیمات ← برنامه‌ها ← یادآور دارو ← باتری ← بدون محدودیت / عدم بهینه‌سازی.
-3. صدای اعلان و ویبره را خاموش نکنید.
-4. در وب: اعلان مرورگر را Allow کنید؛ در صورت امکان PWA را نصب کنید.
-
-بدون این تنظیمات، هشدار در پس‌زمینه ممکن است از دست برود.
-
-## Alert policy
-
-1. Dose due → in-app alarm + system notification  
-2. Until **Taken** or **Snooze** → reminders repeat (Web ~45s / Android ~2min)  
-3. **Dismiss** does not stop reminders  
-4. **Taken** → next interval timer starts immediately  
-
-## Quick start
+## Develop
 
 ```bash
 npm ci
-npm run typecheck
-npm run build
+npm run check
 npm run dev
 ```
 
 ### Android
 
 ```bash
+npm run build
 npx cap sync android
 npx cap open android
 ```
 
-See [DEPLOYMENT.md](./DEPLOYMENT.md) and [RELEASE.md](./RELEASE.md).
+See [RELEASE.md](./RELEASE.md) and [DEPLOYMENT.md](./DEPLOYMENT.md).
 
 ## License
 
-MIT — see [LICENSE](./LICENSE).
-
-MediReminder is a reminder tool only — not medical advice.
+MIT. Reminder tool only — not medical advice.

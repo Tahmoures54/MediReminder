@@ -1,37 +1,37 @@
 # Changelog
 
-## [3.0.0] — 2026-09-02 — Final release
+## [3.1.0] — 2026-09-02 — Production hardening
 
-### Added
-- **PermissionsBanner**: in-app guidance to enable notifications (and Android battery tips)
-- One-tap «فعال‌سازی اعلان‌ها»; banner reappears if permission is still missing
-- `RELEASE.md` production checklist for users and publishers
-- Re-check notification permission when app returns to foreground
+### Reliability
+- Native pending follow-ups extended to **~6 hours** (180 × 2 min); **re-sync on app foreground** extends further
+- **Debounced** alarm/notification sync (fewer OEM cancel/reschedule races)
+- Notification schedule sent in **chunks** for large batches
+- Safer `openAlert` (no stale `alert` state race)
+- `statusFor` uses explicit scheduled snapshot when recording history
 
-### Included from 2.2.x
-- Persistent repeating alerts until dose confirmed
-- Confirm («مصرف کردم») → immediately start next-interval timer
-- Web Service Worker + native LocalNotifications bridge
-- Dismiss does not stop reminders
+### UX
+- Medication actions labeled (ویرایش / گزارش / ریست / حذف)
+- Empty stock callout when quantity is 0
+- Permissions banner notes **iOS/PWA background limits**
 
-### Notes
-- This is the recommended **production publish** line.
-- Tag: `v3.0.0`
+### Build / release
+- Default Vite build **without** single-file bundle (reliable SW + PWA assets)
+- CI Android versionName **3.1.0**, versionCode 31, artifact names updated
+- Extra Android permissions: `RECEIVE_BOOT_COMPLETED`, `WAKE_LOCK`
+
+## [3.0.0] — 2026-09-02
+
+- PermissionsBanner, WhatsApp support, repeating alerts until confirmed
+- Confirm → immediate next timer
 
 ## [2.2.0] — 2026-09-02
 
-- Persistent repeating alerts (SW ~45s, native ~2min)
-- App ↔ Service Worker full sync
-- Native action buttons Taken / Snooze / Dismiss
+- SW + native bridge, follow-up nags
 
-## [2.1.1] — 2026-09-02
+## [2.1.x] — 2026-09-02
 
-- Edit medication wired; snooze 10/30; version sync
-
-## [2.1.0] — 2026-08-29
-
-- Edit, snooze, absolute-time scheduling polish
+- Edit medication, snooze 10/30
 
 ## [2.0.0]
 
-- Absolute-time model, history, backup, PWA + Capacitor foundation
+- Absolute-time model, history, backup, PWA foundation
