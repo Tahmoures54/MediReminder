@@ -85,21 +85,21 @@ jobs:
           p = Path('android/app/build.gradle')
           s = p.read_text()
           if 'signingConfigs' not in s:
-              block = '''
-    signingConfigs {
-        release {
-            def props = new Properties()
-            def propsFile = rootProject.file("keystore.properties")
-            if (propsFile.exists()) {
-                props.load(new FileInputStream(propsFile))
-                storeFile file(props["storeFile"])
-                storePassword props["storePassword"]
-                keyAlias props["keyAlias"]
-                keyPassword props["keyPassword"]
-            }
-        }
-    }
-'''
+              block = (
+                  "    signingConfigs {\n"
+                  "        release {\n"
+                  "            def props = new Properties()\n"
+                  "            def propsFile = rootProject.file(\"keystore.properties\")\n"
+                  "            if (propsFile.exists()) {\n"
+                  "                props.load(new FileInputStream(propsFile))\n"
+                  "                storeFile file(props[\"storeFile\"])\n"
+                  "                storePassword props[\"storePassword\"]\n"
+                  "                keyAlias props[\"keyAlias\"]\n"
+                  "                keyPassword props[\"keyPassword\"]\n"
+                  "            }\n"
+                  "        }\n"
+                  "    }\n"
+              )
               s = s.replace('android {', 'android {' + block, 1)
           if 'signingConfig signingConfigs.release' not in s:
               s = s.replace(
