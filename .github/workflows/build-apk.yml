@@ -1,4 +1,4 @@
-name: Build MediReminder Android Release
+name: Build MediReminder Android APK
 
 on:
   workflow_dispatch:
@@ -62,47 +62,69 @@ jobs:
           p.write_text(s)
           PY
 
-      - name: Require production signing secrets
+      - name: Read app version
+        id: version
+        run: echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - name: Detect release signing configuration
+        id: signing
         env:
           KS: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           KSP: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           KP: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
-          test -n "$KS" && test -n "$KSP" && test -n "$ALIAS" && test -n "$KP" || (echo 'Production signing secrets are required.' && exit 1)
-          echo "$KS" | base64 --decode > android/release.keystore
-          cat > android/keystore.properties <<EOF2
+          if [ -n "$KS" ] && [ -n "$KSP" ] && [ -n "$ALIAS" ] && [ -n "$KP" ]; then
+            echo 'enabled=true' >> "$GITHUB_OUTPUT"
+            echo "$KS" | base64 --decode > android/release.keystore
+            cat > android/keystore.properties <<EOF2
           storeFile=release.keystore
           storePassword=$KSP
           keyAlias=$ALIAS
           keyPassword=$KP
           EOF2
+          else
+            echo 'enabled=false' >> "$GITHUB_OUTPUT"
+            echo 'Release signing secrets are not configured; building a debug APK.'
+          fi
 
       - name: Configure signing
+        if: steps.signing.outputs.enabled == 'true'
         run: python3 scripts/add_signing.py
 
       - name: Set release version
         run: |
-          sed -i 's/versionCode [0-9][0-9]*/versionCode 31/' android/app/build.gradle || true
-          sed -i 's/versionName "[^"]*"/versionName "3.1.0"/' android/app/build.gradle || true
+          sed -i "s/versionCode [0-9][0-9]*/versionCode $((1000 + GITHUB_RUN_NUMBER)) /" android/app/build.gradle
+          sed -i "s/versionName \"[^\"]*\"/versionName \"${{ steps.version.outputs.version }}\"/" android/app/build.gradle
 
       - name: Build signed AAB
+        if: steps.signing.outputs.enabled == 'true'
         working-directory: android
         run: ./gradlew bundleRelease
 
       - name: Build signed APK
+        if: steps.signing.outputs.enabled == 'true'
         working-directory: android
         run: ./gradlew assembleRelease
+
+      - name: Build debug APK
+        if: steps.signing.outputs.enabled != 'true'
+        working-directory: android
+        run: ./gradlew assembleDebug
 
       - name: Verify artifacts
         run: |
           mkdir -p dist-artifacts
-          cp android/app/build/outputs/bundle/release/*.aab dist-artifacts/MediReminder-3.1.0.aab
-          cp android/app/build/outputs/apk/release/*release.apk dist-artifacts/MediReminder-3.1.0.apk
+          if [ "${{ steps.signing.outputs.enabled }}" = 'true' ]; then
+            cp android/app/build/outputs/bundle/release/*.aab "dist-artifacts/MediReminder-${{ steps.version.outputs.version }}.aab"
+            cp android/app/build/outputs/apk/release/*release.apk "dist-artifacts/MediReminder-${{ steps.version.outputs.version }}.apk"
+          else
+            cp android/app/build/outputs/apk/debug/*debug.apk "dist-artifacts/MediReminder-${{ steps.version.outputs.version }}-debug.apk"
+          fi
           ls -lh dist-artifacts
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: MediReminder-Android-3.1.0
+          name: MediReminder-Android-${{ steps.version.outputs.version }}
           path: dist-artifacts/*
