@@ -1,53 +1,62 @@
-# MediReminder 3.1.0 — Production release
+# MediReminder 3.2.0 — آماده انتشار عمومی
 
-## What shipped
+## نسخه
 
-Hardened offline medication reminder for broad distribution:
+| فیلد | مقدار |
+|------|--------|
+| Version | **3.2.0** |
+| Tag | `v3.2.0` |
+| License | MIT |
 
-- Long native follow-up window (~6h) + foreground resync
-- Debounced notification scheduling
-- Clearer UI labels and empty-stock warning
-- Permission / iOS guidance
-- WhatsApp support button
-- CI version 3.1.0
+## چرا این نسخه برای انتشار عمومی مناسب است
 
-## Publisher checklist
+- هشدار تکرارشونده تا تأیید مصرف + شروع فوری تایمر بعدی
+- follow-up اندروید طولانی + resync هنگام بازگشت به پیش‌زمینه
+- debounce و chunk برای پایداری OEM
+- سقف تاریخچه برای جلوگیری از رشد بی‌نهایت IndexedDB
+- ErrorBoundary برای جلوگیری از صفحه سفید
+- مجوزهای اندروید: اعلان، آلارم دقیق، boot، wake lock
+- بیلد PWA بدون single-file (SW قابل اعتماد)
+- راهنمای مجوز + پشتیبانی واتساپ
 
-### Build
+## بیلد
 
 ```bash
-npm ci && npm run check
-npm run build
+npm ci
+npm run check
 npx cap sync android
+# Android Studio → signed AAB/APK
 ```
 
-Tag: `v3.1.0` (triggers signed AAB/APK when secrets are set).
+تگ:
 
-Secrets: `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`.
+```bash
+git tag v3.2.0
+git push origin v3.2.0
+```
 
-### Device QA (must pass)
+## چک‌لیست اجباری قبل از فروشگاه
 
-- [ ] Notification permission granted
-- [ ] Android battery unrestricted
-- [ ] Due alert with screen locked
-- [ ] Taken from notification → next timer
-- [ ] Dismiss → follow-up returns
-- [ ] Kill process → pending restored
-- [ ] Edit / backup / WhatsApp support
-- [ ] Low / empty stock UI
+### فنی
+- [ ] typecheck + build بدون خطا
+- [ ] APK امضاشده روی گوشی فیزیکی
+- [ ] مجوز اعلان + باتری بدون محدودیت
+- [ ] اعلان با صفحه قفل
+- [ ] Taken از اعلان → تایمر بعدی
+- [ ] Dismiss → یادآوری مجدد
+- [ ] Kill app → pending حفظ شود
+- [ ] Export/Import بک‌آپ
+- [ ] واتساپ پشتیبانی باز شود
 
-### Store listing notes
+### محتوا
+- [ ] سلب مسئولیت پزشکی در استور
+- [ ] راهنمای اعلان/باتری در توضیحات
+- [ ] سیاست حریم خصوصی: داده محلی
 
-- Explain notification + battery setup
-- Disclaimer: not a medical device / not a substitute for a clinician
-- Privacy: data stays on device
+### محدودیت‌های صادقانه
+- iOS مرورگر: اعلان پس‌زمینه ضعیف است
+- برخی OEMها (شیائومی/هواوی) بدون خاموش کردن بهینه‌سازی باتری اعلان را می‌کشند
 
-### Support
+## پشتیبانی
 
-WhatsApp: +989160684552
-
-## Known platform limits
-
-- iOS Safari / PWA: weak background notification reliability
-- Some OEMs still kill background work without unrestricted battery
-- Web requires granted notification permission and a living service worker
+واتساپ: **+98 916 068 4552** (دکمه داخل برنامه)

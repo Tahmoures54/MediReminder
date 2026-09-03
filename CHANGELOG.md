@@ -1,37 +1,38 @@
 # Changelog
 
-## [3.1.0] — 2026-09-02 — Production hardening
+## [3.2.0] — 2026-09-03 — Scale-ready release
 
 ### Reliability
-- Native pending follow-ups extended to **~6 hours** (180 × 2 min); **re-sync on app foreground** extends further
-- **Debounced** alarm/notification sync (fewer OEM cancel/reschedule races)
-- Notification schedule sent in **chunks** for large batches
-- Safer `openAlert` (no stale `alert` state race)
-- `statusFor` uses explicit scheduled snapshot when recording history
+- Dose **history capped** at 120 entries per medication (schema v5)
+- **ErrorBoundary** around the app root
+- Android permissions: `USE_EXACT_ALARM`, `RECEIVE_BOOT_COMPLETED`, `WAKE_LOCK`
+- `sanitizeMedication` on all DB writes
+- Optional `dueScheduledAt` field for stable adherence snapshots
 
-### UX
-- Medication actions labeled (ویرایش / گزارش / ریست / حذف)
-- Empty stock callout when quantity is 0
-- Permissions banner notes **iOS/PWA background limits**
+### Docs
+- TECHNICAL_DOCS rewritten for current architecture
+- RELEASE checklist for public store launch
 
-### Build / release
-- Default Vite build **without** single-file bundle (reliable SW + PWA assets)
-- CI Android versionName **3.1.0**, versionCode 31, artifact names updated
-- Extra Android permissions: `RECEIVE_BOOT_COMPLETED`, `WAKE_LOCK`
+## [3.1.0] — 2026-09-02 — Production hardening
+
+- Native follow-ups ~6 hours + foreground re-sync
+- Debounced alarm sync + chunked native schedules
+- Safer openAlert; labeled card actions; empty stock UX
+iOS limits in permissions banner
+- Vite multi-asset build (no single-file default)
 
 ## [3.0.0] — 2026-09-02
 
 - PermissionsBanner, WhatsApp support, repeating alerts until confirmed
-- Confirm → immediate next timer
 
 ## [2.2.0] — 2026-09-02
 
-- SW + native bridge, follow-up nags
+- SW + native bridge
 
 ## [2.1.x] — 2026-09-02
 
-- Edit medication, snooze 10/30
+- Edit medication, snooze
 
 ## [2.0.0]
 
-- Absolute-time model, history, backup, PWA foundation
+- Absolute-time foundation

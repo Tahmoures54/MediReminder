@@ -1,45 +1,38 @@
-# MediReminder 3.1.0
+# MediReminder 3.2.0
 
-**یادآور دارو** — Offline-first · persistent alerts until dose confirmed  
+**یادآور دارو** — Offline-first · هشدار تا تأیید مصرف · PWA + Android  
 React 19 · TypeScript · Vite · Capacitor · IndexedDB
 
 [![Live demo](https://img.shields.io/badge/demo-Vercel-black?style=flat-square)](https://medi-reminder-nu.vercel.app)
 
-## Highlights
+---
 
-- Absolute-time scheduling (`nextDoseAt`)
-- Repeating alerts until **Taken** or **Snooze**
-- Taken → next interval starts immediately
-- Web SW + Android LocalNotifications
-- In-app permission / battery guidance
-- WhatsApp support: +98 916 068 4552
-- Local-only data (no server)
+## امکانات اصلی
 
-## User setup (required for reliable alerts)
+- زمان‌بندی مطلق (`nextDoseAt`)
+- هشدار **تکرارشونده** تا «مصرف کردم» یا اسنوز
+- پس از تأیید → **شروع فوری** تایمر دوز بعدی
+- پشتیبان JSON، گزارش پایبندی، ویرایش دارو
+- راهنمای مجوز اعلان + پشتیبانی واتساپ
+- داده فقط روی دستگاه کاربر
 
-1. Allow **notifications**
-2. Android: battery **unrestricted** for this app
-3. Keep alarm channel sound on
-4. iOS browser: limited background alerts — prefer Android APK when possible
+## تنظیمات ضروری کاربر
 
-## Develop
+1. مجوز **اعلان**  
+2. اندروید: باتری → **بدون محدودیت**  
+3. صدای اعلان را قطع نکنید  
+
+## توسعه
 
 ```bash
 npm ci
 npm run check
 npm run dev
-```
-
-### Android
-
-```bash
-npm run build
 npx cap sync android
-npx cap open android
 ```
 
-See [RELEASE.md](./RELEASE.md) and [DEPLOYMENT.md](./DEPLOYMENT.md).
+جزئیات انتشار: [RELEASE.md](./RELEASE.md) · فنی: [TECHNICAL_DOCS.md](./TECHNICAL_DOCS.md)
 
 ## License
 
-MIT. Reminder tool only — not medical advice.
+MIT — ابزار یادآوری است، جایگزین پزشک نیست.
