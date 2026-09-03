@@ -24,7 +24,7 @@ import {
   syncAllAlarms,
 } from './utils/alarms';
 
-const APP_VERSION = '3.1.0';
+const APP_VERSION = '3.2.0';
 const IN_APP_NAG_MS = 45_000;
 const PERM_DISMISS_KEY = 'medireminder-perm-banner-dismissed';
 const SUPPORT_WHATSAPP = '989160684552';
@@ -59,7 +59,7 @@ function normalize(m: Medication): Medication {
 
 /** Prefer scheduled time of this dose when available. */
 function statusFor(m: Medication, takenAt: number, scheduledAt?: number): HistoryRecord['status'] {
-  const scheduled = scheduledAt ?? m.nextDoseAt ?? m.lastTakenAt;
+  const scheduled = scheduledAt ?? m.dueScheduledAt ?? m.nextDoseAt ?? m.lastTakenAt;
   if (!scheduled) return 'on-time';
   const delta = takenAt - scheduled;
   if (delta < -30 * 60 * 1000) return 'early';
@@ -160,7 +160,6 @@ export default function App() {
     return () => debouncedSync.current.cancel();
   }, [load]);
 
-  // Foreground: refresh permission + extend native follow-ups if still pending
   useEffect(() => {
     const onVisible = async () => {
       if (document.visibilityState !== 'visible') return;
@@ -197,7 +196,6 @@ export default function App() {
     } catch {}
   };
 
-  // Absolute-time tick
   useEffect(() => {
     const tick = async () => {
       const now = Date.now();
@@ -207,7 +205,14 @@ export default function App() {
         const n = normalize(m);
         if (n.running && n.nextDoseAt && n.nextDoseAt <= now) {
           changed = true;
-          const due = { ...n, running: false, pendingDose: true, remaining: 0, updatedAt: now };
+          const due = {
+            ...n,
+            running: false,
+            pendingDose: true,
+            remaining: 0,
+            dueScheduledAt: n.nextDoseAt ?? now,
+            updatedAt: now,
+          };
           openAlert(due, true);
           return due;
         }
@@ -227,13 +232,11 @@ export default function App() {
     return () => window.clearInterval(id);
   }, [openAlert, persist]);
 
-  // Debounced background alarm sync
   useEffect(() => {
     if (!bootDone) return;
     debouncedSync.current.schedule(medications);
   }, [medications, bootDone]);
 
-  // Open pending alerts after first load
   useEffect(() => {
     if (!bootDone) return;
     const due = medications.find((m) => m.pendingDose);
@@ -244,7 +247,7 @@ export default function App() {
   const takeDose = useCallback(
     async (m: Medication) => {
       const now = Date.now();
-      const scheduledAt = m.nextDoseAt;
+      const scheduledAt = m.dueScheduledAt ?? m.nextDoseAt;
       const record: HistoryRecord = {
         id: crypto.randomUUID(),
         takenAt: now,
@@ -258,6 +261,7 @@ export default function App() {
         history: [...(m.history || []), record],
         lastTakenAt: now,
         pendingDose: false,
+        dueScheduledAt: undefined,
         snoozeCount: 0,
         running: true,
         nextDoseAt: now + m.interval * 1000,
@@ -285,6 +289,7 @@ export default function App() {
       const updated: Medication = {
         ...m,
         pendingDose: false,
+        dueScheduledAt: undefined,
         running: true,
         snoozeCount: (m.snoozeCount || 0) + 1,
         nextDoseAt: now + secs * 1000,
@@ -331,14 +336,22 @@ export default function App() {
     const received = LocalNotifications.addListener('localNotificationReceived', (n) => {
       const id = Number(n.extra?.medicationId);
       const m = medsRef.current.find((x) => x.id === id);
-      if (!m) return;
-      if (!m.pendingDose) {
-        const due = { ...m, running: false, pendingDose: true, remaining: 0, updatedAt: Date.now() };
-        setMedications((v) => v.map((x) => (x.id === m.id ? due : x)));
-        persist(due);
-        openAlert(due, true);
-      } else {
-        openAlert(m, true);
+      if (m) {
+        if (!m.pendingDose) {
+          const due = {
+            ...m,
+            running: false,
+            pendingDose: true,
+            remaining: 0,
+            dueScheduledAt: m.nextDoseAt ?? Date.now(),
+            updatedAt: Date.now(),
+          };
+          setMedications((v) => v.map((x) => (x.id === m.id ? due : x)));
+          persist(due);
+          openAlert(due, true);
+        } else {
+          openAlert(m, true);
+        }
       }
     });
 
@@ -370,6 +383,7 @@ export default function App() {
       ...m,
       running,
       pendingDose: false,
+      dueScheduledAt: undefined,
       nextDoseAt: running ? now + Math.max(1, m.remaining || m.interval) * 1000 : undefined,
       remaining: running ? Math.max(1, m.remaining || m.interval) : m.remaining,
       updatedAt: now,
@@ -387,6 +401,7 @@ export default function App() {
       ...m,
       running: false,
       pendingDose: false,
+      dueScheduledAt: undefined,
       nextDoseAt: undefined,
       remaining: m.interval,
       snoozeCount: 0,
@@ -578,7 +593,6 @@ export default function App() {
 
           <div className="mt-4 flex flex-wrap gap-2">
             <button
-              type="button"
               onClick={() => {
                 setEditing(null);
                 setShowAdd(true);
@@ -587,18 +601,10 @@ export default function App() {
             >
               + افزودن دارو
             </button>
-            <button
-              type="button"
-              onClick={exportBackup}
-              className="rounded-xl border border-gray-700 bg-gray-800 px-4 py-3 text-sm"
-            >
+            <button onClick={exportBackup} className="rounded-xl border border-gray-700 bg-gray-800 px-4 py-3 text-sm">
               ⬇ پشتیبان
             </button>
-            <button
-              type="button"
-              onClick={importBackup}
-              className="rounded-xl border border-gray-700 bg-gray-800 px-4 py-3 text-sm"
-            >
+            <button onClick={importBackup} className="rounded-xl border border-gray-700 bg-gray-800 px-4 py-3 text-sm">
               ⬆ بازیابی
             </button>
             <button
@@ -606,6 +612,7 @@ export default function App() {
               onClick={openSupportWhatsApp}
               className="rounded-xl border border-emerald-600/50 bg-emerald-600/20 px-4 py-3 text-sm font-semibold text-emerald-300 hover:bg-emerald-600/30"
               aria-label="پشتیبانی واتساپ"
+              title="پشتیبانی واتساپ"
             >
               💬 پشتیبانی
             </button>
@@ -621,7 +628,7 @@ export default function App() {
 
           {dueCount > 0 && (
             <p className="mt-3 rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-200">
-              {dueCount} دارو منتظر تأیید مصرف است. هشدارها تا «مصرف کردم» یا «اسنوز» ادامه دارند.
+              {dueCount} دارو منتظر تأیید مصرف است. هشدارها تا زدن «مصرف کردم» یا «اسنوز» ادامه می‌یابند.
             </p>
           )}
         </header>
@@ -669,15 +676,16 @@ export default function App() {
 
         <footer className="mt-8 space-y-3 pb-8 text-center text-xs text-gray-500">
           <p>
-            داده‌ها فقط روی همین دستگاه ذخیره می‌شوند. تا تأیید مصرف، یادآوری تکرار می‌شود و سپس تایمر دوز بعدی
-            شروع می‌شود.
+            داده‌ها فقط روی همین دستگاه ذخیره می‌شوند. تا تأیید «مصرف کردم»، یادآوری تکرار می‌شود و سپس تایمر دوز بعدی
+            بلافاصله شروع می‌شود.
           </p>
           <button
             type="button"
             onClick={openSupportWhatsApp}
             className="inline-flex items-center gap-2 rounded-full border border-emerald-600/40 bg-emerald-600/10 px-4 py-2 text-sm font-medium text-emerald-300 transition hover:bg-emerald-600/20"
           >
-            💬 پشتیبانی واتساپ
+            <span aria-hidden="true">💬</span>
+            پشتیبانی واتساپ
           </button>
           <p className="text-gray-600">MediReminder v{APP_VERSION} — ابزار یادآوری است و جایگزین توصیه پزشک نیست.</p>
         </footer>
