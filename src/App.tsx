@@ -80,6 +80,8 @@ export default function App() {
   const [report, setReport] = useState<Medication | null>(null);
   const [permission, setPermission] = useState('unknown');
   const [isNative, setIsNative] = useState(false);
+  const [bootError, setBootError] = useState<string | null>(null);
+  const [bootAttempt, setBootAttempt] = useState(0);
   const [permBannerHidden, setPermBannerHidden] = useState(() => {
     try {
       return sessionStorage.getItem(PERM_DISMISS_KEY) === '1';
@@ -147,18 +149,32 @@ export default function App() {
   }, [medications, alert, openAlert]);
 
   useEffect(() => {
+    let active = true;
+
     (async () => {
-      const native = Capacitor.isNativePlatform();
-      setIsNative(native);
-      const p = await initAllPermissions();
-      const status = p.notification ? 'granted' : await checkNotificationPermission();
-      setPermission(status);
-      await registerNotificationActions();
-      await load();
-      setBootDone(true);
+      try {
+        const native = Capacitor.isNativePlatform();
+        const p = await initAllPermissions();
+        const status = p.notification ? 'granted' : await checkNotificationPermission();
+        await registerNotificationActions();
+        await load();
+        if (!active) return;
+        setIsNative(native);
+        setPermission(status);
+        setBootError(null);
+        setBootDone(true);
+      } catch (error) {
+        if (!active) return;
+        console.error('[MediReminder] راه‌اندازی برنامه ناموفق بود:', error);
+        setBootError(error instanceof Error ? error.message : 'خطای ناشناخته در راه‌اندازی برنامه');
+        setBootDone(false);
+      }
     })();
-    return () => debouncedSync.current.cancel();
-  }, [load]);
+    return () => {
+      active = false;
+      debouncedSync.current.cancel();
+    };
+  }, [load, bootAttempt]);
 
   useEffect(() => {
     const onVisible = async () => {
@@ -315,6 +331,7 @@ export default function App() {
 
   useEffect(() => {
     return onSwMessage((msg) => {
+      if (msg.type === 'ALARMS_LIST') return;
       const id = Number(msg.medicationId);
       if (!Number.isFinite(id)) return;
       const m = medsRef.current.find((x) => x.id === id);
@@ -561,6 +578,44 @@ export default function App() {
   const dueCount = useMemo(() => medications.filter((m) => m.pendingDose).length, [medications]);
   const formVisible = showAdd || editing !== null;
   const showPermBanner = permission !== 'granted' && permission !== 'unknown' && !permBannerHidden;
+
+  if (bootError) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-gray-950 p-6 text-white">
+        <div className="w-full max-w-md rounded-2xl border border-red-500/30 bg-gray-900 p-6 text-center shadow-xl">
+          <div className="text-4xl" aria-hidden="true">
+            ⚠️
+          </div>
+          <h1 className="mt-3 text-xl font-bold text-red-300">راه‌اندازی برنامه انجام نشد</h1>
+          <p className="mt-2 text-sm text-gray-400">دسترسی به اعلان‌ها یا ذخیره‌سازی دستگاه با مشکل روبه‌رو شد.</p>
+          <p className="mt-3 break-words rounded-lg bg-gray-800 p-2 text-xs text-gray-500">{bootError}</p>
+          <button
+            type="button"
+            onClick={() => {
+              setBootError(null);
+              setBootAttempt((attempt) => attempt + 1);
+            }}
+            className="mt-5 w-full rounded-xl bg-cyan-600 py-3 font-bold text-white hover:bg-cyan-500"
+          >
+            تلاش مجدد
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (!bootDone) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-gray-950 p-6 text-white">
+        <div className="text-center" role="status" aria-live="polite">
+          <div className="text-4xl" aria-hidden="true">
+            💊
+          </div>
+          <p className="mt-4 text-sm text-gray-400">در حال آماده‌سازی یادآور دارو...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-gray-950 via-gray-900 to-slate-950 text-white">
