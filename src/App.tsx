@@ -315,7 +315,7 @@ export default function App() {
 
   useEffect(() => {
     return onSwMessage((msg) => {
-      // ✅ اصلاح: اگر پیام از نوع ALARMS_LIST باشد، medicationId ندارد
+      // ✅ اصلاح: اگر پیام ALARMS_LIST باشد، medicationId ندارد و باید نادیده گرفته شود
       if (msg.type === 'ALARMS_LIST') return;
 
       const id = Number(msg.medicationId);
