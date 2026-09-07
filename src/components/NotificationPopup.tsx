@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useId } from 'react';
 
 interface NotificationPopupProps {
   title: string;
@@ -7,6 +7,8 @@ interface NotificationPopupProps {
   onRestart?: () => void;
   onSnooze?: (minutes: number) => void;
   isMedicationAlert?: boolean;
+  /** در صورت true، کلیک روی پس‌زمینه دیالوگ را نمی‌بندد (پیش‌فرض: true برای هشدار) */
+  closeOnOverlayClick?: boolean;
 }
 
 export function NotificationPopup({
@@ -16,11 +18,15 @@ export function NotificationPopup({
   onRestart,
   onSnooze,
   isMedicationAlert = true,
+  closeOnOverlayClick = false,
 }: NotificationPopupProps) {
   const dialogRef = useRef<HTMLDivElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const restartButtonRef = useRef<HTMLButtonElement>(null);
   const previousFocusedElementRef = useRef<HTMLElement | null>(null);
+
+  const titleId = useId();
+  const messageId = useId();
 
   useEffect(() => {
     previousFocusedElementRef.current = document.activeElement as HTMLElement | null;
@@ -79,19 +85,23 @@ export function NotificationPopup({
         previousFocusedElementRef.current.focus();
       }
     };
-  }, [onClose, onRestart]);
+  }, [onClose, onRestart, onSnooze]);
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/85 backdrop-blur-sm p-4">
+    <div
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/85 backdrop-blur-sm p-4"
+      onClick={closeOnOverlayClick ? onClose : undefined}
+    >
       <div
         ref={dialogRef}
         role="alertdialog"
         aria-modal="true"
-        aria-labelledby="alarm-title"
-        aria-describedby="alarm-message"
+        aria-labelledby={titleId}
+        aria-describedby={messageId}
         aria-live="assertive"
         aria-atomic="true"
-        className="relative w-full max-w-md overflow-hidden rounded-3xl border border-red-400/40 bg-gradient-to-br from-red-700 via-rose-700 to-orange-700 shadow-[0_0_50px_rgba(239,68,68,0.45)]"
+        onClick={(e) => e.stopPropagation()}
+        className="relative w-full max-w-md overflow-hidden rounded-3xl border border-red-400/40 bg-gradient-to-br from-red-700 via-rose-700 to-orange-700 shadow-[0_0_50px_rgba(239,68,68,0.45)] animate-pop-in"
       >
         <div className="absolute left-0 top-0 h-2 w-full bg-gradient-to-r from-yellow-300 via-orange-400 to-yellow-300 animate-pulse" />
 
@@ -105,14 +115,14 @@ export function NotificationPopup({
           </div>
 
           <h3
-            id="alarm-title"
+            id={titleId}
             className="mb-3 text-center text-2xl sm:text-3xl font-extrabold text-white drop-shadow-md"
           >
             {title}
           </h3>
 
           <p
-            id="alarm-message"
+            id={messageId}
             className="mb-6 sm:mb-8 whitespace-pre-line text-center text-base sm:text-lg font-medium leading-relaxed text-orange-50"
           >
             {message}
@@ -128,6 +138,7 @@ export function NotificationPopup({
             {onRestart && (
               <button
                 ref={restartButtonRef}
+                type="button"
                 onClick={onRestart}
                 className="flex w-full items-center justify-center gap-2 rounded-xl bg-green-500 px-6 py-4 text-base sm:text-lg font-bold text-white shadow-[0_4px_14px_0_rgba(34,197,94,0.5)] transition-all duration-300 hover:-translate-y-0.5 hover:bg-green-400 hover:shadow-[0_6px_20px_rgba(34,197,94,0.4)] active:scale-95 focus:outline-none focus:ring-4 focus:ring-green-200/40"
                 aria-label="تأیید مصرف دارو و راه‌اندازی مجدد تایمر"
@@ -160,6 +171,7 @@ export function NotificationPopup({
 
             <button
               ref={closeButtonRef}
+              type="button"
               onClick={onClose}
               className="w-full rounded-xl bg-white/90 px-6 py-3.5 text-base sm:text-lg font-bold text-red-900 shadow-lg transition-all duration-300 hover:-translate-y-0.5 hover:bg-white active:scale-95 focus:outline-none focus:ring-4 focus:ring-white/40"
               aria-label="بستن هشدار"
