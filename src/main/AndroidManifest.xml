@@ -1,8 +1,22 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- نمایش اعلان‌ها (اندروید ۱۳+) -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- ویبره -->
     <uses-permission android:name="android.permission.VIBRATE" />
+
+    <!-- زمان‌بندی دقیق آلارم (بدون USE_EXACT_ALARM) -->
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
-    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+
+    <!-- دریافت رویداد راه‌اندازی مجدد -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+    <!-- جلوگیری از خواب CPU هنگام اجرای آلارم -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+
+    <!-- اگر از سرویس پیش‌زمینه استفاده می‌کنید، این مجوز را اضافه کنید -->
+    <!-- <uses-permission android:name="android.permission.FOREGROUND_SERVICE" /> -->
+
+    <!-- برای درخواست معافیت از بهینه‌سازی باتری (اختیاری) -->
+    <!-- <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" /> -->
 </manifest>
