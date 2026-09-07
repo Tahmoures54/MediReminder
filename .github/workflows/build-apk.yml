@@ -15,10 +15,10 @@ jobs:
       contents: read
 
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Node
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -39,13 +39,17 @@ jobs:
       - name: Build web app
         run: npm run build
 
-      - name: Capacitor Android platform
+      - name: Add Android platform if missing
         run: |
-          if [ ! -d android ]; then npx cap add android; fi
+          set -euo pipefail
+          if [ ! -d android ]; then
+            npx cap add android
+          fi
           npx cap sync android
 
       - name: Configure Android permissions
         run: |
+          set -euo pipefail
           python3 - <<'PY'
           from pathlib import Path
           p = Path('android/app/src/main/AndroidManifest.xml')
@@ -58,16 +62,17 @@ jobs:
               'android.permission.WAKE_LOCK',
           ]
           for perm in perms:
-              if f'<uses-permission android:name="{perm}" />' not in s:
-                  s = s.replace('<application', f'    <uses-permission android:name="{perm}" />\n    <application', 1)
+              line = f'    <uses-permission android:name="{perm}" />'
+              if line not in s:
+                  s = s.replace('<application', line + '\n    <application', 1)
           p.write_text(s)
           PY
 
-      - name: Read app version
+      - name: Read app version from package.json
         id: version
         run: echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
 
-      - name: Detect release signing configuration
+      - name: Check for release signing secrets
         id: signing
         env:
           KS: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
@@ -76,13 +81,13 @@ jobs:
           KP: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           if [ -n "$KS" ] && [ -n "$KSP" ] && [ -n "$ALIAS" ] && [ -n "$KP" ]; then
-            echo 'enabled=true' >> "$GITHUB_OUTPUT"
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
           else
-            echo 'enabled=false' >> "$GITHUB_OUTPUT"
-            echo 'Release signing secrets are not configured; building a debug APK.'
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "Release signing secrets not configured. Building debug APK."
           fi
 
-      - name: Decode keystore and create properties
+      - name: Decode keystore and create keystore.properties
         if: steps.signing.outputs.enabled == 'true'
         env:
           KS: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
@@ -90,48 +95,78 @@ jobs:
           ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           KP: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
+          set -euo pipefail
           echo "$KS" | base64 --decode > android/release.keystore
-          printf 'storeFile=release.keystore\nstorePassword=%s\nkeyAlias=%s\nkeyPassword=%s\n' "$KSP" "$ALIAS" "$KP" > android/keystore.properties
+          cat > android/keystore.properties <<'EOF'
+          storeFile=release.keystore
+          storePassword=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          keyAlias=${{ secrets.ANDROID_KEY_ALIAS }}
+          keyPassword=${{ secrets.ANDROID_KEY_PASSWORD }}
+          EOF
+          # No trailing spaces or indentation before EOF
 
       - name: Configure signing in build.gradle
         if: steps.signing.outputs.enabled == 'true'
         run: |
-          # Add signingConfigs and reference in release build type
+          set -euo pipefail
           python3 - <<'PY'
           from pathlib import Path
           p = Path('android/app/build.gradle')
           s = p.read_text()
 
-          # Add signingConfigs if not present
+          # Add signingConfigs block if not present
           if 'signingConfigs' not in s:
               s = s.replace(
                   'android {',
-                  'android {\n    signingConfigs {\n        release {\n            def keystoreProperties = new Properties()\n            def keystorePropertiesFile = rootProject.file("keystore.properties")\n            if (keystorePropertiesFile.exists()) {\n                keystoreProperties.load(new FileInputStream(keystorePropertiesFile))\n            }\n            storeFile file(keystoreProperties['storeFile'])\n            storePassword keystoreProperties['storePassword']\n            keyAlias keystoreProperties['keyAlias']\n            keyPassword keystoreProperties['keyPassword']\n        }\n    }',
+                  '''android {
+              signingConfigs {
+                  release {
+                      def keystoreProperties = new Properties()
+                      def keystorePropertiesFile = rootProject.file("keystore.properties")
+                      if (keystorePropertiesFile.exists()) {
+                          keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
+                      }
+                      storeFile file(keystoreProperties['storeFile'])
+                      storePassword keystoreProperties['storePassword']
+                      keyAlias keystoreProperties['keyAlias']
+                      keyPassword keystoreProperties['keyPassword']
+                  }
+              }''',
                   1
               )
 
           # Add signingConfig to release build type
-          s = s.replace(
-              'release {',
-              'release {\n            signingConfig signingConfigs.release',
-              1
-          )
+          if 'signingConfig signingConfigs.release' not in s:
+              s = s.replace(
+                  'release {',
+                  '''release {
+                  signingConfig signingConfigs.release''',
+                  1
+              )
 
           p.write_text(s)
           PY
 
       - name: Set versionCode and versionName
         run: |
+          set -euo pipefail
           VERSION_CODE=$((1000 + GITHUB_RUN_NUMBER))
           VERSION_NAME="${{ steps.version.outputs.version }}"
-          # Ensure versionCode line exists, otherwise add
+
+          # Ensure defaultConfig block exists
+          if ! grep -q 'defaultConfig {' android/app/build.gradle; then
+            echo "defaultConfig block not found!"
+            exit 1
+          fi
+
+          # Insert versionCode and versionName if missing
           if ! grep -q 'versionCode ' android/app/build.gradle; then
             sed -i '/defaultConfig {/a\        versionCode 1' android/app/build.gradle
           fi
-          # Ensure versionName line exists, otherwise add
           if ! grep -q 'versionName ' android/app/build.gradle; then
             sed -i '/defaultConfig {/a\        versionName "1.0"' android/app/build.gradle
           fi
+
           # Replace values
           sed -i "s/versionCode [0-9][0-9]*/versionCode $VERSION_CODE/" android/app/build.gradle
           sed -i "s/versionName \"[^\"]*\"/versionName \"$VERSION_NAME\"/" android/app/build.gradle
@@ -151,18 +186,21 @@ jobs:
         working-directory: android
         run: ./gradlew assembleDebug
 
-      - name: Cleanup keystore
+      - name: Cleanup sensitive files
         if: steps.signing.outputs.enabled == 'true'
-        run: rm -f android/release.keystore android/keystore.properties
-
-      - name: Verify artifacts
         run: |
+          rm -f android/release.keystore android/keystore.properties
+
+      - name: Verify and copy artifacts
+        run: |
+          set -euo pipefail
           mkdir -p dist-artifacts
-          if [ "${{ steps.signing.outputs.enabled }}" = 'true' ]; then
-            cp android/app/build/outputs/bundle/release/*.aab "dist-artifacts/MediReminder-${{ steps.version.outputs.version }}.aab"
-            cp android/app/build/outputs/apk/release/*release.apk "dist-artifacts/MediReminder-${{ steps.version.outputs.version }}.apk"
+          VERSION="${{ steps.version.outputs.version }}"
+          if [ "${{ steps.signing.outputs.enabled }}" = "true" ]; then
+            cp android/app/build/outputs/bundle/release/*.aab "dist-artifacts/MediReminder-$VERSION.aab"
+            cp android/app/build/outputs/apk/release/*release.apk "dist-artifacts/MediReminder-$VERSION.apk"
           else
-            cp android/app/build/outputs/apk/debug/*debug.apk "dist-artifacts/MediReminder-${{ steps.version.outputs.version }}-debug.apk"
+            cp android/app/build/outputs/apk/debug/*debug.apk "dist-artifacts/MediReminder-$VERSION-debug.apk"
           fi
           ls -lh dist-artifacts
 
