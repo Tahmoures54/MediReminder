@@ -15,6 +15,11 @@ export const NATIVE_FOLLOW_UP_MS = 2 * 60 * 1000;
 export const NATIVE_FOLLOW_UP_SLOTS = 180;
 /** Safety follow-ups after a future scheduled dose. */
 export const NATIVE_SCHEDULE_EXTRA_SLOTS = 6;
+/** حداکثر تعداد اعلان‌های زمان‌بندی‌شده در هر دسته برای جلوگیری از مشکلات OEM */
+const SCHEDULE_CHUNK_SIZE = 64;
+
+// Prevent duplicate registration of action types
+let actionsRegistered = false;
 
 export type SwMessage =
   | { type: 'ALARM_TAKEN'; medicationId: number | string }
@@ -23,12 +28,17 @@ export type SwMessage =
   | { type: 'ALARM_TRIGGERED'; medicationId: number | string }
   | { type: 'ALARMS_LIST'; alarms: unknown[] };
 
+// پیام‌های ارسالی به Service Worker
+type SwOutgoingMessage =
+  | { type: 'SCHEDULE_ALARMS'; alarms: unknown[] }
+  | { type: 'CANCEL_AND_DISMISS_ALARM'; id: number | string };
+
 function isNative() {
   return Capacitor.isNativePlatform();
 }
 
 export async function registerNotificationActions(): Promise<void> {
-  if (!isNative()) return;
+  if (!isNative() || actionsRegistered) return;
   try {
     await LocalNotifications.registerActionTypes({
       types: [
@@ -42,6 +52,7 @@ export async function registerNotificationActions(): Promise<void> {
         },
       ],
     });
+    actionsRegistered = true;
   } catch (e) {
     console.warn('registerActionTypes failed', e);
   }
@@ -55,24 +66,26 @@ function notifIdsFor(medId: number): number[] {
 
 export async function cancelMedNotifications(medId: number): Promise<void> {
   if (!isNative()) {
-    postToSw({ type: 'CANCEL_ALARM', id: medId });
-    postToSw({ type: 'DISMISS_ALARM', id: medId });
+    postToSw({ type: 'CANCEL_AND_DISMISS_ALARM', id: medId });
     return;
   }
   try {
-    await LocalNotifications.cancel({
-      notifications: notifIdsFor(medId).map((id) => ({ id })),
-    });
+    const ids = notifIdsFor(medId).map(id => ({ id }));
+    // لغو در قطعات کوچک‌تر برای جلوگیری از timeout
+    for (let i = 0; i < ids.length; i += SCHEDULE_CHUNK_SIZE) {
+      const chunk = ids.slice(i, i + SCHEDULE_CHUNK_SIZE);
+      await LocalNotifications.cancel({ notifications: chunk });
+    }
   } catch (e) {
     console.warn('cancelMedNotifications', e);
   }
 }
 
 export function dismissSwFollowUps(medId: number | string): void {
-  postToSw({ type: 'DISMISS_ALARM', id: medId });
+  postToSw({ type: 'CANCEL_AND_DISMISS_ALARM', id: medId });
 }
 
-function postToSw(payload: Record<string, unknown>): void {
+function postToSw(payload: SwOutgoingMessage): void {
   if (isNative()) return;
   if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return;
   const ctrl = navigator.serviceWorker.controller;
@@ -80,7 +93,7 @@ function postToSw(payload: Record<string, unknown>): void {
     ctrl.postMessage(payload);
   } else {
     navigator.serviceWorker.ready
-      .then((reg) => reg.active?.postMessage(payload))
+      .then(reg => reg.active?.postMessage(payload))
       .catch(() => {});
   }
 }
@@ -96,11 +109,15 @@ export async function syncAllAlarms(medications: Medication[]): Promise<void> {
 function syncWeb(medications: Medication[]): void {
   const now = Date.now();
   const alarms = medications
-    .filter((m) => m.id != null)
-    .flatMap((m) => {
+    .filter(m => m.id != null)
+    .flatMap(m => {
       const id = m.id!;
       if (m.running && m.nextDoseAt && m.nextDoseAt > now) {
         return [{ id, time: m.nextDoseAt, name: m.name, dosage: m.dosage }];
+      }
+      // اگر nextDoseAt گذشته باشد اما pending نباشد، باید فوراً اعلان داده شود
+      if (m.running && m.nextDoseAt && m.nextDoseAt <= now) {
+        return [{ id, time: now - 1000, name: m.name, dosage: m.dosage }];
       }
       if (m.pendingDose) {
         return [{ id, time: now - 1000, name: m.name, dosage: m.dosage }];
@@ -113,18 +130,23 @@ function syncWeb(medications: Medication[]): void {
 async function syncNative(medications: Medication[]): Promise<void> {
   const now = Date.now();
 
+  // لغو همه اعلان‌های قبلی برای همه داروها
   try {
     const allIds = medications
-      .filter((m) => m.id != null)
-      .flatMap((m) => notifIdsFor(m.id!).map((id) => ({ id })));
+      .filter(m => m.id != null)
+      .flatMap(m => notifIdsFor(m.id!).map(id => ({ id })));
     if (allIds.length) {
-      await LocalNotifications.cancel({ notifications: allIds });
+      // لغو در قطعات
+      for (let i = 0; i < allIds.length; i += SCHEDULE_CHUNK_SIZE) {
+        const chunk = allIds.slice(i, i + SCHEDULE_CHUNK_SIZE);
+        await LocalNotifications.cancel({ notifications: chunk });
+      }
     }
   } catch (e) {
     console.warn('native cancel all', e);
   }
 
-  type Sched = {
+  interface SchedNotification {
     id: number;
     title: string;
     body: string;
@@ -133,14 +155,15 @@ async function syncNative(medications: Medication[]): Promise<void> {
     sound: string;
     actionTypeId: string;
     extra: Record<string, unknown>;
-  };
+  }
 
-  const toSchedule: Sched[] = [];
+  const toSchedule: SchedNotification[] = [];
 
   for (const m of medications) {
     if (m.id == null) continue;
     const ids = notifIdsFor(m.id);
 
+    // وضعیت pending: دوز در انتظار تأیید
     if (m.pendingDose) {
       for (let slot = 0; slot < NATIVE_FOLLOW_UP_SLOTS; slot++) {
         toSchedule.push({
@@ -157,6 +180,7 @@ async function syncNative(medications: Medication[]): Promise<void> {
       continue;
     }
 
+    // اگر running و nextDoseAt در آینده باشد
     if (m.running && m.nextDoseAt && m.nextDoseAt > now) {
       for (let slot = 0; slot < NATIVE_SCHEDULE_EXTRA_SLOTS; slot++) {
         toSchedule.push({
@@ -170,15 +194,29 @@ async function syncNative(medications: Medication[]): Promise<void> {
           extra: { medicationId: m.id, kind: 'scheduled', slot },
         });
       }
+      continue;
+    }
+
+    // اگر running و nextDoseAt در گذشته باشد (مثلاً به دلیل delay) → اعلان فوری
+    if (m.running && m.nextDoseAt && m.nextDoseAt <= now) {
+      toSchedule.push({
+        id: ids[0],
+        title: '💊 زمان مصرف دارو',
+        body: `${m.name} — ${m.dosage}`,
+        schedule: { at: new Date(now + 800) },
+        channelId: NOTIFICATION_CHANNEL_ID,
+        sound: 'medication_alarm.wav',
+        actionTypeId: ACTION_TYPE_ID,
+        extra: { medicationId: m.id, kind: 'overdue', slot: 0 },
+      });
     }
   }
 
-  // Cap batch size for OEM stability (schedule in chunks if huge)
-  const CHUNK = 64;
-  for (let i = 0; i < toSchedule.length; i += CHUNK) {
-    const chunk = toSchedule.slice(i, i + CHUNK);
+  // زمان‌بندی در قطعات
+  for (let i = 0; i < toSchedule.length; i += SCHEDULE_CHUNK_SIZE) {
+    const chunk = toSchedule.slice(i, i + SCHEDULE_CHUNK_SIZE);
     try {
-      await LocalNotifications.schedule({ notifications: chunk as any });
+      await LocalNotifications.schedule({ notifications: chunk });
     } catch (e) {
       console.warn('native schedule chunk failed', e);
     }
@@ -209,7 +247,7 @@ export function createDebouncedSync(delayMs = 350) {
       if (timer) clearTimeout(timer);
       timer = setTimeout(() => {
         timer = null;
-        syncAllAlarms(latest).catch((e) => console.warn('debounced sync', e));
+        syncAllAlarms(latest).catch(e => console.warn('debounced sync', e));
       }, delayMs);
     },
     flush() {
