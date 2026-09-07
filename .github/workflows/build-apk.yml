@@ -51,16 +51,15 @@ jobs:
           p = Path('android/app/src/main/AndroidManifest.xml')
           s = p.read_text()
           perms = [
-            'android.permission.POST_NOTIFICATIONS',
-            'android.permission.VIBRATE',
-            'android.permission.SCHEDULE_EXACT_ALARM',
-            'android.permission.RECEIVE_BOOT_COMPLETED',
-            'android.permission.WAKE_LOCK',
+              'android.permission.POST_NOTIFICATIONS',
+              'android.permission.VIBRATE',
+              'android.permission.SCHEDULE_EXACT_ALARM',
+              'android.permission.RECEIVE_BOOT_COMPLETED',
+              'android.permission.WAKE_LOCK',
           ]
           for perm in perms:
-              line = f'    <uses-permission android:name="{perm}" />'
-              if perm not in s:
-                  s = s.replace('<application', line + '\n    <application', 1)
+              if f'<uses-permission android:name="{perm}" />' not in s:
+                  s = s.replace('<application', f'    <uses-permission android:name="{perm}" />\n    <application', 1)
           p.write_text(s)
           PY
 
@@ -78,26 +77,64 @@ jobs:
         run: |
           if [ -n "$KS" ] && [ -n "$KSP" ] && [ -n "$ALIAS" ] && [ -n "$KP" ]; then
             echo 'enabled=true' >> "$GITHUB_OUTPUT"
-            echo "$KS" | base64 --decode > android/release.keystore
-            cat > android/keystore.properties <<EOF2
-          storeFile=release.keystore
-          storePassword=$KSP
-          keyAlias=$ALIAS
-          keyPassword=$KP
-          EOF2
           else
             echo 'enabled=false' >> "$GITHUB_OUTPUT"
             echo 'Release signing secrets are not configured; building a debug APK.'
           fi
 
-      - name: Configure signing
+      - name: Decode keystore and create properties
         if: steps.signing.outputs.enabled == 'true'
-        run: python3 scripts/add_signing.py
-
-      - name: Set release version
+        env:
+          KS: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KSP: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KP: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
-          sed -i "s/versionCode [0-9][0-9]*/versionCode $((1000 + GITHUB_RUN_NUMBER)) /" android/app/build.gradle
-          sed -i "s/versionName \"[^\"]*\"/versionName \"${{ steps.version.outputs.version }}\"/" android/app/build.gradle
+          echo "$KS" | base64 --decode > android/release.keystore
+          printf 'storeFile=release.keystore\nstorePassword=%s\nkeyAlias=%s\nkeyPassword=%s\n' "$KSP" "$ALIAS" "$KP" > android/keystore.properties
+
+      - name: Configure signing in build.gradle
+        if: steps.signing.outputs.enabled == 'true'
+        run: |
+          # Add signingConfigs and reference in release build type
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('android/app/build.gradle')
+          s = p.read_text()
+
+          # Add signingConfigs if not present
+          if 'signingConfigs' not in s:
+              s = s.replace(
+                  'android {',
+                  'android {\n    signingConfigs {\n        release {\n            def keystoreProperties = new Properties()\n            def keystorePropertiesFile = rootProject.file("keystore.properties")\n            if (keystorePropertiesFile.exists()) {\n                keystoreProperties.load(new FileInputStream(keystorePropertiesFile))\n            }\n            storeFile file(keystoreProperties['storeFile'])\n            storePassword keystoreProperties['storePassword']\n            keyAlias keystoreProperties['keyAlias']\n            keyPassword keystoreProperties['keyPassword']\n        }\n    }',
+                  1
+              )
+
+          # Add signingConfig to release build type
+          s = s.replace(
+              'release {',
+              'release {\n            signingConfig signingConfigs.release',
+              1
+          )
+
+          p.write_text(s)
+          PY
+
+      - name: Set versionCode and versionName
+        run: |
+          VERSION_CODE=$((1000 + GITHUB_RUN_NUMBER))
+          VERSION_NAME="${{ steps.version.outputs.version }}"
+          # Ensure versionCode line exists, otherwise add
+          if ! grep -q 'versionCode ' android/app/build.gradle; then
+            sed -i '/defaultConfig {/a\        versionCode 1' android/app/build.gradle
+          fi
+          # Ensure versionName line exists, otherwise add
+          if ! grep -q 'versionName ' android/app/build.gradle; then
+            sed -i '/defaultConfig {/a\        versionName "1.0"' android/app/build.gradle
+          fi
+          # Replace values
+          sed -i "s/versionCode [0-9][0-9]*/versionCode $VERSION_CODE/" android/app/build.gradle
+          sed -i "s/versionName \"[^\"]*\"/versionName \"$VERSION_NAME\"/" android/app/build.gradle
 
       - name: Build signed AAB
         if: steps.signing.outputs.enabled == 'true'
@@ -113,6 +150,10 @@ jobs:
         if: steps.signing.outputs.enabled != 'true'
         working-directory: android
         run: ./gradlew assembleDebug
+
+      - name: Cleanup keystore
+        if: steps.signing.outputs.enabled == 'true'
+        run: rm -f android/release.keystore android/keystore.properties
 
       - name: Verify artifacts
         run: |
