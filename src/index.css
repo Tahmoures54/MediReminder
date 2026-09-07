@@ -39,90 +39,57 @@ select {
 }
 
 /* ==========================================================================
-   Custom Utilities / Animations
+   Focus Visible (Accessibility)
+   ========================================================================== */
+:focus-visible {
+  outline: 2px solid #22d3ee;
+  outline-offset: 2px;
+}
+
+/* ==========================================================================
+   Keyframes
+   ========================================================================== */
+@keyframes fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes zoom-in {
+  from { opacity: 0; transform: scale(0.95); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+@keyframes slide-in-from-top {
+  from { opacity: 0; transform: translateY(-16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes scale-in {
+  from { opacity: 0; transform: scale(0.9); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+@keyframes bounce-in {
+  0%   { opacity: 0; transform: scale(0.3); }
+  50%  { transform: scale(1.05); }
+  70%  { transform: scale(0.94); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+/* ==========================================================================
+   Custom Utilities
    ========================================================================== */
 @layer utilities {
-  /* ------------------------------------------------------------------------
-     Generic "animate-in" system
-     This supports combining classes like:
-     animate-in fade-in zoom-in slide-in-from-top duration-300
-     ------------------------------------------------------------------------ */
-  @keyframes enter {
-    from {
-      opacity: var(--enter-opacity, 1);
-      transform:
-        translate3d(
-          var(--enter-translate-x, 0),
-          var(--enter-translate-y, 0),
-          0
-        )
-        scale3d(
-          var(--enter-scale, 1),
-          var(--enter-scale, 1),
-          1
-        );
-    }
-    to {
-      opacity: 1;
-      transform: translate3d(0, 0, 0) scale3d(1, 1, 1);
-    }
+  .animate-fade-in {
+    animation: fade-in 0.3s ease-out both;
   }
 
-  @keyframes scale-in {
-    from {
-      opacity: 0;
-      transform: scale(0.9);
-    }
-    to {
-      opacity: 1;
-      transform: scale(1);
-    }
+  .animate-zoom-in {
+    animation: zoom-in 0.2s ease-out both;
   }
 
-  @keyframes bounce-in {
-    0% {
-      opacity: 0;
-      transform: scale(0.3);
-    }
-    50% {
-      transform: scale(1.05);
-    }
-    70% {
-      transform: scale(0.94);
-    }
-    100% {
-      opacity: 1;
-      transform: scale(1);
-    }
-  }
-
-  .animate-in {
-    animation: enter 0.3s cubic-bezier(0.16, 1, 0.3, 1) both;
-    will-change: opacity, transform;
-  }
-
-  .fade-in {
-    --enter-opacity: 0;
-  }
-
-  .zoom-in {
-    --enter-scale: 0.95;
-  }
-
-  .zoom-in-95 {
-    --enter-scale: 0.95;
-  }
-
-  .slide-in-from-top {
-    --enter-translate-y: -16px;
-  }
-
-  .slide-in-from-top-2 {
-    --enter-translate-y: -8px;
-  }
-
-  .slide-in-from-bottom {
-    --enter-translate-y: 16px;
+  .animate-slide-in-from-top {
+    animation: slide-in-from-top 0.3s cubic-bezier(0.16, 1, 0.3, 1) both;
   }
 
   .animate-scale-in {
@@ -162,28 +129,28 @@ select {
 }
 
 /* ==========================================================================
-   Global Scrollbar
+   Global Scrollbar (apply only to body and elements with .custom-scrollbar)
    ========================================================================== */
-* {
+body {
   scrollbar-width: thin;
   scrollbar-color: #4b5563 #1f2937;
 }
 
-*::-webkit-scrollbar {
+body::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
 
-*::-webkit-scrollbar-track {
+body::-webkit-scrollbar-track {
   background: #1f2937;
 }
 
-*::-webkit-scrollbar-thumb {
+body::-webkit-scrollbar-thumb {
   background: #4b5563;
   border-radius: 9999px;
 }
 
-*::-webkit-scrollbar-thumb:hover {
+body::-webkit-scrollbar-thumb:hover {
   background: #6b7280;
 }
 
