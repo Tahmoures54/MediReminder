@@ -1,15 +1,18 @@
 import { Capacitor } from '@capacitor/core';
+import type { AppNotificationPermission } from '../utils/permissions';
 
-type PermissionState = 'granted' | 'denied' | 'prompt' | 'undetermined';
+export type PermissionState = AppNotificationPermission;
 
 interface Props {
   permission: PermissionState;
+  exactAlarmGranted?: boolean;
   onRequest: () => void;
+  onRequestExactAlarm?: () => void;
   onDismiss?: () => void;
 }
 
-export function PermissionsBanner({ permission, onRequest, onDismiss }: Props) {
-  if (permission === 'granted') return null;
+export function PermissionsBanner({ permission, exactAlarmGranted = true, onRequest, onRequestExactAlarm, onDismiss }: Props) {
+  if (permission === 'granted' && exactAlarmGranted) return null;
 
   const isNative = Capacitor.isNativePlatform();
   const platform = Capacitor.getPlatform();
@@ -20,6 +23,7 @@ export function PermissionsBanner({ permission, onRequest, onDismiss }: Props) {
       typeof navigator !== 'undefined' &&
       /iPad|iPhone|iPod/.test(navigator.userAgent));
   const denied = permission === 'denied';
+  const exactAlarmMissing = isAndroid && exactAlarmGranted === false;
 
   return (
     <div
@@ -51,6 +55,7 @@ export function PermissionsBanner({ permission, onRequest, onDismiss }: Props) {
             </li>
             {isAndroid && (
               <>
+                {exactAlarmMissing && <li>مجوز <strong>آلارم دقیق</strong> را در تنظیمات اندروید فعال کنید</li>}
                 <li>
                   باتری را روی <strong>بدون محدودیت</strong> بگذارید (عدم بهینه‌سازی)
                 </li>
@@ -76,6 +81,15 @@ export function PermissionsBanner({ permission, onRequest, onDismiss }: Props) {
                 className="rounded-xl bg-amber-400 px-4 py-2.5 text-sm font-bold text-gray-950 shadow-md transition hover:bg-amber-300 active:scale-95"
               >
                 فعال‌سازی اعلان‌ها
+              </button>
+            )}
+            {exactAlarmMissing && onRequestExactAlarm && (
+              <button
+                type="button"
+                onClick={onRequestExactAlarm}
+                className="rounded-xl bg-red-400 px-4 py-2.5 text-sm font-bold text-gray-950 shadow-md transition hover:bg-red-300 active:scale-95"
+              >
+                فعال‌سازی آلارم دقیق
               </button>
             )}
             {denied && isNative && (

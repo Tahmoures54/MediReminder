@@ -7,11 +7,14 @@ import { ConfirmDialog } from './components/ConfirmDialog';
 import { NotificationPopup } from './components/NotificationPopup';
 import { ReportModal } from './components/ReportModal';
 import { PermissionsBanner } from './components/PermissionsBanner';
+import type { PermissionState } from './components/PermissionsBanner';
 import { db, Medication, HistoryRecord } from './db/database';
 import {
   initAllPermissions,
   checkNotificationPermission,
   requestNotificationPermission,
+  checkExactAlarmPermission,
+  requestExactAlarmPermission,
   setupAndroidChannel,
 } from './utils/permissions';
 import { playAlarm, stopAlarm, triggerHaptics } from './utils/audio';
@@ -77,8 +80,9 @@ export default function App() {
   const [alert, setAlert] = useState<AlertItem | null>(null);
   const [confirm, setConfirm] = useState<{ title: string; message: string; onConfirm: () => void } | null>(null);
   const [report, setReport] = useState<Medication | null>(null);
-  const [permission, setPermission] = useState('unknown');
+  const [permission, setPermission] = useState<PermissionState>('prompt');
   const [isNative, setIsNative] = useState(false);
+  const [exactAlarmGranted, setExactAlarmGranted] = useState(true);
   const [bootError, setBootError] = useState<string | null>(null);
   const [bootAttempt, setBootAttempt] = useState(0);
   const [permBannerHidden, setPermBannerHidden] = useState(() => {
@@ -155,10 +159,12 @@ export default function App() {
         const native = Capacitor.isNativePlatform();
         const p = await initAllPermissions();
         const status = p.notification ? 'granted' : await checkNotificationPermission();
+        const exactAlarm = await checkExactAlarmPermission();
         await registerNotificationActions();
         await load();
         if (!active) return;
         setIsNative(native);
+        setExactAlarmGranted(exactAlarm);
         setPermission(status);
         setBootError(null);
         setBootDone(true);
@@ -179,7 +185,9 @@ export default function App() {
     const onVisible = async () => {
       if (document.visibilityState !== 'visible') return;
       const status = await checkNotificationPermission();
+      const exactAlarm = await checkExactAlarmPermission();
       setPermission(status);
+      setExactAlarmGranted(exactAlarm);
       const current = medsRef.current;
       if (current.some((m) => m.pendingDose || m.running)) {
         await syncAllAlarms(current);
@@ -191,8 +199,9 @@ export default function App() {
 
   const handleRequestPermission = async () => {
     const ok = await requestNotificationPermission();
-    if (ok) {
+    if (ok === 'granted') {
       await setupAndroidChannel();
+      setExactAlarmGranted(await requestExactAlarmPermission());
       setPermission('granted');
       setPermBannerHidden(false);
       try {
@@ -202,6 +211,12 @@ export default function App() {
     } else {
       setPermission(await checkNotificationPermission());
     }
+  };
+
+  const handleRequestExactAlarm = async () => {
+    const granted = await requestExactAlarmPermission();
+    setExactAlarmGranted(granted);
+    if (granted) await syncAllAlarms(medsRef.current);
   };
 
   const dismissPermBanner = () => {
@@ -537,10 +552,9 @@ export default function App() {
       },
     });
 
-  const activeCount = useMemo(() => medications.filter((m) => m.running).length, [medications]);
   const dueCount = useMemo(() => medications.filter((m) => m.pendingDose).length, [medications]);
   const formVisible = showAdd || editing !== null;
-  const showPermBanner = permission !== 'granted' && permission !== 'unknown' && !permBannerHidden;
+  const showPermBanner = (permission !== 'granted' || (isNative && !exactAlarmGranted)) && !permBannerHidden;
 
   if (bootError) {
     return (
@@ -619,7 +633,9 @@ export default function App() {
           {showPermBanner && (
             <PermissionsBanner
               permission={permission}
+              exactAlarmGranted={exactAlarmGranted}
               onRequest={handleRequestPermission}
+              onRequestExactAlarm={handleRequestExactAlarm}
               onDismiss={dismissPermBanner}
             />
           )}

@@ -74,6 +74,31 @@ export async function requestNotificationPermission(): Promise<AppNotificationPe
   return result === 'granted' ? 'granted' : 'denied';
 }
 
+export async function checkExactAlarmPermission(): Promise<boolean> {
+  if (!Capacitor.isNativePlatform() || Capacitor.getPlatform() !== 'android') return true;
+
+  try {
+    const status = await LocalNotifications.checkExactNotificationSetting();
+    return status.exact_alarm === 'granted';
+  } catch (error) {
+    console.warn('خطا در بررسی مجوز آلارم دقیق:', error);
+    return false;
+  }
+}
+
+export async function requestExactAlarmPermission(): Promise<boolean> {
+  if (!Capacitor.isNativePlatform() || Capacitor.getPlatform() !== 'android') return true;
+
+  try {
+    if (await checkExactAlarmPermission()) return true;
+    await LocalNotifications.changeExactNotificationSetting();
+    return checkExactAlarmPermission();
+  } catch (error) {
+    console.warn('خطا در فعال‌سازی آلارم دقیق:', error);
+    return false;
+  }
+}
+
 /**
  * ساخت کانال اعلان اندروید با صدا و ویبره قوی
  */

@@ -47,6 +47,12 @@ jobs:
           fi
           npx cap sync android
 
+      - name: Install notification sound resource
+        run: |
+          set -euo pipefail
+          mkdir -p android/app/src/main/res/raw
+          cp src/main/res/raw/medication_alarm.wav android/app/src/main/res/raw/medication_alarm.wav
+
       - name: Configure Android permissions
         run: |
           set -euo pipefail
@@ -135,14 +141,18 @@ jobs:
                   1
               )
 
-          # Add signingConfig to release build type
-          if 'signingConfig signingConfigs.release' not in s:
-              s = s.replace(
-                  'release {',
-                  '''release {
-                  signingConfig signingConfigs.release''',
-                  1
-              )
+            # Add signingConfig only to the buildTypes release block.
+            if 'signingConfig signingConfigs.release' not in s:
+              marker = 'buildTypes {\n'
+              release_marker = 'release {\n'
+              build_types_start = s.find(marker)
+              if build_types_start < 0:
+                raise SystemExit('buildTypes block not found')
+              release_start = s.find(release_marker, build_types_start + len(marker))
+              if release_start < 0:
+                raise SystemExit('buildTypes.release block not found')
+              insert_at = release_start + len(release_marker)
+              s = s[:insert_at] + '        signingConfig signingConfigs.release\n' + s[insert_at:]
 
           p.write_text(s)
           PY

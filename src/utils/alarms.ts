@@ -13,8 +13,8 @@ const ACTION_TYPE_ID = 'MED_ALARM_ACTIONS';
 export const NATIVE_FOLLOW_UP_MS = 2 * 60 * 1000;
 /** ~6 hours of pre-scheduled nags; app resync on foreground extends further. */
 export const NATIVE_FOLLOW_UP_SLOTS = 180;
-/** Safety follow-ups after a future scheduled dose. */
-export const NATIVE_SCHEDULE_EXTRA_SLOTS = 6;
+/** Pre-scheduled follow-ups after a future dose, covering roughly six hours. */
+export const NATIVE_SCHEDULE_EXTRA_SLOTS = NATIVE_FOLLOW_UP_SLOTS;
 /** حداکثر تعداد اعلان‌های زمان‌بندی‌شده در هر دسته برای جلوگیری از مشکلات OEM */
 const SCHEDULE_CHUNK_SIZE = 64;
 
@@ -31,7 +31,8 @@ export type SwMessage =
 // پیام‌های ارسالی به Service Worker
 type SwOutgoingMessage =
   | { type: 'SCHEDULE_ALARMS'; alarms: unknown[] }
-  | { type: 'CANCEL_AND_DISMISS_ALARM'; id: number | string };
+  | { type: 'CANCEL_ALARM'; id: number | string }
+  | { type: 'DISMISS_ALARM'; id: number | string };
 
 function isNative() {
   return Capacitor.isNativePlatform();
@@ -66,7 +67,7 @@ function notifIdsFor(medId: number): number[] {
 
 export async function cancelMedNotifications(medId: number): Promise<void> {
   if (!isNative()) {
-    postToSw({ type: 'CANCEL_AND_DISMISS_ALARM', id: medId });
+    postToSw({ type: 'CANCEL_ALARM', id: medId });
     return;
   }
   try {
@@ -82,7 +83,7 @@ export async function cancelMedNotifications(medId: number): Promise<void> {
 }
 
 export function dismissSwFollowUps(medId: number | string): void {
-  postToSw({ type: 'CANCEL_AND_DISMISS_ALARM', id: medId });
+  postToSw({ type: 'DISMISS_ALARM', id: medId });
 }
 
 function postToSw(payload: SwOutgoingMessage): void {
@@ -150,7 +151,7 @@ async function syncNative(medications: Medication[]): Promise<void> {
     id: number;
     title: string;
     body: string;
-    schedule: { at: Date };
+    schedule: { at: Date; allowWhileIdle: boolean };
     channelId: string;
     sound: string;
     actionTypeId: string;
@@ -170,7 +171,7 @@ async function syncNative(medications: Medication[]): Promise<void> {
           id: ids[slot],
           title: slot === 0 ? '💊 زمان مصرف دارو' : '🔔 یادآوری مجدد — لطفاً تأیید کنید',
           body: `${m.name} — ${m.dosage}\nهنوز مصرف را تأیید نکرده‌اید.`,
-          schedule: { at: new Date(now + slot * NATIVE_FOLLOW_UP_MS + 800) },
+          schedule: { at: new Date(now + slot * NATIVE_FOLLOW_UP_MS + 800), allowWhileIdle: true },
           channelId: NOTIFICATION_CHANNEL_ID,
           sound: 'medication_alarm.wav',
           actionTypeId: ACTION_TYPE_ID,
@@ -187,7 +188,7 @@ async function syncNative(medications: Medication[]): Promise<void> {
           id: ids[slot],
           title: slot === 0 ? '💊 زمان مصرف دارو' : '🔔 یادآوری مجدد دارو',
           body: `${m.name} — ${m.dosage}`,
-          schedule: { at: new Date(m.nextDoseAt + slot * NATIVE_FOLLOW_UP_MS) },
+          schedule: { at: new Date(m.nextDoseAt + slot * NATIVE_FOLLOW_UP_MS), allowWhileIdle: true },
           channelId: NOTIFICATION_CHANNEL_ID,
           sound: 'medication_alarm.wav',
           actionTypeId: ACTION_TYPE_ID,
@@ -203,7 +204,7 @@ async function syncNative(medications: Medication[]): Promise<void> {
         id: ids[0],
         title: '💊 زمان مصرف دارو',
         body: `${m.name} — ${m.dosage}`,
-        schedule: { at: new Date(now + 800) },
+        schedule: { at: new Date(now + 800), allowWhileIdle: true },
         channelId: NOTIFICATION_CHANNEL_ID,
         sound: 'medication_alarm.wav',
         actionTypeId: ACTION_TYPE_ID,

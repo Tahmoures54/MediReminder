@@ -16,20 +16,124 @@ type FeedbackState =
 
 const RECENT_DOSES_LIMIT = 5;
 
-// توابع کمکی (بدون تغییر)
-function formatDateTime(timestamp: number): string { ... }
-function getStatusDisplay(status: HistoryRecord['status']) { ... }
-function getAdherenceLabel(score: number, total: number) { ... }
-function sanitizeFileName(name: string) { ... }
+function formatDateTime(timestamp: number): string {
+  const date = new Date(timestamp);
+  const today = new Date();
+  const isToday =
+    date.getDate() === today.getDate() &&
+    date.getMonth() === today.getMonth() &&
+    date.getFullYear() === today.getFullYear();
+  const time = date.toLocaleTimeString('fa-IR', { hour: '2-digit', minute: '2-digit' });
 
-// تابع کپی متن (بدون تغییر)
-async function copyTextToClipboard(text: string): Promise<boolean> { ... }
+  return isToday ? `امروز ساعت ${time}` : `${date.toLocaleDateString('fa-IR')} - ${time}`;
+}
 
-// تابع دانلود فایل (بدون تغییر)
-function downloadTextFile(filename: string, text: string) { ... }
+function getStatusDisplay(status: HistoryRecord['status']) {
+  switch (status) {
+    case 'on-time':
+      return { icon: '🟢', text: 'به‌موقع', color: 'text-green-400', bg: 'bg-green-400/10' };
+    case 'early':
+      return { icon: '🟡', text: 'زودتر', color: 'text-yellow-400', bg: 'bg-yellow-400/10' };
+    case 'late':
+      return { icon: '🔴', text: 'دیرتر', color: 'text-red-400', bg: 'bg-red-400/10' };
+    default:
+      return { icon: '⚪', text: 'نامشخص', color: 'text-gray-400', bg: 'bg-gray-400/10' };
+  }
+}
 
-// تابع تشخیص لغو اشتراک (بدون تغییر)
-function isUserCancelledShare(error: unknown) { ... }
+function getAdherenceLabel(score: number, total: number) {
+  if (total === 0) return 'هنوز داده‌ای نیست';
+  if (score >= 80) return '🌟 عالی';
+  if (score >= 50) return '👍 خوب';
+  return '⚠️ نیاز به توجه';
+}
+
+function sanitizeFileName(name: string) {
+  return name
+    .toLowerCase()
+    .replace(/[^a-z0-9\u0600-\u06FF\s-]/gi, '')
+    .trim()
+    .replace(/\s+/g, '-') || 'دارو';
+}
+
+async function copyTextToClipboard(text: string): Promise<boolean> {
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch {
+    // Use the legacy fallback below when Clipboard API is unavailable.
+  }
+
+  try {
+    const textarea = document.createElement('textarea');
+    textarea.value = text;
+    textarea.setAttribute('readonly', '');
+    textarea.style.position = 'fixed';
+    textarea.style.opacity = '0';
+    document.body.appendChild(textarea);
+    textarea.select();
+    const copied = document.execCommand('copy');
+    textarea.remove();
+    return copied;
+  } catch {
+    return false;
+  }
+}
+
+function downloadTextFile(filename: string, text: string) {
+  const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+function isUserCancelledShare(error: unknown) {
+  if (!(error instanceof Error)) return false;
+  const message = error.message.toLowerCase();
+  return error.name === 'AbortError' || message.includes('abort') || message.includes('cancel');
+}
+
+function buildReportText(
+  medication: Medication,
+  stats: {
+    total: number;
+    onTimeCount: number;
+    earlyCount: number;
+    lateCount: number;
+    score: number;
+    lastDose: string;
+  },
+  recentHistory: HistoryRecord[]
+) {
+  const recentLines = recentHistory.length
+    ? recentHistory.map(record => `- ${formatDateTime(record.takenAt)} — ${getStatusDisplay(record.status).text}`).join('\n')
+    : '- هنوز دوزی ثبت نشده';
+  const adherence = stats.total > 0 ? `${stats.score}٪` : 'بدون داده';
+
+  return `📊 گزارش مصرف دارو
+
+💊 نام: ${medication.name}
+⚖️ دوز: ${medication.dosage}
+⭐ پایبندی: ${adherence}
+📦 دوزهای ثبت‌شده: ${stats.total}
+🟢 به‌موقع: ${stats.onTimeCount}
+🟡 زودتر: ${stats.earlyCount}
+🔴 دیرتر: ${stats.lateCount}
+🕒 آخرین دوز: ${stats.lastDose}
+
+📝 دوزهای اخیر:
+${recentLines}
+
+🔗 ساخته‌شده با یادآور دارو
+${window.location.origin}`;
+}
 
 // --- توابع جدید برای هش ---
 
@@ -127,8 +231,19 @@ export function ReportModal({ medication, onClose }: ReportModalProps) {
     };
   }, [baseReportText]);
 
-  // مدیریت Escape و اسکرول (بدون تغییر)
-  useEffect(() => { ... }, [onClose]);
+  // مدیریت Escape و اسکرول
+  useEffect(() => {
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [onClose]);
 
   // پاک‌سازی خودکار feedback
   useEffect(() => {
@@ -305,12 +420,45 @@ export function ReportModal({ medication, onClose }: ReportModalProps) {
           </p>
         </div>
 
-        {/* بقیه محتوای گزارش (بدون تغییر) */}
         <div className="mb-4 flex items-center justify-between rounded-xl border border-gray-700 bg-gray-900 p-4">
-          {/* ... */}
+          <div>
+            <p className="mb-1 text-sm text-gray-400">پایبندی کلی</p>
+            <p className="text-sm text-gray-200">{getAdherenceLabel(stats.score, stats.total)}</p>
+          </div>
+          <div className={`text-3xl font-bold ${stats.total === 0 ? 'text-gray-400' : stats.score >= 80 ? 'text-green-400' : stats.score >= 50 ? 'text-yellow-400' : 'text-red-400'}`}>
+            {stats.total > 0 ? `${stats.score}٪` : '-'}
+          </div>
         </div>
 
-        {/* ... سایر بخش‌ها ... */}
+        <div className="mb-4 grid grid-cols-3 gap-2 text-center text-xs">
+          {[
+            ['به‌موقع', stats.onTimeCount, 'text-green-300'],
+            ['زودتر', stats.earlyCount, 'text-yellow-300'],
+            ['دیرتر', stats.lateCount, 'text-red-300'],
+          ].map(([label, count, color]) => (
+            <div key={label} className="rounded-xl border border-gray-700 bg-gray-900 p-3">
+              <p className="text-gray-400">{label}</p>
+              <p className={`mt-1 text-xl font-bold ${color}`}>{count}</p>
+            </div>
+          ))}
+        </div>
+
+        <div className="mb-4 rounded-xl border border-gray-700 bg-gray-900 p-4">
+          <p className="mb-3 text-sm font-semibold text-gray-300">دوزهای اخیر</p>
+          {recentHistory.length > 0 ? (
+            <div className="space-y-2">
+              {recentHistory.map(record => {
+                const status = getStatusDisplay(record.status);
+                return (
+                  <div key={record.id ?? `${record.takenAt}-${record.status}`} className={`flex items-center justify-between rounded-lg px-3 py-2 ${status.bg}`}>
+                    <span className="text-xs text-gray-300">{formatDateTime(record.takenAt)}</span>
+                    <span className={`text-xs ${status.color}`}>{status.icon} {status.text}</span>
+                  </div>
+                );
+              })}
+            </div>
+          ) : <p className="text-sm text-gray-500">هنوز دوزی ثبت نشده است.</p>}
+        </div>
 
         {/* دکمه‌های عملیات */}
         <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
