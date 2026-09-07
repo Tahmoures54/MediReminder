@@ -57,7 +57,6 @@ function normalize(m: Medication): Medication {
   };
 }
 
-/** Prefer scheduled time of this dose when available. */
 function statusFor(m: Medication, takenAt: number, scheduledAt?: number): HistoryRecord['status'] {
   const scheduled = scheduledAt ?? m.dueScheduledAt ?? m.nextDoseAt ?? m.lastTakenAt;
   if (!scheduled) return 'on-time';
@@ -538,42 +537,6 @@ export default function App() {
       },
     });
 
-  const exportBackup = async () => {
-    const payload = await db.exportBackup();
-    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `MediReminder-backup-${new Date().toISOString().slice(0, 10)}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-
-  const importBackup = () => {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = 'application/json,.json';
-    input.onchange = async () => {
-      const file = input.files?.[0];
-      if (!file) return;
-      try {
-        const payload = JSON.parse(await file.text());
-        await db.importBackup(payload);
-        await load();
-        alertId.current = null;
-        setAlert(null);
-        setEditing(null);
-      } catch {
-        setConfirm({
-          title: 'پشتیبان نامعتبر',
-          message: 'فایل انتخاب‌شده قابل بازیابی نیست.',
-          onConfirm: () => setConfirm(null),
-        });
-      }
-    };
-    input.click();
-  };
-
   const activeCount = useMemo(() => medications.filter((m) => m.running).length, [medications]);
   const dueCount = useMemo(() => medications.filter((m) => m.pendingDose).length, [medications]);
   const formVisible = showAdd || editing !== null;
@@ -631,36 +594,16 @@ export default function App() {
             </span>
           </div>
 
-          <div className="mt-4 grid grid-cols-3 gap-2 text-center">
-            <div className="rounded-xl bg-gray-800 p-3">
-              <b className="block text-xl">{medications.length}</b>
-              <span className="text-xs text-gray-400">دارو</span>
-            </div>
-            <div className="rounded-xl bg-gray-800 p-3">
-              <b className="block text-xl text-cyan-300">{activeCount}</b>
-              <span className="text-xs text-gray-400">فعال</span>
-            </div>
-            <div className="rounded-xl bg-gray-800 p-3">
-              <b className="block text-xl text-red-300">{dueCount}</b>
-              <span className="text-xs text-gray-400">نیازمند اقدام</span>
-            </div>
-          </div>
-
           <div className="mt-4 flex flex-wrap gap-2">
             <button
+              type="button"
               onClick={() => {
                 setEditing(null);
                 setShowAdd(true);
               }}
-              className="rounded-xl bg-cyan-500 px-5 py-3 font-bold text-gray-950"
+              className="rounded-xl bg-cyan-500 px-5 py-3 font-bold text-gray-950 hover:bg-cyan-400"
             >
               + افزودن دارو
-            </button>
-            <button onClick={exportBackup} className="rounded-xl border border-gray-700 bg-gray-800 px-4 py-3 text-sm">
-              ⬇ پشتیبان
-            </button>
-            <button onClick={importBackup} className="rounded-xl border border-gray-700 bg-gray-800 px-4 py-3 text-sm">
-              ⬆ بازیابی
             </button>
             <button
               type="button"
@@ -729,20 +672,12 @@ export default function App() {
           )}
         </div>
 
-        <footer className="mt-8 space-y-3 pb-8 text-center text-xs text-gray-500">
+        <footer className="mt-8 pb-8 text-center text-xs text-gray-500">
           <p>
             داده‌ها فقط روی همین دستگاه ذخیره می‌شوند. تا تأیید «مصرف کردم»، یادآوری تکرار می‌شود و سپس تایمر دوز بعدی
             بلافاصله شروع می‌شود.
           </p>
-          <button
-            type="button"
-            onClick={openSupportWhatsApp}
-            className="inline-flex items-center gap-2 rounded-full border border-emerald-600/40 bg-emerald-600/10 px-4 py-2 text-sm font-medium text-emerald-300 transition hover:bg-emerald-600/20"
-          >
-            <span aria-hidden="true">💬</span>
-            پشتیبانی واتساپ
-          </button>
-          <p className="text-gray-600">MediReminder v{APP_VERSION} — ابزار یادآوری است و جایگزین توصیه پزشک نیست.</p>
+          <p className="mt-2 text-gray-600">MediReminder v{APP_VERSION} — ابزار یادآوری است و جایگزین توصیه پزشک نیست.</p>
         </footer>
       </div>
 
