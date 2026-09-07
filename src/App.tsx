@@ -453,6 +453,7 @@ export default function App() {
 
   const add = async (d: {
     name: string;
+    condition: string;
     dosage: string;
     intervalHours: number;
     quantity: number;
@@ -462,6 +463,7 @@ export default function App() {
     const interval = d.intervalHours * 3600;
     const m: Medication = {
       name: d.name,
+      condition: d.condition,
       dosage: d.dosage,
       quantity: d.quantity,
       intervalHours: d.intervalHours,
@@ -481,6 +483,7 @@ export default function App() {
 
   const saveEdit = async (d: {
     name: string;
+    condition: string;
     dosage: string;
     intervalHours: number;
     quantity: number;
@@ -515,6 +518,7 @@ export default function App() {
     const updated: Medication = {
       ...editing,
       name: d.name,
+      condition: d.condition,
       dosage: d.dosage,
       quantity: d.quantity,
       intervalHours: d.intervalHours,

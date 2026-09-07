@@ -11,6 +11,7 @@ export interface HistoryRecord {
 export interface Medication {
   id?: number;
   name: string;
+  condition?: string;
   dosage: string;
   intervalHours: number;
   interval: number;
@@ -53,6 +54,7 @@ function sanitizeMedication(m: Medication): Medication {
   return {
     ...m,
     name: String(m.name || '').trim() || 'دارو',
+    condition: String(m.condition || '').trim(),
     dosage: String(m.dosage || '').trim() || '—',
     interval,
     intervalHours: Number(m.intervalHours) || Math.max(1, Math.round(interval / 3600)),

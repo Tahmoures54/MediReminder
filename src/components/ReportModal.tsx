@@ -120,6 +120,7 @@ function buildReportText(
   return `📊 گزارش مصرف دارو
 
 💊 نام: ${medication.name}
+🩺 بیماری مرتبط: ${medication.condition?.trim() || 'مشخص نشده'}
 ⚖️ دوز: ${medication.dosage}
 ⭐ پایبندی: ${adherence}
 📦 دوزهای ثبت‌شده: ${stats.total}

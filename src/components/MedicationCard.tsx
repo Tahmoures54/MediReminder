@@ -31,6 +31,7 @@ export function MedicationCard({
   const intervalHours = medication.intervalHours ?? 0;
   const dosage = medication.dosage ?? '—';
   const name = medication.name ?? 'بدون نام';
+  const condition = medication.condition?.trim() || 'بیماری مشخص نشده';
 
   const remaining = Math.max(0, medication.remaining ?? 0);
   const interval = Math.max(1, medication.interval ?? 1);
@@ -48,7 +49,7 @@ export function MedicationCard({
 
   return (
     <article
-      className={`rounded-2xl border bg-gray-800 p-5 shadow-xl ${
+      className={`overflow-hidden rounded-3xl border bg-gray-800 shadow-xl transition-shadow hover:shadow-2xl ${
         due
           ? 'border-red-400/80'
           : running
@@ -56,50 +57,57 @@ export function MedicationCard({
             : 'border-gray-700'
       }`}
     >
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0 flex-1">
-          <h3 className="truncate text-xl font-bold">
-            #{index + 1} {name}
-          </h3>
-          <p className="mt-1 text-sm text-gray-300">
-            💊 {dosage} · هر {intervalHours} ساعت
-          </p>
-          <p
-            className={`mt-1 text-sm ${
+      <div className="border-b border-gray-700/80 bg-gradient-to-l from-cyan-950/80 via-gray-800 to-gray-800 p-5">
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <p className="mb-2 text-xs font-bold tracking-wide text-cyan-300">داروی شماره {index + 1}</p>
+            <h3 className="break-words text-2xl font-black leading-tight text-white">{name}</h3>
+            <p className="mt-2 inline-flex max-w-full items-center gap-1 rounded-full bg-black/20 px-3 py-1 text-sm text-cyan-100">
+              <span aria-hidden="true">🩺</span>
+              <span className="truncate">برای: {condition}</span>
+            </p>
+          </div>
+          <div className="flex shrink-0 gap-2">
+            <button
+              type="button"
+              onClick={onEdit}
+              className="rounded-xl bg-white/10 p-2.5 text-lg transition-colors hover:bg-white/20"
+              aria-label={`ویرایش ${name}`}
+              title="ویرایش دارو"
+            >
+              ✏️
+            </button>
+            <button
+              type="button"
+              onClick={onShowReport}
+              className="rounded-xl bg-white/10 p-2.5 text-lg transition-colors hover:bg-white/20"
+              aria-label={`گزارش ${name}`}
+              title="گزارش مصرف"
+            >
+              📊
+            </button>
+          </div>
+        </div>
+        <div className="mt-4 flex flex-wrap gap-x-4 gap-y-1 text-sm text-gray-300">
+          <span>💊 {dosage}</span>
+          <span>⏱ هر {intervalHours} ساعت</span>
+        </div>
+        <p
+          className={`mt-3 text-sm ${
               empty
                 ? 'font-bold text-red-300'
                 : low
                   ? 'font-bold text-amber-300'
                   : 'text-gray-400'
             }`}
-          >
+        >
             📦 {quantity} عدد
             {empty ? ' · موجودی تمام شده — شارژ کنید' : low ? ' · موجودی کم' : ''}
-          </p>
-        </div>
-        <div className="flex shrink-0 gap-1">
-          <button
-            type="button"
-            onClick={onEdit}
-            className="rounded-lg bg-gray-700 px-3 py-2 text-sm hover:bg-gray-600 transition-colors"
-            aria-label={`ویرایش ${name}`}
-            title="ویرایش"
-          >
-            ✏️ ویرایش
-          </button>
-          <button
-            type="button"
-            onClick={onShowReport}
-            className="rounded-lg bg-gray-700 px-3 py-2 text-sm hover:bg-gray-600 transition-colors"
-            aria-label={`گزارش ${name}`}
-            title="گزارش"
-          >
-            📊 گزارش
-          </button>
-        </div>
+        </p>
       </div>
 
-      <div className="my-5 rounded-2xl bg-gray-900/70 p-4 text-center">
+      <div className="p-5">
+        <div className="rounded-2xl bg-gray-900/70 p-4 text-center">
         {due ? (
           <>
             <div className="text-3xl font-black text-red-400">زمان مصرف</div>
@@ -121,7 +129,7 @@ export function MedicationCard({
             </p>
           </>
         )}
-      </div>
+        </div>
 
       {/* نوار پیشرفت با ویژگی‌های دسترس‌پذیری */}
       <div
@@ -158,11 +166,11 @@ export function MedicationCard({
           </button>
         </div>
       ) : (
-        <div className="flex flex-wrap gap-2">
+        <div className="grid grid-cols-[1fr_auto_auto] gap-2">
           <button
             type="button"
             onClick={onToggle}
-            className={`min-w-[7rem] flex-1 rounded-xl py-3.5 text-base font-bold transition-colors ${
+            className={`rounded-xl py-3.5 text-base font-bold transition-colors ${
               running ? 'bg-orange-500 hover:bg-orange-400' : 'bg-emerald-500 hover:bg-emerald-400'
             }`}
           >
@@ -171,7 +179,7 @@ export function MedicationCard({
           <button
             type="button"
             onClick={onReset}
-            className="rounded-xl bg-gray-700 px-4 py-3.5 text-sm font-semibold hover:bg-gray-600 transition-colors"
+            className="rounded-xl bg-gray-700 px-3 py-3.5 text-sm font-semibold hover:bg-gray-600 transition-colors"
             aria-label="ریست تایمر"
           >
             ↺ ریست
@@ -179,13 +187,14 @@ export function MedicationCard({
           <button
             type="button"
             onClick={onDelete}
-            className="rounded-xl bg-red-600 px-4 py-3.5 text-sm font-semibold hover:bg-red-500 transition-colors"
+            className="rounded-xl bg-red-600 px-3 py-3.5 text-sm font-semibold hover:bg-red-500 transition-colors"
             aria-label={`حذف ${name}`}
           >
             🗑 حذف
           </button>
         </div>
       )}
+      </div>
     </article>
   );
 }

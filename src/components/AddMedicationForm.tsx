@@ -3,6 +3,7 @@ import type { Medication } from '../db/database';
 
 interface FormData {
   name: string;
+  condition: string;
   dosage: string;
   intervalHours: number;
   quantity: number;
@@ -27,6 +28,7 @@ export function AddMedicationForm({ initial, onSubmit, onCancel }: Props) {
       // Add mode defaults
       return {
         name: '',
+        condition: '',
         dosage: '',
         quantity: '',
         hours: 8, // default preset
@@ -39,6 +41,7 @@ export function AddMedicationForm({ initial, onSubmit, onCancel }: Props) {
     const isPreset = PRESETS.includes(h);
     return {
       name: med.name,
+      condition: med.condition ?? '',
       dosage: med.dosage,
       quantity: String(med.quantity),
       hours: isPreset ? h : null,
@@ -49,6 +52,7 @@ export function AddMedicationForm({ initial, onSubmit, onCancel }: Props) {
 
   const initialForm = getInitialFormState(initial);
   const [name, setName] = useState(initialForm.name);
+  const [condition, setCondition] = useState(initialForm.condition);
   const [dosage, setDosage] = useState(initialForm.dosage);
   const [quantity, setQuantity] = useState(initialForm.quantity);
   const [hours, setHours] = useState<number | null>(initialForm.hours);
@@ -60,6 +64,7 @@ export function AddMedicationForm({ initial, onSubmit, onCancel }: Props) {
   useEffect(() => {
     const newState = getInitialFormState(initial);
     setName(newState.name);
+    setCondition(newState.condition);
     setDosage(newState.dosage);
     setQuantity(newState.quantity);
     setHours(newState.hours);
@@ -94,6 +99,7 @@ export function AddMedicationForm({ initial, onSubmit, onCancel }: Props) {
 
     onSubmit({
       name: name.trim(),
+      condition: condition.trim(),
       dosage: dosage.trim(),
       quantity: qty,
       intervalHours,
@@ -136,6 +142,19 @@ export function AddMedicationForm({ initial, onSubmit, onCancel }: Props) {
             className="mt-1 w-full rounded-xl border border-gray-600 bg-gray-900 p-3"
             placeholder="مثلاً Amoxicillin"
             autoFocus
+          />
+        </div>
+
+        <div className="space-y-1">
+          <label htmlFor="med-condition" className="block text-sm">
+            بیماری مرتبط <span className="text-xs text-gray-500">(اختیاری)</span>
+          </label>
+          <input
+            id="med-condition"
+            value={condition}
+            onChange={(e) => setCondition(e.target.value)}
+            className="mt-1 w-full rounded-xl border border-gray-600 bg-gray-900 p-3"
+            placeholder="مثلاً فشار خون یا دیابت"
           />
         </div>
 
