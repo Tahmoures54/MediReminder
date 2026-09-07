@@ -586,7 +586,7 @@ export default function App() {
         <header className="mb-6">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <h1 className="text-3xl font-black text-cyan-300">💊 MediReminder</h1>
+              <h1 className="text-3xl font-black text-cyan-300">💊 یادآور هوشمند دارو</h1>
               <p className="mt-1 text-sm text-gray-400">یادآوری مکرر تا تأیید مصرف دارو</p>
             </div>
             <span className="rounded-full border border-cyan-500/20 bg-cyan-500/10 px-3 py-1 text-xs text-cyan-300">
