@@ -1,7 +1,9 @@
 import { Capacitor } from '@capacitor/core';
 
+type PermissionState = 'granted' | 'denied' | 'prompt' | 'undetermined';
+
 interface Props {
-  permission: string;
+  permission: PermissionState;
   onRequest: () => void;
   onDismiss?: () => void;
 }
@@ -10,9 +12,10 @@ export function PermissionsBanner({ permission, onRequest, onDismiss }: Props) {
   if (permission === 'granted') return null;
 
   const isNative = Capacitor.isNativePlatform();
-  const isAndroid = Capacitor.getPlatform() === 'android';
+  const platform = Capacitor.getPlatform();
+  const isAndroid = platform === 'android';
   const isIOS =
-    Capacitor.getPlatform() === 'ios' ||
+    platform === 'ios' ||
     (!isNative &&
       typeof navigator !== 'undefined' &&
       /iPad|iPhone|iPod/.test(navigator.userAgent));
@@ -77,7 +80,14 @@ export function PermissionsBanner({ permission, onRequest, onDismiss }: Props) {
             )}
             {denied && isNative && (
               <p className="text-xs text-amber-200/80">
-                اندروید: تنظیمات ← برنامه‌ها ← یادآور دارو ← اعلان‌ها
+                {isAndroid
+                  ? 'اندروید: تنظیمات ← برنامه‌ها ← یادآور دارو ← اعلان‌ها'
+                  : 'iOS: تنظیمات ← اعلان‌ها ← یادآور دارو'}
+              </p>
+            )}
+            {denied && !isNative && (
+              <p className="text-xs text-amber-200/80">
+                در مرورگر، تنظیمات سایت را باز کرده و مجوز اعلان را ریست کنید.
               </p>
             )}
             {onDismiss && (
