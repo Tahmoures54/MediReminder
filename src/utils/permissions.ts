@@ -11,6 +11,18 @@ export type AppNotificationPermission =
   | 'prompt-with-rationale'
   | 'unavailable';
 
+function normalizePermission(value: string | undefined): AppNotificationPermission {
+  switch (value) {
+    case 'granted':
+    case 'denied':
+    case 'prompt':
+    case 'prompt-with-rationale':
+      return value;
+    default:
+      return 'unavailable';
+  }
+}
+
 /**
  * بررسی وضعیت فعلی مجوز اعلان
  */
@@ -18,14 +30,14 @@ export async function checkNotificationPermission(): Promise<AppNotificationPerm
   if (Capacitor.isNativePlatform()) {
     try {
       const result = await LocalNotifications.checkPermissions();
-      return (result.display ?? 'prompt') as AppNotificationPermission;
+      return normalizePermission(result.display);
     } catch (error) {
       console.error('خطا در بررسی مجوز:', error);
       return 'unavailable';
     }
   }
 
-  if (typeof window === 'undefined' || !('Notification' in window)) {
+  if (typeof window === 'undefined' || !window.isSecureContext || !('Notification' in window)) {
     return 'unavailable';
   }
 
@@ -38,34 +50,35 @@ export async function checkNotificationPermission(): Promise<AppNotificationPerm
 
 /**
  * درخواست مجوز اعلان
+ * @returns وضعیت نهایی مجوز پس از درخواست
  */
-export async function requestNotificationPermission(): Promise<boolean> {
+export async function requestNotificationPermission(): Promise<AppNotificationPermission> {
   if (Capacitor.isNativePlatform()) {
     try {
       const result = await LocalNotifications.requestPermissions();
-      return result.display === 'granted';
+      return normalizePermission(result.display);
     } catch (error) {
       console.error('خطا در درخواست مجوز:', error);
-      return false;
+      return 'unavailable';
     }
   }
 
-  if (typeof window === 'undefined' || !('Notification' in window)) {
-    return false;
+  if (typeof window === 'undefined' || !window.isSecureContext || !('Notification' in window)) {
+    return 'unavailable';
   }
 
-  if (Notification.permission === 'granted') return true;
-  if (Notification.permission === 'denied') return false;
+  if (Notification.permission === 'granted') return 'granted';
+  if (Notification.permission === 'denied') return 'denied';
 
   const result = await Notification.requestPermission();
-  return result === 'granted';
+  return result === 'granted' ? 'granted' : 'denied';
 }
 
 /**
  * ساخت کانال اعلان اندروید با صدا و ویبره قوی
  */
 export async function setupAndroidChannel(): Promise<void> {
-  if (Capacitor.getPlatform() !== 'android') return;
+  if (!Capacitor.isNativePlatform() || Capacitor.getPlatform() !== 'android') return;
 
   try {
     await LocalNotifications.createChannel({
@@ -80,19 +93,26 @@ export async function setupAndroidChannel(): Promise<void> {
       lightColor: '#DC2626',
     });
   } catch (error) {
-    console.error('خطا در ساخت کانال اعلان:', error);
+    console.warn('خطا در ساخت کانال اعلان (ممکن است از قبل وجود داشته باشد):', error);
   }
 }
 
 /**
  * راه‌اندازی کامل مجوزها + کانال اندروید
+ * ابتدا وضعیت مجوز بررسی می‌شود؛ اگر prompt باشد درخواست داده می‌شود.
+ * ساخت کانال اندروید در صورت Native بودن همیشه انجام می‌شود.
  */
 export async function initAllPermissions(): Promise<{ notification: boolean }> {
-  const notification = await requestNotificationPermission();
+  let permission = await checkNotificationPermission();
 
-  if (notification) {
+  if (permission === 'prompt' || permission === 'prompt-with-rationale') {
+    permission = await requestNotificationPermission();
+  }
+
+  // ساخت کانال برای اندروید در هر صورت (حتی اگر مجوز رد شده باشد، ممکن است بعداً اعطا شود)
+  if (Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android') {
     await setupAndroidChannel();
   }
 
-  return { notification };
+  return { notification: permission === 'granted' };
 }
