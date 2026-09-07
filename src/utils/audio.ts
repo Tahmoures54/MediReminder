@@ -5,18 +5,18 @@ import { Haptics, ImpactStyle } from '@capacitor/haptics';
 let audioContext: AudioContext | null = null;
 let oscillator: OscillatorNode | null = null;
 let gainNode: GainNode | null = null;
-let audioLoopTimer: ReturnType<typeof setTimeout> | null = null;
-let hapticLoopTimer: ReturnType<typeof setTimeout> | null = null;
+let beepInterval: ReturnType<typeof setInterval> | null = null;
+let hapticInterval: ReturnType<typeof setInterval> | null = null;
 let isAlarmPlaying = false;
 
-/** صدای آلارم قوی‌تر و تکراری تا تأیید مصرف */
+// ثابت‌های قابل تنظیم
 const BEEP_FREQUENCY = 920;
-const BEEP_ON_SEC = 0.28;
-const BEEP_OFF_SEC = 0.14;
+const BEEP_ON_MS = 280;
+const BEEP_OFF_MS = 140;
 const BEEPS_PER_CYCLE = 6;
 const GAP_AFTER_CYCLE_MS = 700;
 const ALARM_VOLUME = 0.55;
-const HAPTIC_REPEAT_MS = 2200;
+const HAPTIC_INTERVAL_MS = 2200;
 
 function createAudioContext(): AudioContext | null {
   if (typeof window === 'undefined') return null;
@@ -30,14 +30,14 @@ function createAudioContext(): AudioContext | null {
 }
 
 function clearAudioResources() {
-  if (audioLoopTimer !== null) {
-    clearTimeout(audioLoopTimer);
-    audioLoopTimer = null;
+  if (beepInterval !== null) {
+    clearInterval(beepInterval);
+    beepInterval = null;
   }
 
-  if (hapticLoopTimer !== null) {
-    clearTimeout(hapticLoopTimer);
-    hapticLoopTimer = null;
+  if (hapticInterval !== null) {
+    clearInterval(hapticInterval);
+    hapticInterval = null;
   }
 
   if (oscillator) {
@@ -70,8 +70,13 @@ function clearAudioResources() {
   }
 }
 
-function scheduleBeepCycle(ctx: AudioContext, gain: GainNode): number {
-  let t = ctx.currentTime;
+/**
+ * برنامه‌ریزی یک چرخه بیپ (چند بیپ با فاصله) روی TimeLine
+ * این تابع فقط فرکانس و gain را زمان‌بندی می‌کند و oscillator در حال اجراست.
+ */
+function scheduleBeepCycle(ctx: AudioContext, gain: GainNode) {
+  const now = ctx.currentTime;
+  let t = now;
 
   for (let i = 0; i < BEEPS_PER_CYCLE; i++) {
     const freq = BEEP_FREQUENCY + (i % 2 === 0 ? 0 : 80);
@@ -79,18 +84,14 @@ function scheduleBeepCycle(ctx: AudioContext, gain: GainNode): number {
       oscillator.frequency.setValueAtTime(freq, t);
     }
     gain.gain.setValueAtTime(ALARM_VOLUME, t);
-    gain.gain.setValueAtTime(0, t + BEEP_ON_SEC);
-    t += BEEP_ON_SEC + BEEP_OFF_SEC;
+    gain.gain.setValueAtTime(0.0001, t + BEEP_ON_MS / 1000);
+    t += (BEEP_ON_MS + BEEP_OFF_MS) / 1000;
   }
-
-  gain.gain.setValueAtTime(0, t);
-
-  return Math.max(0, (t - ctx.currentTime) * 1000);
+  gain.gain.setValueAtTime(0.0001, t);
 }
 
 /**
- * پخش صدای آلارم داخل اپ
- * تا زمانی که stopAlarm صدا زده نشود، به‌صورت چرخه‌ای ادامه می‌دهد
+ * پخش صدای آلارم به‌صورت تکرارشونده تا توقف
  */
 export async function playAlarm() {
   if (isAlarmPlaying) return;
@@ -98,6 +99,7 @@ export async function playAlarm() {
   isAlarmPlaying = true;
   clearAudioResources();
 
+  // شروع ویبره تکرارشونده
   startPersistentHaptics();
 
   try {
@@ -110,7 +112,11 @@ export async function playAlarm() {
     audioContext = ctx;
 
     if (audioContext.state === 'suspended') {
-      await audioContext.resume();
+      try {
+        await audioContext.resume();
+      } catch (error) {
+        console.warn('خطا در resume کردن AudioContext:', error);
+      }
     }
 
     oscillator = audioContext.createOscillator();
@@ -118,24 +124,31 @@ export async function playAlarm() {
 
     oscillator.type = 'square';
     oscillator.frequency.setValueAtTime(BEEP_FREQUENCY, audioContext.currentTime);
-    gainNode.gain.setValueAtTime(0, audioContext.currentTime);
+    gainNode.gain.setValueAtTime(0.0001, audioContext.currentTime);
 
     oscillator.connect(gainNode);
     gainNode.connect(audioContext.destination);
 
-    oscillator.start();
+    try {
+      oscillator.start();
+    } catch (error) {
+      console.error('خطا در شروع oscillator:', error);
+      stopAlarm();
+      return;
+    }
 
     const runCycle = () => {
       if (!isAlarmPlaying || !audioContext || !gainNode) return;
-
-      const cycleMs = scheduleBeepCycle(audioContext, gainNode);
-
-      audioLoopTimer = setTimeout(() => {
-        runCycle();
-      }, cycleMs + GAP_AFTER_CYCLE_MS);
+      scheduleBeepCycle(audioContext, gainNode);
     };
 
-    runCycle();
+    runCycle(); // اجرای اولین چرخه بلافاصله
+
+    // برنامه‌ریزی چرخه‌های بعدی با setInterval
+    const cycleDurationMs =
+      BEEPS_PER_CYCLE * (BEEP_ON_MS + BEEP_OFF_MS) + GAP_AFTER_CYCLE_MS;
+
+    beepInterval = setInterval(runCycle, cycleDurationMs);
   } catch (error) {
     console.error('خطا در پخش آلارم:', error);
     stopAlarm();
@@ -143,7 +156,7 @@ export async function playAlarm() {
 }
 
 /**
- * توقف کامل صدای آلارم و ویبره
+ * توقف کامل آلارم و ویبره
  */
 export function stopAlarm() {
   isAlarmPlaying = false;
@@ -173,28 +186,24 @@ export async function triggerHaptics() {
 }
 
 /**
- * ویبره تکراری تا زمان توقف آلارم
+ * ویبره تکرارشونده تا زمان توقف آلارم
  */
 function startPersistentHaptics() {
-  const pulse = async () => {
+  const pulse = () => {
     if (!isAlarmPlaying) return;
 
     if (Capacitor.isNativePlatform()) {
-      try {
-        await Haptics.impact({ style: ImpactStyle.Heavy });
-        await delay(80);
-        await Haptics.impact({ style: ImpactStyle.Medium });
-      } catch {}
+      Haptics.impact({ style: ImpactStyle.Heavy }).catch(() => {});
+      setTimeout(() => {
+        if (isAlarmPlaying) Haptics.impact({ style: ImpactStyle.Medium }).catch(() => {});
+      }, 80);
     } else if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
       navigator.vibrate([300, 100, 300, 100, 300]);
-    }
-
-    if (isAlarmPlaying) {
-      hapticLoopTimer = setTimeout(pulse, HAPTIC_REPEAT_MS);
     }
   };
 
   pulse();
+  hapticInterval = setInterval(pulse, HAPTIC_INTERVAL_MS);
 }
 
 function delay(ms: number) {
@@ -203,11 +212,19 @@ function delay(ms: number) {
 
 /**
  * قالب‌بندی زمان به صورت ساعت:دقیقه:ثانیه
+ * در صورت نیاز، روز نیز اضافه می‌شود
  */
 export function formatTime(seconds: number): string {
-  const hours = Math.floor(seconds / 3600);
+  if (seconds < 0) seconds = 0;
+
+  const days = Math.floor(seconds / 86400);
+  const hours = Math.floor((seconds % 86400) / 3600);
   const minutes = Math.floor((seconds % 3600) / 60);
   const secs = Math.floor(seconds % 60);
+
+  if (days > 0) {
+    return `${days} روز و ${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+  }
 
   return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
 }
