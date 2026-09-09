@@ -39,6 +39,7 @@ export function statusFor(
   if (!scheduled) return 'on-time';
   const delta = takenAt - scheduled;
   if (delta < -30 * 60 * 1000) return 'early';
+  if (delta > 4 * 60 * 60 * 1000) return 'missed';
   if (delta > 60 * 60 * 1000) return 'late';
   return 'on-time';
 }

@@ -1,4 +1,4 @@
-# MediReminder 3.2.1
+# MediReminder 3.2.2
 
 **یادآور دارو** — Offline-first · هشدار تا تأیید مصرف · PWA + Android  
 React 19 · TypeScript · Vite · Capacitor · IndexedDB

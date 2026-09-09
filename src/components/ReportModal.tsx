@@ -36,6 +36,10 @@ function getStatusDisplay(status: HistoryRecord['status']) {
       return { icon: '🟡', text: 'زودتر', color: 'text-yellow-400', bg: 'bg-yellow-400/10' };
     case 'late':
       return { icon: '🔴', text: 'دیرتر', color: 'text-red-400', bg: 'bg-red-400/10' };
+    case 'missed':
+      return { icon: '⚫', text: 'از دست رفته', color: 'text-rose-300', bg: 'bg-rose-400/10' };
+    case 'skipped':
+      return { icon: '⚪', text: 'رد شده', color: 'text-gray-400', bg: 'bg-gray-400/10' };
     default:
       return { icon: '⚪', text: 'نامشخص', color: 'text-gray-400', bg: 'bg-gray-400/10' };
   }
@@ -176,7 +180,7 @@ async function buildSignedReport(
 ): Promise<{ text: string; hash: string }> {
   const baseText = buildReportText(medication, stats, recentHistory);
   const hash = await computeHash(baseText);
-  const signedText = `${baseText}\n\n🔐 امضای دیجیتال (SHA-256):\n${hash}`;
+  const signedText = `${baseText}\n\n🔐 اثر انگشت متن (SHA-256):\n${hash}`;
   return { text: signedText, hash };
 }
 
@@ -265,7 +269,7 @@ export function ReportModal({ medication, onClose }: ReportModalProps) {
       const { text } = await buildSignedReport(medication, stats, recentHistory);
       const copied = await copyTextToClipboard(text);
       if (copied) {
-        showFeedback('success', '📋 گزارش امضاشده کپی شد.');
+        showFeedback('success', '📋 گزارش با اثر انگشت کپی شد.');
       } else {
         showFeedback('error', '⚠️ امکان کپی گزارش وجود نداشت.');
       }
@@ -285,7 +289,7 @@ export function ReportModal({ medication, onClose }: ReportModalProps) {
       const { text } = await buildSignedReport(medication, stats, recentHistory);
       const filename = `${sanitizeFileName(medication.name || 'دارو')}-گزارش.txt`;
       downloadTextFile(filename, text);
-      showFeedback('success', '⬇️ گزارش امضاشده دانلود شد.');
+      showFeedback('success', '⬇️ گزارش با اثر انگشت دانلود شد.');
     } catch (error) {
       console.error('خطای دانلود:', error);
       showFeedback('error', '⚠️ امکان دانلود گزارش وجود نداشت.');
@@ -328,13 +332,13 @@ export function ReportModal({ medication, onClose }: ReportModalProps) {
 
       const copied = await copyTextToClipboard(text);
       if (copied) {
-        showFeedback('info', '📋 اشتراک در دسترس نیست. گزارش امضاشده کپی شد.');
+        showFeedback('info', '📋 اشتراک در دسترس نیست. گزارش با اثر انگشت کپی شد.');
         return;
       }
 
       const filename = `${sanitizeFileName(medication.name || 'دارو')}-گزارش.txt`;
       downloadTextFile(filename, text);
-      showFeedback('info', '⬇️ اشتراک در دسترس نیست. گزارش امضاشده دانلود شد.');
+      showFeedback('info', '⬇️ اشتراک در دسترس نیست. گزارش با اثر انگشت دانلود شد.');
     } catch (error) {
       if (isUserCancelledShare(error)) {
         return;
@@ -344,12 +348,12 @@ export function ReportModal({ medication, onClose }: ReportModalProps) {
         const { text } = await buildSignedReport(medication, stats, recentHistory);
         const copied = await copyTextToClipboard(text);
         if (copied) {
-          showFeedback('info', '📋 اشتراک ناموفق. گزارش امضاشده کپی شد.');
+          showFeedback('info', '📋 اشتراک ناموفق. گزارش با اثر انگشت کپی شد.');
           return;
         }
         const filename = `${sanitizeFileName(medication.name || 'دارو')}-گزارش.txt`;
         downloadTextFile(filename, text);
-        showFeedback('info', '⬇️ اشتراک ناموفق. گزارش امضاشده دانلود شد.');
+        showFeedback('info', '⬇️ اشتراک ناموفق. گزارش با اثر انگشت دانلود شد.');
       } catch (fallbackError) {
         console.error('خطای جایگزین اشتراک:', fallbackError);
         showFeedback('error', '⚠️ امکان اشتراک گزارش وجود نداشت.');
@@ -412,7 +416,7 @@ export function ReportModal({ medication, onClose }: ReportModalProps) {
 
         {/* نمایش هش برای تأیید صحت */}
         <div className="mb-4 rounded-xl border border-gray-700 bg-gray-900 p-4">
-          <p className="mb-1 text-xs text-gray-400">🔐 امضای دیجیتال (SHA-256)</p>
+          <p className="mb-1 text-xs text-gray-400">🔐 اثر انگشت متن (SHA-256)</p>
           <p className="break-all font-mono text-sm text-cyan-300">
             {isHashing ? 'در حال محاسبه...' : reportHash}
           </p>

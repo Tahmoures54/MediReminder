@@ -116,15 +116,27 @@ export function useDoseActions({
 
   const reset = useCallback(
     async (m: Medication) => {
+      const now = Date.now();
+      const history = [...(m.history || [])];
+      if (m.pendingDose) {
+        history.push({
+          id: crypto.randomUUID(),
+          takenAt: now,
+          scheduledAt: m.dueScheduledAt ?? m.nextDoseAt,
+          status: 'skipped',
+          snoozeCount: m.snoozeCount || 0,
+        });
+      }
       const updated: Medication = {
         ...m,
+        history,
         running: false,
         pendingDose: false,
         dueScheduledAt: undefined,
         nextDoseAt: undefined,
         remaining: m.interval,
         snoozeCount: 0,
-        updatedAt: Date.now(),
+        updatedAt: now,
       };
       setMedications((v) => v.map((x) => (x.id === m.id ? updated : x)));
       await persist(updated);
