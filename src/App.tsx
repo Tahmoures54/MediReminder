@@ -8,7 +8,7 @@ import { NotificationPopup } from './components/NotificationPopup';
 import { ReportModal } from './components/ReportModal';
 import { PermissionsBanner } from './components/PermissionsBanner';
 import type { PermissionState } from './components/PermissionsBanner';
-import { db, Medication, HistoryRecord } from './db/database';
+import { db, Medication } from './db/database';
 import {
   initAllPermissions,
   checkNotificationPermission,
@@ -26,8 +26,10 @@ import {
   createDebouncedSync,
   syncAllAlarms,
 } from './utils/alarms';
+import { normalize, toDue } from './utils/medication';
+import { useDoseActions } from './hooks/useDoseActions';
 
-const APP_VERSION = '3.2.0';
+const APP_VERSION = '3.2.1';
 const IN_APP_NAG_MS = 45_000;
 const PERM_DISMISS_KEY = 'medireminder-perm-banner-dismissed';
 const SUPPORT_WHATSAPP = '989160684552';
@@ -36,38 +38,6 @@ const SUPPORT_WHATSAPP_URL = `https://wa.me/${SUPPORT_WHATSAPP}?text=${encodeURI
 )}`;
 
 type AlertItem = { medication: Medication; title: string; message: string };
-
-function normalize(m: Medication): Medication {
-  const now = Date.now();
-  const interval = Number(m.interval) || Number(m.intervalHours) * 3600 || 3600;
-  let next = m.nextDoseAt;
-  if (m.running && !next) {
-    next = now + Math.max(1, m.remaining || interval) * 1000;
-  }
-  const remaining =
-    next && m.running ? Math.max(0, Math.ceil((next - now) / 1000)) : Math.max(0, m.remaining || 0);
-  return {
-    ...m,
-    interval,
-    intervalHours: Number(m.intervalHours) || Math.max(1, Math.round(interval / 3600)),
-    remaining,
-    running: Boolean(m.running),
-    pendingDose: Boolean(m.pendingDose),
-    history: m.history || [],
-    createdAt: m.createdAt || now,
-    updatedAt: m.updatedAt || now,
-    nextDoseAt: next,
-  };
-}
-
-function statusFor(m: Medication, takenAt: number, scheduledAt?: number): HistoryRecord['status'] {
-  const scheduled = scheduledAt ?? m.dueScheduledAt ?? m.nextDoseAt ?? m.lastTakenAt;
-  if (!scheduled) return 'on-time';
-  const delta = takenAt - scheduled;
-  if (delta < -30 * 60 * 1000) return 'early';
-  if (delta > 60 * 60 * 1000) return 'late';
-  return 'on-time';
-}
 
 function openSupportWhatsApp() {
   window.open(SUPPORT_WHATSAPP_URL, '_blank', 'noopener,noreferrer');
@@ -78,7 +48,11 @@ export default function App() {
   const [showAdd, setShowAdd] = useState(false);
   const [editing, setEditing] = useState<Medication | null>(null);
   const [alert, setAlert] = useState<AlertItem | null>(null);
-  const [confirm, setConfirm] = useState<{ title: string; message: string; onConfirm: () => void } | null>(null);
+  const [confirm, setConfirm] = useState<{
+    title: string;
+    message: string;
+    onConfirm: () => void;
+  } | null>(null);
   const [report, setReport] = useState<Medication | null>(null);
   const [permission, setPermission] = useState<PermissionState>('prompt');
   const [isNative, setIsNative] = useState(false);
@@ -97,8 +71,6 @@ export default function App() {
   const medsRef = useRef<Medication[]>([]);
   const alertId = useRef<number | null>(null);
   const nagTimer = useRef<number | null>(null);
-  const takeDoseRef = useRef<(m: Medication) => Promise<void>>(async () => {});
-  const snoozeRef = useRef<(m: Medication, minutes?: number) => Promise<void>>(async () => {});
   const debouncedSync = useRef(createDebouncedSync(400));
 
   useEffect(() => {
@@ -130,6 +102,13 @@ export default function App() {
     stopAlarm();
     setAlert(null);
   }, []);
+
+  const { takeDose, snooze, toggle, reset, takeDoseRef, snoozeRef } = useDoseActions({
+    persist,
+    setMedications,
+    alertIdRef: alertId,
+    setAlert: () => setAlert(null),
+  });
 
   const clearNagTimer = () => {
     if (nagTimer.current != null) {
@@ -171,7 +150,9 @@ export default function App() {
       } catch (error) {
         if (!active) return;
         console.error('[MediReminder] راه‌اندازی برنامه ناموفق بود:', error);
-        setBootError(error instanceof Error ? error.message : 'خطای ناشناخته در راه‌اندازی برنامه');
+        setBootError(
+          error instanceof Error ? error.message : 'خطای ناشناخته در راه‌اندازی برنامه'
+        );
         setBootDone(false);
       }
     })();
@@ -206,7 +187,9 @@ export default function App() {
       setPermBannerHidden(false);
       try {
         sessionStorage.removeItem(PERM_DISMISS_KEY);
-      } catch {}
+      } catch {
+        /* ignore */
+      }
       await syncAllAlarms(medsRef.current);
     } else {
       setPermission(await checkNotificationPermission());
@@ -223,7 +206,9 @@ export default function App() {
     setPermBannerHidden(true);
     try {
       sessionStorage.setItem(PERM_DISMISS_KEY, '1');
-    } catch {}
+    } catch {
+      /* ignore */
+    }
   };
 
   useEffect(() => {
@@ -235,14 +220,7 @@ export default function App() {
         const n = normalize(m);
         if (n.running && n.nextDoseAt && n.nextDoseAt <= now) {
           changed = true;
-          const due = {
-            ...n,
-            running: false,
-            pendingDose: true,
-            remaining: 0,
-            dueScheduledAt: n.nextDoseAt ?? now,
-            updatedAt: now,
-          };
+          const due = toDue(n, now);
           openAlert(due, true);
           return due;
         }
@@ -274,75 +252,6 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bootDone]);
 
-  const takeDose = useCallback(
-    async (m: Medication) => {
-      const now = Date.now();
-      const scheduledAt = m.dueScheduledAt ?? m.nextDoseAt;
-      const record: HistoryRecord = {
-        id: crypto.randomUUID(),
-        takenAt: now,
-        scheduledAt,
-        status: statusFor(m, now, scheduledAt),
-        snoozeCount: m.snoozeCount || 0,
-      };
-      const updated: Medication = {
-        ...m,
-        quantity: Math.max(0, m.quantity - 1),
-        history: [...(m.history || []), record],
-        lastTakenAt: now,
-        pendingDose: false,
-        dueScheduledAt: undefined,
-        snoozeCount: 0,
-        running: true,
-        nextDoseAt: now + m.interval * 1000,
-        remaining: m.interval,
-        updatedAt: now,
-      };
-      setMedications((v) => v.map((x) => (x.id === m.id ? updated : x)));
-      await persist(updated);
-
-      if (m.id != null) {
-        await cancelMedNotifications(m.id);
-        dismissSwFollowUps(m.id);
-      }
-      alertId.current = null;
-      stopAlarm();
-      setAlert(null);
-    },
-    [persist]
-  );
-
-  const snooze = useCallback(
-    async (m: Medication, minutes = 10) => {
-      const now = Date.now();
-      const secs = Math.max(1, Math.round(minutes * 60));
-      const updated: Medication = {
-        ...m,
-        pendingDose: false,
-        dueScheduledAt: undefined,
-        running: true,
-        snoozeCount: (m.snoozeCount || 0) + 1,
-        nextDoseAt: now + secs * 1000,
-        remaining: secs,
-        updatedAt: now,
-      };
-      setMedications((v) => v.map((x) => (x.id === m.id ? updated : x)));
-      await persist(updated);
-
-      if (m.id != null) {
-        await cancelMedNotifications(m.id);
-        dismissSwFollowUps(m.id);
-      }
-      alertId.current = null;
-      stopAlarm();
-      setAlert(null);
-    },
-    [persist]
-  );
-
-  takeDoseRef.current = takeDose;
-  snoozeRef.current = snooze;
-
   useEffect(() => {
     return onSwMessage((msg) => {
       if (msg.type === 'ALARMS_LIST') return;
@@ -354,12 +263,15 @@ export default function App() {
       if (msg.type === 'ALARM_TAKEN') {
         takeDoseRef.current({ ...m, pendingDose: true, running: false, remaining: 0 });
       } else if (msg.type === 'ALARM_SNOOZED') {
-        snoozeRef.current({ ...m, pendingDose: true, running: false, remaining: 0 }, msg.minutes ?? 10);
+        snoozeRef.current(
+          { ...m, pendingDose: true, running: false, remaining: 0 },
+          msg.minutes ?? 10
+        );
       } else if (msg.type === 'ALARM_TRIGGERED' || msg.type === 'ALARM_DISMISSED') {
         openAlert({ ...m, pendingDose: true, running: false, remaining: 0 }, true);
       }
     });
-  }, [openAlert]);
+  }, [openAlert, takeDoseRef, snoozeRef]);
 
   useEffect(() => {
     if (!isNative) return;
@@ -369,14 +281,7 @@ export default function App() {
       const m = medsRef.current.find((x) => x.id === id);
       if (m) {
         if (!m.pendingDose) {
-          const due = {
-            ...m,
-            running: false,
-            pendingDose: true,
-            remaining: 0,
-            dueScheduledAt: m.nextDoseAt ?? Date.now(),
-            updatedAt: Date.now(),
-          };
+          const due = toDue(m);
           setMedications((v) => v.map((x) => (x.id === m.id ? due : x)));
           persist(due);
           openAlert(due, true);
@@ -405,51 +310,7 @@ export default function App() {
       received.then((l) => l.remove());
       action.then((l) => l.remove());
     };
-  }, [isNative, openAlert, persist]);
-
-  const toggle = async (m: Medication) => {
-    const now = Date.now();
-    const running = !m.running;
-    const updated: Medication = {
-      ...m,
-      running,
-      pendingDose: false,
-      dueScheduledAt: undefined,
-      nextDoseAt: running ? now + Math.max(1, m.remaining || m.interval) * 1000 : undefined,
-      remaining: running ? Math.max(1, m.remaining || m.interval) : m.remaining,
-      updatedAt: now,
-    };
-    setMedications((v) => v.map((x) => (x.id === m.id ? updated : x)));
-    await persist(updated);
-    if (!running && m.id != null) {
-      await cancelMedNotifications(m.id);
-      dismissSwFollowUps(m.id);
-    }
-  };
-
-  const reset = async (m: Medication) => {
-    const updated: Medication = {
-      ...m,
-      running: false,
-      pendingDose: false,
-      dueScheduledAt: undefined,
-      nextDoseAt: undefined,
-      remaining: m.interval,
-      snoozeCount: 0,
-      updatedAt: Date.now(),
-    };
-    setMedications((v) => v.map((x) => (x.id === m.id ? updated : x)));
-    await persist(updated);
-    if (m.id != null) {
-      await cancelMedNotifications(m.id);
-      dismissSwFollowUps(m.id);
-    }
-    if (alertId.current === m.id) {
-      alertId.current = null;
-      stopAlarm();
-      setAlert(null);
-    }
-  };
+  }, [isNative, openAlert, persist, takeDoseRef, snoozeRef]);
 
   const add = async (d: {
     name: string;
@@ -558,7 +419,8 @@ export default function App() {
 
   const dueCount = useMemo(() => medications.filter((m) => m.pendingDose).length, [medications]);
   const formVisible = showAdd || editing !== null;
-  const showPermBanner = (permission !== 'granted' || (isNative && !exactAlarmGranted)) && !permBannerHidden;
+  const showPermBanner =
+    (permission !== 'granted' || (isNative && !exactAlarmGranted)) && !permBannerHidden;
 
   if (bootError) {
     return (
@@ -568,15 +430,19 @@ export default function App() {
             ⚠️
           </div>
           <h1 className="mt-3 text-xl font-bold text-red-300">راه‌اندازی برنامه انجام نشد</h1>
-          <p className="mt-2 text-sm text-gray-400">دسترسی به اعلان‌ها یا ذخیره‌سازی دستگاه با مشکل روبه‌رو شد.</p>
-          <p className="mt-3 break-words rounded-lg bg-gray-800 p-2 text-xs text-gray-500">{bootError}</p>
+          <p className="mt-2 text-sm text-gray-400">
+            دسترسی به اعلان‌ها یا ذخیره‌سازی دستگاه با مشکل روبه‌رو شد.
+          </p>
+          <p className="mt-3 break-words rounded-lg bg-gray-800 p-2 text-xs text-gray-500">
+            {bootError}
+          </p>
           <button
             type="button"
             onClick={() => {
               setBootError(null);
               setBootAttempt((attempt) => attempt + 1);
             }}
-            className="mt-5 w-full rounded-xl bg-cyan-600 py-3 font-bold text-white hover:bg-cyan-500"
+            className="mt-5 w-full rounded-xl bg-cyan-500 px-4 py-3 font-bold text-gray-950 hover:bg-cyan-400"
           >
             تلاش مجدد
           </button>
@@ -587,12 +453,10 @@ export default function App() {
 
   if (!bootDone) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-gray-950 p-6 text-white">
-        <div className="text-center" role="status" aria-live="polite">
-          <div className="text-4xl" aria-hidden="true">
-            💊
-          </div>
-          <p className="mt-4 text-sm text-gray-400">در حال آماده‌سازی یادآور دارو...</p>
+      <div className="flex min-h-screen items-center justify-center bg-gray-950 text-white">
+        <div className="text-center">
+          <div className="text-5xl animate-pulse">💊</div>
+          <p className="mt-4 text-sm text-gray-400">در حال بارگذاری…</p>
         </div>
       </div>
     );
@@ -646,7 +510,8 @@ export default function App() {
 
           {dueCount > 0 && (
             <p className="mt-3 rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-200">
-              {dueCount} دارو منتظر تأیید مصرف است. هشدارها تا زدن «مصرف کردم» یا «اسنوز» ادامه می‌یابند.
+              {dueCount} دارو منتظر تأیید مصرف است. هشدارها تا زدن «مصرف کردم» یا «اسنوز» ادامه
+              می‌یابند.
             </p>
           )}
         </header>
@@ -669,7 +534,9 @@ export default function App() {
             <div className="rounded-2xl border border-dashed border-gray-700 p-12 text-center">
               <div className="text-6xl">💊</div>
               <h2 className="mt-4 text-xl font-bold">هنوز دارویی ثبت نشده</h2>
-              <p className="mt-2 text-sm text-gray-400">اولین دارو را اضافه کنید و یادآوری را شروع کنید.</p>
+              <p className="mt-2 text-sm text-gray-400">
+                اولین دارو را اضافه کنید و یادآوری را شروع کنید.
+              </p>
             </div>
           ) : (
             medications.map((m, i) => (
@@ -694,10 +561,12 @@ export default function App() {
 
         <footer className="mt-8 pb-8 text-center text-xs text-gray-500">
           <p>
-            داده‌ها فقط روی همین دستگاه ذخیره می‌شوند. تا تأیید «مصرف کردم»، یادآوری تکرار می‌شود و سپس تایمر دوز بعدی
-            بلافاصله شروع می‌شود.
+            داده‌ها فقط روی همین دستگاه ذخیره می‌شوند. تا تأیید «مصرف کردم»، یادآوری تکرار می‌شود و
+            سپس تایمر دوز بعدی بلافاصله شروع می‌شود.
           </p>
-          <p className="mt-2 text-gray-600">MediReminder v{APP_VERSION} — ابزار یادآوری است و جایگزین توصیه پزشک نیست.</p>
+          <p className="mt-2 text-gray-600">
+            MediReminder v{APP_VERSION} — ابزار یادآوری است و جایگزین توصیه پزشک نیست.
+          </p>
         </footer>
       </div>
 
