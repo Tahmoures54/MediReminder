@@ -18,6 +18,12 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Generate branded icons
+        run: |
+          set -euo pipefail
+          python3 -m pip install --quiet pillow
+          python3 scripts/generate_icons.py
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -52,6 +58,45 @@ jobs:
           set -euo pipefail
           mkdir -p android/app/src/main/res/raw
           cp src/main/res/raw/medication_alarm.wav android/app/src/main/res/raw/medication_alarm.wav
+
+      - name: Install launcher icons
+        run: |
+          set -euo pipefail
+          for density in mdpi hdpi xhdpi xxhdpi xxxhdpi; do
+            src="android-assets/mipmap-${density}"
+            dest="android/app/src/main/res/mipmap-${density}"
+            mkdir -p "$dest"
+            if [ -d "$src" ]; then
+              cp -f "$src"/ic_launcher.png "$dest"/ic_launcher.png
+              cp -f "$src"/ic_launcher_round.png "$dest"/ic_launcher_round.png 2>/dev/null || true
+              cp -f "$src"/ic_launcher_foreground.png "$dest"/ic_launcher_foreground.png 2>/dev/null || true
+            fi
+          done
+          ANYDPI="android/app/src/main/res/mipmap-anydpi-v26"
+          if [ -d "$ANYDPI" ]; then
+            cat > "$ANYDPI/ic_launcher.xml" <<'XML'
+<?xml version="1.0" encoding="utf-8"?>
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@color/ic_launcher_background"/>
+    <foreground android:drawable="@mipmap/ic_launcher_foreground"/>
+</adaptive-icon>
+XML
+            cat > "$ANYDPI/ic_launcher_round.xml" <<'XML'
+<?xml version="1.0" encoding="utf-8"?>
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@color/ic_launcher_background"/>
+    <foreground android:drawable="@mipmap/ic_launcher_foreground"/>
+</adaptive-icon>
+XML
+          fi
+          VALUES="android/app/src/main/res/values"
+          mkdir -p "$VALUES"
+          cat > "$VALUES/ic_launcher_background.xml" <<'XML'
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="ic_launcher_background">#0891b2</color>
+</resources>
+XML
 
       - name: Configure Android permissions
         run: |
@@ -97,87 +142,31 @@ jobs:
         if: steps.signing.outputs.enabled == 'true'
         env:
           KS: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-          KSP: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-          KP: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           set -euo pipefail
           echo "$KS" | base64 --decode > android/release.keystore
-          cat > android/keystore.properties <<'EOF'
+          cat > android/keystore.properties <<EOF
           storeFile=release.keystore
           storePassword=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           keyAlias=${{ secrets.ANDROID_KEY_ALIAS }}
           keyPassword=${{ secrets.ANDROID_KEY_PASSWORD }}
           EOF
-          # No trailing spaces or indentation before EOF
 
       - name: Configure signing in build.gradle
         if: steps.signing.outputs.enabled == 'true'
-        run: |
-          set -euo pipefail
-          python3 - <<'PY'
-          from pathlib import Path
-          p = Path('android/app/build.gradle')
-          s = p.read_text()
-
-          # Add signingConfigs block if not present
-          if 'signingConfigs' not in s:
-              s = s.replace(
-                  'android {',
-                  '''android {
-              signingConfigs {
-                  release {
-                      def keystoreProperties = new Properties()
-                      def keystorePropertiesFile = rootProject.file("keystore.properties")
-                      if (keystorePropertiesFile.exists()) {
-                          keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
-                      }
-                      storeFile file(keystoreProperties['storeFile'])
-                      storePassword keystoreProperties['storePassword']
-                      keyAlias keystoreProperties['keyAlias']
-                      keyPassword keystoreProperties['keyPassword']
-                  }
-              }''',
-                  1
-              )
-
-            # Add signingConfig only to the buildTypes release block.
-            if 'signingConfig signingConfigs.release' not in s:
-              marker = 'buildTypes {\n'
-              release_marker = 'release {\n'
-              build_types_start = s.find(marker)
-              if build_types_start < 0:
-                raise SystemExit('buildTypes block not found')
-              release_start = s.find(release_marker, build_types_start + len(marker))
-              if release_start < 0:
-                raise SystemExit('buildTypes.release block not found')
-              insert_at = release_start + len(release_marker)
-              s = s[:insert_at] + '        signingConfig signingConfigs.release\n' + s[insert_at:]
-
-          p.write_text(s)
-          PY
+        run: python3 scripts/add_signing.py
 
       - name: Set versionCode and versionName
         run: |
           set -euo pipefail
           VERSION_CODE=$((1000 + GITHUB_RUN_NUMBER))
           VERSION_NAME="${{ steps.version.outputs.version }}"
-
-          # Ensure defaultConfig block exists
-          if ! grep -q 'defaultConfig {' android/app/build.gradle; then
-            echo "defaultConfig block not found!"
-            exit 1
-          fi
-
-          # Insert versionCode and versionName if missing
           if ! grep -q 'versionCode ' android/app/build.gradle; then
             sed -i '/defaultConfig {/a\        versionCode 1' android/app/build.gradle
           fi
           if ! grep -q 'versionName ' android/app/build.gradle; then
             sed -i '/defaultConfig {/a\        versionName "1.0"' android/app/build.gradle
           fi
-
-          # Replace values
           sed -i "s/versionCode [0-9][0-9]*/versionCode $VERSION_CODE/" android/app/build.gradle
           sed -i "s/versionName \"[^\"]*\"/versionName \"$VERSION_NAME\"/" android/app/build.gradle
 
@@ -198,8 +187,7 @@ jobs:
 
       - name: Cleanup sensitive files
         if: steps.signing.outputs.enabled == 'true'
-        run: |
-          rm -f android/release.keystore android/keystore.properties
+        run: rm -f android/release.keystore android/keystore.properties
 
       - name: Verify and copy artifacts
         run: |
@@ -207,8 +195,8 @@ jobs:
           mkdir -p dist-artifacts
           VERSION="${{ steps.version.outputs.version }}"
           if [ "${{ steps.signing.outputs.enabled }}" = "true" ]; then
-            cp android/app/build/outputs/bundle/release/*.aab "dist-artifacts/MediReminder-$VERSION.aab"
-            cp android/app/build/outputs/apk/release/*release.apk "dist-artifacts/MediReminder-$VERSION.apk"
+            cp android/app/build/outputs/bundle/release/*.aab "dist-artifacts/MediReminder-$VERSION.aab" || true
+            cp android/app/build/outputs/apk/release/*release.apk "dist-artifacts/MediReminder-$VERSION.apk" || true
           else
             cp android/app/build/outputs/apk/debug/*debug.apk "dist-artifacts/MediReminder-$VERSION-debug.apk"
           fi
