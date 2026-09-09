@@ -9,7 +9,9 @@
     "build": "vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
-    "check": "npm run typecheck && npm run build"
+    "check": "npm run typecheck && npm run build",
+    "prebuild": "python3 scripts/decode_icons.py",
+    "icons": "python3 scripts/decode_icons.py"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.2",
