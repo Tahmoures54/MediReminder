@@ -1,4 +1,4 @@
-# MediReminder 3.2.0
+# MediReminder 3.2.1
 
 **یادآور دارو** — Offline-first · هشدار تا تأیید مصرف · PWA + Android  
 React 19 · TypeScript · Vite · Capacitor · IndexedDB
@@ -31,14 +31,23 @@ npm run dev
 npx cap sync android
 ```
 
-جزئیات انتشار: [RELEASE.md](./RELEASE.md) · فنی: [TECHNICAL_DOCS.md](./TECHNICAL_DOCS.md)
+جزئیات فنی: [TECHNICAL_DOCS.md](./TECHNICAL_DOCS.md) · تاریخچه: [CHANGELOG.md](./CHANGELOG.md)
 
 ## ساخت APK در GitHub Actions
 
-از بخش **Actions**، workflow با نام **Build MediReminder Android APK** را با گزینه **Run workflow** اجرا کنید؛ همچنین با push کردن یک tag مانند `v3.2.0` به‌صورت خودکار اجرا می‌شود.
+از بخش **Actions**، workflow با نام **Build MediReminder Android APK** را با گزینه **Run workflow** اجرا کنید؛ همچنین با push کردن یک tag مانند `v3.2.1` به‌صورت خودکار اجرا می‌شود.
 
 - بدون تنظیم secret، یک APK قابل نصب debug در artifact خروجی قرار می‌گیرد.
 - برای APK release و AAB امضاشده، این secretها را در تنظیمات repository بسازید: `ANDROID_KEYSTORE_BASE64`، `ANDROID_KEYSTORE_PASSWORD`، `ANDROID_KEY_ALIAS` و `ANDROID_KEY_PASSWORD`.
+
+## معماری کوتاه
+
+| مفهوم | توضیح |
+|-------|--------|
+| Source of truth | `nextDoseAt` (ms epoch) |
+| UI tick | فقط نمایش‌دهنده — مالک زمان‌بندی نیست |
+| Pending | تا «مصرف کردم» یا اسنوز، هشدار تکرار می‌شود |
+| Storage | IndexedDB محلی — بدون سرور |
 
 ## License
 
