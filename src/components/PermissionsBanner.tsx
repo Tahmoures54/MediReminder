@@ -11,7 +11,13 @@ interface Props {
   onDismiss?: () => void;
 }
 
-export function PermissionsBanner({ permission, exactAlarmGranted = true, onRequest, onRequestExactAlarm, onDismiss }: Props) {
+export function PermissionsBanner({
+  permission,
+  exactAlarmGranted = true,
+  onRequest,
+  onRequestExactAlarm,
+  onDismiss,
+}: Props) {
   if (permission === 'granted' && exactAlarmGranted) return null;
 
   const isNative = Capacitor.isNativePlatform();
@@ -29,7 +35,7 @@ export function PermissionsBanner({ permission, exactAlarmGranted = true, onRequ
     <div
       role="region"
       aria-label="راهنمای تنظیمات اعلان"
-      className="mt-3 rounded-2xl border border-amber-500/40 bg-gradient-to-br from-amber-500/15 to-orange-500/10 p-4 text-sm text-amber-50 shadow-lg"
+      className="mt-3 rounded-3xl border border-amber-500/35 bg-gradient-to-br from-amber-500/15 via-orange-500/10 to-slate-950/20 p-4 text-sm text-amber-50 shadow-lg shadow-amber-950/20 ring-1 ring-amber-400/10"
     >
       <div className="flex items-start gap-3">
         <span className="text-2xl" aria-hidden="true">
@@ -40,8 +46,8 @@ export function PermissionsBanner({ permission, exactAlarmGranted = true, onRequ
 
           {denied ? (
             <p className="leading-relaxed text-amber-100/90">
-              مجوز اعلان قبلاً رد شده است. از تنظیمات سیستم، اعلان‌های «یادآور دارو» را فعال کنید؛ وگرنه هشدار
-              پس‌زمینه کار نمی‌کند.
+              مجوز اعلان قبلاً رد شده است. از تنظیمات سیستم، اعلان‌های «یادآور دارو» را فعال کنید؛ وگرنه
+              هشدار پس‌زمینه کار نمی‌کند.
             </p>
           ) : (
             <p className="leading-relaxed text-amber-100/90">
@@ -55,7 +61,11 @@ export function PermissionsBanner({ permission, exactAlarmGranted = true, onRequ
             </li>
             {isAndroid && (
               <>
-                {exactAlarmMissing && <li>مجوز <strong>آلارم دقیق</strong> را در تنظیمات اندروید فعال کنید</li>}
+                {exactAlarmMissing && (
+                  <li>
+                    مجوز <strong>آلارم دقیق</strong> را در تنظیمات اندروید فعال کنید
+                  </li>
+                )}
                 <li>
                   باتری را روی <strong>بدون محدودیت</strong> بگذارید (عدم بهینه‌سازی)
                 </li>
@@ -78,7 +88,7 @@ export function PermissionsBanner({ permission, exactAlarmGranted = true, onRequ
               <button
                 type="button"
                 onClick={onRequest}
-                className="rounded-xl bg-amber-400 px-4 py-2.5 text-sm font-bold text-gray-950 shadow-md transition hover:bg-amber-300 active:scale-95"
+                className="rounded-xl bg-amber-400 px-4 py-2.5 text-sm font-bold text-slate-950 shadow-md transition hover:bg-amber-300 active:scale-95"
               >
                 فعال‌سازی اعلان‌ها
               </button>
@@ -87,7 +97,7 @@ export function PermissionsBanner({ permission, exactAlarmGranted = true, onRequ
               <button
                 type="button"
                 onClick={onRequestExactAlarm}
-                className="rounded-xl bg-red-400 px-4 py-2.5 text-sm font-bold text-gray-950 shadow-md transition hover:bg-red-300 active:scale-95"
+                className="rounded-xl bg-rose-400 px-4 py-2.5 text-sm font-bold text-slate-950 shadow-md transition hover:bg-rose-300 active:scale-95"
               >
                 فعال‌سازی آلارم دقیق
               </button>
@@ -108,7 +118,7 @@ export function PermissionsBanner({ permission, exactAlarmGranted = true, onRequ
               <button
                 type="button"
                 onClick={onDismiss}
-                className="rounded-xl border border-amber-500/30 bg-transparent px-3 py-2 text-xs text-amber-200/70 hover:bg-amber-500/10"
+                className="rounded-xl border border-amber-500/30 bg-transparent px-3 py-2 text-xs text-amber-200/70 transition hover:bg-amber-500/10"
               >
                 بعداً یادآوری کن
               </button>
