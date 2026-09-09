@@ -1,4 +1,5 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, type KeyboardEvent } from 'react';
+import { cn } from '../utils/cn';
 
 interface ConfirmDialogProps {
   title: string;
@@ -11,23 +12,18 @@ export function ConfirmDialog({ title, message, onConfirm, onCancel }: ConfirmDi
   const confirmButtonRef = useRef<HTMLButtonElement>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
 
-  // مدیریت کلید Escape
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        onCancel();
-      }
+    const handleKeyDown = (e: globalThis.KeyboardEvent) => {
+      if (e.key === 'Escape') onCancel();
     };
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [onCancel]);
 
-  // فوکوس اولیه روی دکمه تأیید
   useEffect(() => {
     confirmButtonRef.current?.focus();
   }, []);
 
-  // جلوگیری از اسکرول صفحه پس‌زمینه هنگام باز بودن دیالوگ
   useEffect(() => {
     document.body.style.overflow = 'hidden';
     return () => {
@@ -35,35 +31,31 @@ export function ConfirmDialog({ title, message, onConfirm, onCancel }: ConfirmDi
     };
   }, []);
 
-  // مدیریت فوکوس برای Trap (ساده با نگه‌داشتن فوکوس در دیالوگ)
-  const handleDialogKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Tab') {
-      const focusableElements = dialogRef.current?.querySelectorAll<HTMLElement>(
-        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
-      );
-      if (!focusableElements || focusableElements.length === 0) return;
+  const handleDialogKeyDown = (e: KeyboardEvent) => {
+    if (e.key !== 'Tab') return;
+    const focusableElements = dialogRef.current?.querySelectorAll<HTMLElement>(
+      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+    );
+    if (!focusableElements || focusableElements.length === 0) return;
 
-      const firstElement = focusableElements[0];
-      const lastElement = focusableElements[focusableElements.length - 1];
+    const firstElement = focusableElements[0];
+    const lastElement = focusableElements[focusableElements.length - 1];
 
-      if (e.shiftKey) {
-        if (document.activeElement === firstElement) {
-          e.preventDefault();
-          lastElement.focus();
-        }
-      } else {
-        if (document.activeElement === lastElement) {
-          e.preventDefault();
-          firstElement.focus();
-        }
+    if (e.shiftKey) {
+      if (document.activeElement === firstElement) {
+        e.preventDefault();
+        lastElement.focus();
       }
+    } else if (document.activeElement === lastElement) {
+      e.preventDefault();
+      firstElement.focus();
     }
   };
 
   return (
     <div
-      className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4"
-      onClick={onCancel} // بستن با کلیک روی پس‌زمینه
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-md animate-fade-in"
+      onClick={onCancel}
     >
       <div
         ref={dialogRef}
@@ -71,18 +63,17 @@ export function ConfirmDialog({ title, message, onConfirm, onCancel }: ConfirmDi
         aria-modal="true"
         aria-labelledby="confirm-title"
         aria-describedby="confirm-message"
-        className="bg-gray-800 rounded-2xl shadow-2xl max-w-md w-full border border-gray-700 animate-scale-in"
-        onClick={(e) => e.stopPropagation()} // جلوگیری از بسته شدن با کلیک داخل دیالوگ
+        className="w-full max-w-md overflow-hidden rounded-3xl border border-slate-600/60 bg-gradient-to-br from-slate-900 via-slate-900 to-slate-950 shadow-2xl shadow-black/50 ring-1 ring-white/5 animate-scale-in"
+        onClick={(e) => e.stopPropagation()}
         onKeyDown={handleDialogKeyDown}
       >
-        <div className="p-6">
-          <h3 id="confirm-title" className="text-2xl font-bold text-white mb-4">
+        <div className="border-b border-slate-700/50 bg-gradient-to-l from-rose-950/20 via-transparent to-transparent px-6 py-5">
+          <h3 id="confirm-title" className="text-xl font-black text-white">
             {title}
           </h3>
-          <p
-            id="confirm-message"
-            className="text-gray-300 whitespace-pre-line mb-6 leading-relaxed"
-          >
+        </div>
+        <div className="p-6">
+          <p id="confirm-message" className="mb-6 leading-relaxed whitespace-pre-line text-slate-300">
             {message}
           </p>
 
@@ -91,14 +82,20 @@ export function ConfirmDialog({ title, message, onConfirm, onCancel }: ConfirmDi
               ref={confirmButtonRef}
               type="button"
               onClick={onConfirm}
-              className="flex-1 bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-6 rounded-xl transition-all duration-300 shadow-lg shadow-green-500/30 active:scale-95 focus:outline-none focus:ring-4 focus:ring-green-300/30"
+              className={cn(
+                'flex-1 rounded-2xl bg-gradient-to-b from-emerald-400 to-emerald-600 py-3.5 font-bold text-slate-950',
+                'shadow-lg shadow-emerald-900/30 transition hover:from-emerald-300 hover:to-emerald-500 active:scale-[0.97]'
+              )}
             >
               بله
             </button>
             <button
               type="button"
               onClick={onCancel}
-              className="flex-1 bg-gray-600 hover:bg-gray-500 text-white font-bold py-3 px-6 rounded-xl transition-all duration-300 shadow-lg active:scale-95 focus:outline-none focus:ring-4 focus:ring-gray-300/20"
+              className={cn(
+                'flex-1 rounded-2xl border border-slate-600/70 bg-slate-800/80 py-3.5 font-bold text-slate-100',
+                'transition hover:bg-slate-700 active:scale-[0.97]'
+              )}
             >
               انصراف
             </button>
