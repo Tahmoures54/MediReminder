@@ -69,6 +69,11 @@ select {
   to   { opacity: 1; transform: scale(1); }
 }
 
+@keyframes card-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(251, 113, 133, 0.0), 0 10px 30px -10px rgba(0,0,0,0.4); }
+  50% { box-shadow: 0 0 0 4px rgba(251, 113, 133, 0.12), 0 12px 36px -8px rgba(244, 63, 94, 0.25); }
+}
+
 @keyframes bounce-in {
   0%   { opacity: 0; transform: scale(0.3); }
   50%  { transform: scale(1.05); }
@@ -97,12 +102,15 @@ select {
     will-change: opacity, transform;
   }
 
+  .animate-card-pulse {
+    animation: card-pulse 2.2s ease-in-out infinite;
+  }
+
   .animate-bounce-in {
     animation: bounce-in 0.5s ease-out both;
     will-change: opacity, transform;
   }
 
-  /* Utility scrollbar class for specific containers */
   .custom-scrollbar {
     scrollbar-width: thin;
     scrollbar-color: #4b5563 #1f2937;
@@ -128,9 +136,6 @@ select {
   }
 }
 
-/* ==========================================================================
-   Global Scrollbar (apply only to body and elements with .custom-scrollbar)
-   ========================================================================== */
 body {
   scrollbar-width: thin;
   scrollbar-color: #4b5563 #1f2937;
@@ -154,9 +159,6 @@ body::-webkit-scrollbar-thumb:hover {
   background: #6b7280;
 }
 
-/* ==========================================================================
-   Reduced Motion Accessibility
-   ========================================================================== */
 @media (prefers-reduced-motion: reduce) {
   html:focus-within {
     scroll-behavior: auto;
