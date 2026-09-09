@@ -62,41 +62,41 @@ jobs:
       - name: Install launcher icons
         run: |
           set -euo pipefail
-          for density in mdpi hdpi xhdpi xxhdpi xxxhdpi; do
-            src="android-assets/mipmap-${density}"
-            dest="android/app/src/main/res/mipmap-${density}"
-            mkdir -p "$dest"
-            if [ -d "$src" ]; then
-              cp -f "$src"/ic_launcher.png "$dest"/ic_launcher.png
-              cp -f "$src"/ic_launcher_round.png "$dest"/ic_launcher_round.png 2>/dev/null || true
-              cp -f "$src"/ic_launcher_foreground.png "$dest"/ic_launcher_foreground.png 2>/dev/null || true
-            fi
-          done
-          ANYDPI="android/app/src/main/res/mipmap-anydpi-v26"
-          if [ -d "$ANYDPI" ]; then
-            cat > "$ANYDPI/ic_launcher.xml" <<'XML'
-<?xml version="1.0" encoding="utf-8"?>
-<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
-    <background android:drawable="@color/ic_launcher_background"/>
-    <foreground android:drawable="@mipmap/ic_launcher_foreground"/>
-</adaptive-icon>
-XML
-            cat > "$ANYDPI/ic_launcher_round.xml" <<'XML'
-<?xml version="1.0" encoding="utf-8"?>
-<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
-    <background android:drawable="@color/ic_launcher_background"/>
-    <foreground android:drawable="@mipmap/ic_launcher_foreground"/>
-</adaptive-icon>
-XML
-          fi
-          VALUES="android/app/src/main/res/values"
-          mkdir -p "$VALUES"
-          cat > "$VALUES/ic_launcher_background.xml" <<'XML'
-<?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <color name="ic_launcher_background">#0891b2</color>
-</resources>
-XML
+          python3 - <<'PY'
+          from pathlib import Path
+          import shutil
+
+          for density in ['mdpi', 'hdpi', 'xhdpi', 'xxhdpi', 'xxxhdpi']:
+              src = Path(f'android-assets/mipmap-{density}')
+              dest = Path(f'android/app/src/main/res/mipmap-{density}')
+              dest.mkdir(parents=True, exist_ok=True)
+              if src.is_dir():
+                  for name in ['ic_launcher.png', 'ic_launcher_round.png', 'ic_launcher_foreground.png']:
+                      f = src / name
+                      if f.exists():
+                          shutil.copy2(f, dest / name)
+
+          adaptive = '''<?xml version="1.0" encoding="utf-8"?>
+          <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+              <background android:drawable="@color/ic_launcher_background"/>
+              <foreground android:drawable="@mipmap/ic_launcher_foreground"/>
+          </adaptive-icon>
+          '''
+          anydpi = Path('android/app/src/main/res/mipmap-anydpi-v26')
+          if anydpi.is_dir():
+              (anydpi / 'ic_launcher.xml').write_text(adaptive.strip() + '\n')
+              (anydpi / 'ic_launcher_round.xml').write_text(adaptive.strip() + '\n')
+
+          values = Path('android/app/src/main/res/values')
+          values.mkdir(parents=True, exist_ok=True)
+          (values / 'ic_launcher_background.xml').write_text(
+              '<?xml version="1.0" encoding="utf-8"?>\n'
+              '<resources>\n'
+              '    <color name="ic_launcher_background">#0891b2</color>\n'
+              '</resources>\n'
+          )
+          print('launcher icons installed')
+          PY
 
       - name: Configure Android permissions
         run: |
@@ -145,12 +145,12 @@ XML
         run: |
           set -euo pipefail
           echo "$KS" | base64 --decode > android/release.keystore
-          cat > android/keystore.properties <<EOF
-          storeFile=release.keystore
-          storePassword=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          keyAlias=${{ secrets.ANDROID_KEY_ALIAS }}
-          keyPassword=${{ secrets.ANDROID_KEY_PASSWORD }}
-          EOF
+          {
+            echo "storeFile=release.keystore"
+            echo "storePassword=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}"
+            echo "keyAlias=${{ secrets.ANDROID_KEY_ALIAS }}"
+            echo "keyPassword=${{ secrets.ANDROID_KEY_PASSWORD }}"
+          } > android/keystore.properties
 
       - name: Configure signing in build.gradle
         if: steps.signing.outputs.enabled == 'true'
