@@ -210,21 +210,4 @@ function delay(ms: number) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-/**
- * قالب‌بندی زمان به صورت ساعت:دقیقه:ثانیه
- * در صورت نیاز، روز نیز اضافه می‌شود
- */
-export function formatTime(seconds: number): string {
-  if (seconds < 0) seconds = 0;
-
-  const days = Math.floor(seconds / 86400);
-  const hours = Math.floor((seconds % 86400) / 3600);
-  const minutes = Math.floor((seconds % 3600) / 60);
-  const secs = Math.floor(seconds % 60);
-
-  if (days > 0) {
-    return `${days} روز و ${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
-  }
-
-  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
-}
+export { formatTime } from './time';

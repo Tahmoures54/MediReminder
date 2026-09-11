@@ -1,5 +1,9 @@
 import type { HistoryRecord, Medication } from '../db/database';
 
+export const EARLY_WINDOW_MS = 30 * 60 * 1000;
+export const LATE_WINDOW_MS = 60 * 60 * 1000;
+export const MISSED_AFTER_MS = 4 * 60 * 60 * 1000;
+
 /** Normalize medication fields so UI and timers always see consistent numbers. */
 export function normalize(m: Medication): Medication {
   const now = Date.now();
@@ -28,6 +32,7 @@ export function normalize(m: Medication): Medication {
  * Classify adherence based on when the dose was taken vs scheduled time.
  * early  : > 30 minutes before schedule
  * late   : > 60 minutes after schedule
+ * missed : > 4 hours after schedule
  * on-time: otherwise
  */
 export function statusFor(
@@ -38,8 +43,9 @@ export function statusFor(
   const scheduled = scheduledAt ?? m.dueScheduledAt ?? m.nextDoseAt ?? m.lastTakenAt;
   if (!scheduled) return 'on-time';
   const delta = takenAt - scheduled;
-  if (delta < -30 * 60 * 1000) return 'early';
-  if (delta > 60 * 60 * 1000) return 'late';
+  if (delta < -EARLY_WINDOW_MS) return 'early';
+  if (delta > MISSED_AFTER_MS) return 'missed';
+  if (delta > LATE_WINDOW_MS) return 'late';
   return 'on-time';
 }
 
@@ -53,4 +59,40 @@ export function toDue(m: Medication, now = Date.now()): Medication {
     dueScheduledAt: m.nextDoseAt ?? now,
     updatedAt: now,
   };
+}
+
+/**
+ * Pending doses first, then running timers, then stopped.
+ * Within a group, soonest `nextDoseAt` comes first.
+ */
+export function sortMedications(list: Medication[]): Medication[] {
+  const rank = (m: Medication) => (m.pendingDose ? 0 : m.running ? 1 : 2);
+  return [...list].sort((a, b) => {
+    const byRank = rank(a) - rank(b);
+    if (byRank !== 0) return byRank;
+    return (a.nextDoseAt ?? Number.POSITIVE_INFINITY) - (b.nextDoseAt ?? Number.POSITIVE_INFINITY);
+  });
+}
+
+export function findMedication(list: Medication[], id?: number | null): Medication | undefined {
+  if (id == null) return undefined;
+  return list.find((m) => m.id === id);
+}
+
+/**
+ * Apply countdown / due patches onto the *current* list.
+ * Deleted items are not resurrected because they are no longer in `list`.
+ */
+export function patchMedications(
+  list: Medication[],
+  updates: ReadonlyMap<number, Medication>
+): Medication[] {
+  if (updates.size === 0) return list;
+  let changed = false;
+  const next = list.map((m) => {
+    if (m.id == null || !updates.has(m.id)) return m;
+    changed = true;
+    return updates.get(m.id)!;
+  });
+  return changed ? sortMedications(next) : list;
 }

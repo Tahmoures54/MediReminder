@@ -1,14 +1,29 @@
 import { useEffect, useRef, type KeyboardEvent } from 'react';
 import { cn } from '../utils/cn';
+import { Portal } from './Portal';
 
 interface ConfirmDialogProps {
   title: string;
   message: string;
   onConfirm: () => void;
   onCancel: () => void;
+  confirmLabel?: string;
+  cancelLabel?: string;
+  /** Hide the cancel button (e.g. informational errors). */
+  showCancel?: boolean;
+  variant?: 'default' | 'danger' | 'info';
 }
 
-export function ConfirmDialog({ title, message, onConfirm, onCancel }: ConfirmDialogProps) {
+export function ConfirmDialog({
+  title,
+  message,
+  onConfirm,
+  onCancel,
+  confirmLabel = 'بله',
+  cancelLabel = 'انصراف',
+  showCancel = true,
+  variant = 'default',
+}: ConfirmDialogProps) {
   const confirmButtonRef = useRef<HTMLButtonElement>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
 
@@ -21,13 +36,14 @@ export function ConfirmDialog({ title, message, onConfirm, onCancel }: ConfirmDi
   }, [onCancel]);
 
   useEffect(() => {
-    confirmButtonRef.current?.focus();
+    dialogRef.current?.focus();
   }, []);
 
   useEffect(() => {
+    const previous = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     return () => {
-      document.body.style.overflow = '';
+      document.body.style.overflow = previous;
     };
   }, []);
 
@@ -52,56 +68,69 @@ export function ConfirmDialog({ title, message, onConfirm, onCancel }: ConfirmDi
     }
   };
 
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-md animate-fade-in"
-      onClick={onCancel}
-    >
-      <div
-        ref={dialogRef}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="confirm-title"
-        aria-describedby="confirm-message"
-        className="w-full max-w-md overflow-hidden rounded-3xl border border-slate-600/60 bg-gradient-to-br from-slate-900 via-slate-900 to-slate-950 shadow-2xl shadow-black/50 ring-1 ring-white/5 animate-scale-in"
-        onClick={(e) => e.stopPropagation()}
-        onKeyDown={handleDialogKeyDown}
-      >
-        <div className="border-b border-slate-700/50 bg-gradient-to-l from-rose-950/20 via-transparent to-transparent px-6 py-5">
-          <h3 id="confirm-title" className="text-xl font-black text-white">
-            {title}
-          </h3>
-        </div>
-        <div className="p-6">
-          <p id="confirm-message" className="mb-6 leading-relaxed whitespace-pre-line text-slate-300">
-            {message}
-          </p>
+  const danger = variant === 'danger';
 
-          <div className="flex gap-3">
-            <button
-              ref={confirmButtonRef}
-              type="button"
-              onClick={onConfirm}
-              className={cn(
-                'flex-1 rounded-2xl bg-gradient-to-b from-emerald-400 to-emerald-600 py-3.5 font-bold text-slate-950',
-                'shadow-lg shadow-emerald-900/30 transition hover:from-emerald-300 hover:to-emerald-500 active:scale-[0.97]'
+  return (
+    <Portal>
+      <div
+        className="fixed inset-0 z-[400] flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-md animate-fade-in"
+        onClick={(e) => {
+          if (e.target === e.currentTarget) onCancel();
+        }}
+      >
+        <div
+          ref={dialogRef}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="confirm-title"
+          aria-describedby="confirm-message"
+          tabIndex={-1}
+          className="w-full max-w-md overflow-hidden rounded-3xl border border-white/10 bg-slate-900 shadow-2xl shadow-black/60 ring-1 ring-white/10 animate-scale-in outline-none"
+          onClick={(e) => e.stopPropagation()}
+          onKeyDown={handleDialogKeyDown}
+        >
+          <div
+            className={cn(
+              'border-b border-white/5 px-6 py-5',
+              danger ? 'bg-rose-500/10' : 'bg-cyan-500/10'
+            )}
+          >
+            <h3 id="confirm-title" className="text-xl font-black text-white">
+              {title}
+            </h3>
+          </div>
+          <div className="p-6">
+            <p id="confirm-message" className="mb-6 leading-relaxed whitespace-pre-line text-slate-300">
+              {message}
+            </p>
+
+            <div className="flex gap-3">
+              {showCancel && (
+                <button
+                  type="button"
+                  onClick={onCancel}
+                  className="flex-1 rounded-2xl border border-white/10 bg-white/5 py-3.5 font-bold text-slate-100 transition hover:bg-white/10 active:scale-[0.97]"
+                >
+                  {cancelLabel}
+                </button>
               )}
-            >
-              بله
-            </button>
-            <button
-              type="button"
-              onClick={onCancel}
-              className={cn(
-                'flex-1 rounded-2xl border border-slate-600/70 bg-slate-800/80 py-3.5 font-bold text-slate-100',
-                'transition hover:bg-slate-700 active:scale-[0.97]'
-              )}
-            >
-              انصراف
-            </button>
+              <button
+                ref={confirmButtonRef}
+                type="button"
+                onClick={onConfirm}
+                className={cn(
+                  'flex-1 rounded-2xl py-3.5 font-bold shadow-lg transition active:scale-[0.97]',
+                  danger
+                    ? 'bg-rose-500 text-white shadow-rose-950/50 hover:bg-rose-400'
+                    : 'bg-emerald-400 text-slate-950 shadow-emerald-950/40 hover:bg-emerald-300'
+                )}
+              >
+                {confirmLabel}
+              </button>
+            </div>
           </div>
         </div>
       </div>
-    </div>
+    </Portal>
   );
 }

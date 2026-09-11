@@ -149,7 +149,9 @@ class Database {
   }
 
   async deleteMedication(id: number): Promise<void> {
-    await this.transaction(STORE_NAME, 'readwrite', (store) => store.delete(id));
+    const key = Number(id);
+    if (!Number.isFinite(key)) return;
+    await this.transaction(STORE_NAME, 'readwrite', (store) => store.delete(key));
   }
 
   async replaceAllMedications(medications: Medication[]): Promise<void> {
@@ -193,7 +195,7 @@ class Database {
   }
 
   async importBackup(payload: BackupPayload): Promise<void> {
-    if (!payload || !Array.isArray(payload.medications)) {
+    if (!payload || typeof payload !== 'object' || !Array.isArray(payload.medications)) {
       throw new Error('Invalid backup file');
     }
     const sanitized = payload.medications.map((m) =>

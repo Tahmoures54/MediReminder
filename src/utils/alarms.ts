@@ -198,18 +198,20 @@ async function syncNative(medications: Medication[]): Promise<void> {
       continue;
     }
 
-    // اگر running و nextDoseAt در گذشته باشد (مثلاً به دلیل delay) → اعلان فوری
+    // اگر running و nextDoseAt در گذشته باشد → مثل pending، هشدار مکرر تا تأیید
     if (m.running && m.nextDoseAt && m.nextDoseAt <= now) {
-      toSchedule.push({
-        id: ids[0],
-        title: '💊 زمان مصرف دارو',
-        body: `${m.name} — ${m.dosage}`,
-        schedule: { at: new Date(now + 800), allowWhileIdle: true },
-        channelId: NOTIFICATION_CHANNEL_ID,
-        sound: 'medication_alarm.wav',
-        actionTypeId: ACTION_TYPE_ID,
-        extra: { medicationId: m.id, kind: 'overdue', slot: 0 },
-      });
+      for (let slot = 0; slot < NATIVE_FOLLOW_UP_SLOTS; slot++) {
+        toSchedule.push({
+          id: ids[slot],
+          title: slot === 0 ? '💊 زمان مصرف دارو' : '🔔 یادآوری مجدد — لطفاً تأیید کنید',
+          body: `${m.name} — ${m.dosage}\nهنوز مصرف را تأیید نکرده‌اید.`,
+          schedule: { at: new Date(now + slot * NATIVE_FOLLOW_UP_MS + 800), allowWhileIdle: true },
+          channelId: NOTIFICATION_CHANNEL_ID,
+          sound: 'medication_alarm.wav',
+          actionTypeId: ACTION_TYPE_ID,
+          extra: { medicationId: m.id, kind: 'overdue', slot },
+        });
+      }
     }
   }
 

@@ -2,6 +2,33 @@
 
 All notable changes to MediReminder are documented in this file.
 
+## [3.3.1] — 2026-09-11
+
+### Fixed
+- Delete now removes the card immediately and the 1-second tick can no longer resurrect it.
+- Confirm / report overlays portal to `document.body` so they sit above cards.
+
+### Improved
+- Medication cards: cleaner hierarchy, status rail, meta chips, equal action row.
+- CI always builds a **signed** release APK + AAB. If upload-key secrets are missing, a new keystore is generated and attached next to the APK (`signing-key/`).
+
+## [3.3.0] — 2026-09-11
+
+### Fixed
+- Restored `src/App.tsx` after it was replaced with `PLACEHOLDER`, which blanked the production build.
+- 1-second UI ticks no longer write `remaining` to IndexedDB; only due-state transitions are persisted.
+- Overdue native doses now schedule repeating follow-up notifications, not a single one-shot alert.
+- Service Worker uses network-first navigation, caches hashed assets on fetch, and honors `SKIP_WAITING`.
+- Report modal animations use the app’s own CSS utilities (no missing `animate-in` classes).
+
+### Improved
+- JSON backup import/export in the header, with a destructive-import confirmation.
+- Doses more than 4 hours late are classified as `missed`; reset while pending records `skipped`.
+- Report hash is labeled as a text fingerprint, not a digital signature; missed/skipped counts included.
+- Medications are sorted pending → running → stopped. Empty state, low-stock banner, and Persian interval presets.
+- Confirm dialogs distinguish dangerous actions; reset-while-pending asks before recording a skip.
+- Unit tests for scheduling/adherence helpers and time formatting (`npm test`).
+
 ## [3.2.1] — 2026-09-09
 
 ### Improved

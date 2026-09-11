@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Share } from '@capacitor/share';
 import type { Medication, HistoryRecord } from '../db/database';
+import { Portal } from './Portal';
 
 interface ReportModalProps {
   medication: Medication;
@@ -36,6 +37,10 @@ function getStatusDisplay(status: HistoryRecord['status']) {
       return { icon: '🟡', text: 'زودتر', color: 'text-yellow-400', bg: 'bg-yellow-400/10' };
     case 'late':
       return { icon: '🔴', text: 'دیرتر', color: 'text-red-400', bg: 'bg-red-400/10' };
+    case 'missed':
+      return { icon: '⚫', text: 'از دست رفته', color: 'text-rose-300', bg: 'bg-rose-400/10' };
+    case 'skipped':
+      return { icon: '⚪', text: 'رد شده', color: 'text-gray-400', bg: 'bg-gray-400/10' };
     default:
       return { icon: '⚪', text: 'نامشخص', color: 'text-gray-400', bg: 'bg-gray-400/10' };
   }
@@ -100,16 +105,20 @@ function isUserCancelledShare(error: unknown) {
   return error.name === 'AbortError' || message.includes('abort') || message.includes('cancel');
 }
 
+type ReportStats = {
+  total: number;
+  onTimeCount: number;
+  earlyCount: number;
+  lateCount: number;
+  missedCount: number;
+  skippedCount: number;
+  score: number;
+  lastDose: string;
+};
+
 function buildReportText(
   medication: Medication,
-  stats: {
-    total: number;
-    onTimeCount: number;
-    earlyCount: number;
-    lateCount: number;
-    score: number;
-    lastDose: string;
-  },
+  stats: ReportStats,
   recentHistory: HistoryRecord[]
 ) {
   const recentLines = recentHistory.length
@@ -127,6 +136,8 @@ function buildReportText(
 🟢 به‌موقع: ${stats.onTimeCount}
 🟡 زودتر: ${stats.earlyCount}
 🔴 دیرتر: ${stats.lateCount}
+⚫ از دست رفته: ${stats.missedCount}
+⚪ رد شده: ${stats.skippedCount}
 🕒 آخرین دوز: ${stats.lastDose}
 
 📝 دوزهای اخیر:
@@ -171,12 +182,12 @@ async function computeHash(text: string): Promise<string> {
  */
 async function buildSignedReport(
   medication: Medication,
-  stats: { total: number; onTimeCount: number; earlyCount: number; lateCount: number; score: number; lastDose: string },
+  stats: ReportStats,
   recentHistory: HistoryRecord[]
 ): Promise<{ text: string; hash: string }> {
   const baseText = buildReportText(medication, stats, recentHistory);
   const hash = await computeHash(baseText);
-  const signedText = `${baseText}\n\n🔐 امضای دیجیتال (SHA-256):\n${hash}`;
+  const signedText = `${baseText}\n\n🔐 اثر انگشت متن (SHA-256):\n${hash}`;
   return { text: signedText, hash };
 }
 
@@ -197,10 +208,13 @@ export function ReportModal({ medication, onClose }: ReportModalProps) {
     const onTimeCount = sortedHistory.filter(h => h.status === 'on-time').length;
     const earlyCount = sortedHistory.filter(h => h.status === 'early').length;
     const lateCount = sortedHistory.filter(h => h.status === 'late').length;
-    const score = total > 0 ? Math.round((onTimeCount / total) * 100) : 0;
+    const missedCount = sortedHistory.filter(h => h.status === 'missed').length;
+    const skippedCount = sortedHistory.filter(h => h.status === 'skipped').length;
+    const scored = onTimeCount + earlyCount + lateCount + missedCount;
+    const score = scored > 0 ? Math.round(((onTimeCount + earlyCount) / scored) * 100) : 0;
     const lastDose = total > 0 ? formatDateTime(sortedHistory[0].takenAt) : '—';
 
-    return { total, onTimeCount, earlyCount, lateCount, score, lastDose };
+    return { total, onTimeCount, earlyCount, lateCount, missedCount, skippedCount, score, lastDose };
   }, [sortedHistory]);
 
   // متن گزارش پایه (بدون هش)
@@ -265,7 +279,7 @@ export function ReportModal({ medication, onClose }: ReportModalProps) {
       const { text } = await buildSignedReport(medication, stats, recentHistory);
       const copied = await copyTextToClipboard(text);
       if (copied) {
-        showFeedback('success', '📋 گزارش امضاشده کپی شد.');
+        showFeedback('success', '📋 گزارش با اثر انگشت کپی شد.');
       } else {
         showFeedback('error', '⚠️ امکان کپی گزارش وجود نداشت.');
       }
@@ -285,7 +299,7 @@ export function ReportModal({ medication, onClose }: ReportModalProps) {
       const { text } = await buildSignedReport(medication, stats, recentHistory);
       const filename = `${sanitizeFileName(medication.name || 'دارو')}-گزارش.txt`;
       downloadTextFile(filename, text);
-      showFeedback('success', '⬇️ گزارش امضاشده دانلود شد.');
+      showFeedback('success', '⬇️ گزارش با اثر انگشت دانلود شد.');
     } catch (error) {
       console.error('خطای دانلود:', error);
       showFeedback('error', '⚠️ امکان دانلود گزارش وجود نداشت.');
@@ -328,13 +342,13 @@ export function ReportModal({ medication, onClose }: ReportModalProps) {
 
       const copied = await copyTextToClipboard(text);
       if (copied) {
-        showFeedback('info', '📋 اشتراک در دسترس نیست. گزارش امضاشده کپی شد.');
+        showFeedback('info', '📋 اشتراک در دسترس نیست. گزارش با اثر انگشت کپی شد.');
         return;
       }
 
       const filename = `${sanitizeFileName(medication.name || 'دارو')}-گزارش.txt`;
       downloadTextFile(filename, text);
-      showFeedback('info', '⬇️ اشتراک در دسترس نیست. گزارش امضاشده دانلود شد.');
+      showFeedback('info', '⬇️ اشتراک در دسترس نیست. گزارش با اثر انگشت دانلود شد.');
     } catch (error) {
       if (isUserCancelledShare(error)) {
         return;
@@ -344,12 +358,12 @@ export function ReportModal({ medication, onClose }: ReportModalProps) {
         const { text } = await buildSignedReport(medication, stats, recentHistory);
         const copied = await copyTextToClipboard(text);
         if (copied) {
-          showFeedback('info', '📋 اشتراک ناموفق. گزارش امضاشده کپی شد.');
+          showFeedback('info', '📋 اشتراک ناموفق. گزارش با اثر انگشت کپی شد.');
           return;
         }
         const filename = `${sanitizeFileName(medication.name || 'دارو')}-گزارش.txt`;
         downloadTextFile(filename, text);
-        showFeedback('info', '⬇️ اشتراک ناموفق. گزارش امضاشده دانلود شد.');
+        showFeedback('info', '⬇️ اشتراک ناموفق. گزارش با اثر انگشت دانلود شد.');
       } catch (fallbackError) {
         console.error('خطای جایگزین اشتراک:', fallbackError);
         showFeedback('error', '⚠️ امکان اشتراک گزارش وجود نداشت.');
@@ -362,15 +376,18 @@ export function ReportModal({ medication, onClose }: ReportModalProps) {
 
   // --- رابط کاربری (تقریباً مشابه قبل، با افزودن بخش هش) ---
   return (
+    <Portal>
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm animate-in fade-in duration-200"
-      onClick={onClose}
+      className="fixed inset-0 z-[400] flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-sm animate-fade-in"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
       role="dialog"
       aria-modal="true"
       aria-labelledby="modal-title"
     >
       <div
-        className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-2xl border border-gray-700 bg-gray-800 p-6 shadow-2xl animate-in zoom-in-95 duration-200 custom-scrollbar"
+        className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-2xl border border-white/10 bg-slate-900 p-6 shadow-2xl animate-zoom-in custom-scrollbar"
         onClick={(e) => e.stopPropagation()}
       >
         {/* هدر */}
@@ -412,7 +429,7 @@ export function ReportModal({ medication, onClose }: ReportModalProps) {
 
         {/* نمایش هش برای تأیید صحت */}
         <div className="mb-4 rounded-xl border border-gray-700 bg-gray-900 p-4">
-          <p className="mb-1 text-xs text-gray-400">🔐 امضای دیجیتال (SHA-256)</p>
+          <p className="mb-1 text-xs text-gray-400">🔐 اثر انگشت متن (SHA-256)</p>
           <p className="break-all font-mono text-sm text-cyan-300">
             {isHashing ? 'در حال محاسبه...' : reportHash}
           </p>
@@ -431,11 +448,13 @@ export function ReportModal({ medication, onClose }: ReportModalProps) {
           </div>
         </div>
 
-        <div className="mb-4 grid grid-cols-3 gap-2 text-center text-xs">
+        <div className="mb-4 grid grid-cols-2 gap-2 text-center text-xs sm:grid-cols-3">
           {[
             ['به‌موقع', stats.onTimeCount, 'text-green-300'],
             ['زودتر', stats.earlyCount, 'text-yellow-300'],
             ['دیرتر', stats.lateCount, 'text-red-300'],
+            ['از دست رفته', stats.missedCount, 'text-rose-300'],
+            ['رد شده', stats.skippedCount, 'text-gray-300'],
           ].map(([label, count, color]) => (
             <div key={label} className="rounded-xl border border-gray-700 bg-gray-900 p-3">
               <p className="text-gray-400">{label}</p>
@@ -498,5 +517,6 @@ export function ReportModal({ medication, onClose }: ReportModalProps) {
         </button>
       </div>
     </div>
+    </Portal>
   );
 }

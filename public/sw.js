@@ -1,6 +1,6 @@
 // public/sw.js — Service Worker یادآور دارو
 // هشدارهای تکرارشونده تا تأیید «مصرف کردم» یا اسنوز
-const CACHE_NAME = 'medi-reminder-v7';
+const CACHE_NAME = 'medi-reminder-v8';
 const ALARM_DB_NAME = 'MedicationAlarmDB';
 const ALARM_STORE = 'alarms';
 /** فاصله تکرار اعلان تا تأیید مصرف */
@@ -37,8 +37,38 @@ self.addEventListener('activate', event => {
 });
 
 self.addEventListener('fetch', event => {
+  const request = event.request;
+  if (request.method !== 'GET') return;
+
+  const url = new URL(request.url);
+  if (url.origin !== self.location.origin) return;
+
+  if (request.mode === 'navigate') {
+    event.respondWith(
+      fetch(request)
+        .then(response => {
+          const copy = response.clone();
+          caches.open(CACHE_NAME).then(cache => cache.put(request, copy)).catch(() => {});
+          return response;
+        })
+        .catch(() => caches.match('/index.html').then(cached => cached || caches.match('/')))
+    );
+    return;
+  }
+
   event.respondWith(
-    caches.match(event.request).then(res => res || fetch(event.request).catch(() => caches.match('/')))
+    caches.match(request).then(cached => {
+      const fetched = fetch(request)
+        .then(response => {
+          if (response && response.ok) {
+            const copy = response.clone();
+            caches.open(CACHE_NAME).then(cache => cache.put(request, copy)).catch(() => {});
+          }
+          return response;
+        })
+        .catch(() => cached);
+      return cached || fetched;
+    })
   );
 });
 
@@ -296,6 +326,10 @@ self.addEventListener('message', event => {
   event.waitUntil((async () => {
     try {
       const data = event.data || {};
+      if (data.type === 'SKIP_WAITING') {
+        self.skipWaiting();
+        return;
+      }
       if (data.type === 'SCHEDULE_ALARMS') {
         const alarms = Array.isArray(data.alarms) ? data.alarms : [];
         clearAllTimers();
