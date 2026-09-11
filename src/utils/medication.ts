@@ -78,3 +78,21 @@ export function findMedication(list: Medication[], id?: number | null): Medicati
   if (id == null) return undefined;
   return list.find((m) => m.id === id);
 }
+
+/**
+ * Apply countdown / due patches onto the *current* list.
+ * Deleted items are not resurrected because they are no longer in `list`.
+ */
+export function patchMedications(
+  list: Medication[],
+  updates: ReadonlyMap<number, Medication>
+): Medication[] {
+  if (updates.size === 0) return list;
+  let changed = false;
+  const next = list.map((m) => {
+    if (m.id == null || !updates.has(m.id)) return m;
+    changed = true;
+    return updates.get(m.id)!;
+  });
+  return changed ? sortMedications(next) : list;
+}

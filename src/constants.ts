@@ -1,5 +1,5 @@
 /** App identity and user-facing constants. Keep in sync with package.json. */
-export const APP_VERSION = '3.3.0';
+export const APP_VERSION = '3.3.1';
 
 /** In-app re-alert while a dose is still pending and the popup was dismissed. */
 export const IN_APP_NAG_MS = 45_000;

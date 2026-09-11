@@ -11,7 +11,7 @@ if 'signingConfigs' not in s:
         "            def propsFile = rootProject.file(\"keystore.properties\")",
         "            if (propsFile.exists()) {",
         "                props.load(new FileInputStream(propsFile))",
-        "                storeFile file(props[\"storeFile\"])",
+        "                storeFile rootProject.file(props[\"storeFile\"])",
         "                storePassword props[\"storePassword\"]",
         "                keyAlias props[\"keyAlias\"]",
         "                keyPassword props[\"keyPassword\"]",

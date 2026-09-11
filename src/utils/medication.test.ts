@@ -3,6 +3,7 @@ import type { Medication } from '../db/database';
 import {
   MISSED_AFTER_MS,
   normalize,
+  patchMedications,
   sortMedications,
   statusFor,
   toDue,
@@ -75,5 +76,21 @@ describe('sortMedications', () => {
     const pending = med({ id: 3, running: false, pendingDose: true, nextDoseAt: 9 });
     const sorted = sortMedications([stopped, running, pending]);
     expect(sorted.map((m) => m.id)).toEqual([3, 2, 1]);
+  });
+});
+
+describe('patchMedications', () => {
+  it('does not resurrect a medication that was removed from the list', () => {
+    const running = med({ id: 2, running: true, pendingDose: false, remaining: 10 });
+    const ghost = med({ id: 1, running: true, pendingDose: false, remaining: 3 });
+    const patched = patchMedications(
+      [running],
+      new Map([
+        [1, { ...ghost, remaining: 2 }],
+        [2, { ...running, remaining: 9 }],
+      ])
+    );
+    expect(patched.map((m) => m.id)).toEqual([2]);
+    expect(patched[0].remaining).toBe(9);
   });
 });

@@ -27,7 +27,8 @@ import {
   createDebouncedSync,
   syncAllAlarms,
 } from './utils/alarms';
-import { findMedication, normalize, sortMedications, toDue } from './utils/medication';
+import { findMedication, normalize, patchMedications, sortMedications, toDue } from './utils/medication';
+import { toMedId } from './utils/ids';
 import { backupFilename, downloadJson, readJsonFile } from './utils/backup';
 import { useDoseActions } from './hooks/useDoseActions';
 import {
@@ -79,6 +80,7 @@ export default function App() {
   const alertId = useRef<number | null>(null);
   const nagTimer = useRef<number | null>(null);
   const tickLock = useRef(false);
+  const deletedIdsRef = useRef(new Set<number>());
   const debouncedSync = useRef(createDebouncedSync(400));
 
   useEffect(() => {
@@ -276,27 +278,30 @@ export default function App() {
       try {
         const now = Date.now();
         const current = medsRef.current;
-        let changed = false;
-        const next = current.map((m) => {
+        const updates = new Map<number, Medication>();
+        const dueToPersist: Medication[] = [];
+
+        for (const m of current) {
+          const id = toMedId(m.id);
+          if (id == null || deletedIdsRef.current.has(id)) continue;
           const n = normalize(m);
           if (n.running && n.nextDoseAt && n.nextDoseAt <= now) {
-            changed = true;
             const due = toDue(n, now);
+            updates.set(id, due);
+            dueToPersist.push(due);
             openAlert(due, true);
-            return due;
+          } else if (n.running && n.remaining !== m.remaining) {
+            updates.set(id, n);
           }
-          if (n.running && n.remaining !== m.remaining) {
-            changed = true;
-            return n;
-          }
-          return n;
-        });
-        if (changed) {
-          setMedications(sortMedications(next));
-          const dueOnly = next.filter(
-            (m, i) => m !== current[i] && Boolean(m.pendingDose) !== Boolean(current[i]?.pendingDose)
-          );
-          if (dueOnly.length) await Promise.all(dueOnly.map(persist));
+        }
+
+        if (updates.size) {
+          setMedications((prev) => patchMedications(prev, updates));
+          const stillLive = dueToPersist.filter((m) => {
+            const id = toMedId(m.id);
+            return id != null && !deletedIdsRef.current.has(id);
+          });
+          if (stillLive.length) await Promise.all(stillLive.map(persist));
         }
       } finally {
         tickLock.current = false;
@@ -471,20 +476,39 @@ export default function App() {
       message: `آیا از حذف «${m.name}» مطمئن هستید؟ تاریخچه مصرف این دارو هم پاک می‌شود.`,
       variant: 'danger',
       confirmLabel: 'حذف',
-      onConfirm: async () => {
-        if (m.id != null) {
-          await db.deleteMedication(m.id);
-          await cancelMedNotifications(m.id);
-          dismissSwFollowUps(m.id);
-        }
-        setMedications((v) => v.filter((x) => x.id !== m.id));
+      onConfirm: () => {
+        const id = toMedId(m.id);
         setConfirm(null);
-        if (alertId.current === m.id) {
+        if (id != null) deletedIdsRef.current.add(id);
+        setMedications((v) => v.filter((x) => toMedId(x.id) !== id));
+        if (alertId.current === id) {
           alertId.current = null;
           stopAlarm();
           setAlert(null);
         }
-        if (editing?.id === m.id) setEditing(null);
+        if (editing && toMedId(editing.id) === id) setEditing(null);
+
+        void (async () => {
+          try {
+            if (id != null) {
+              await db.deleteMedication(id);
+              await cancelMedNotifications(id);
+              dismissSwFollowUps(id);
+            }
+          } catch (error) {
+            console.error('[MediReminder] حذف دارو ناموفق بود:', error);
+            if (id != null) deletedIdsRef.current.delete(id);
+            await load();
+            setConfirm({
+              title: 'حذف انجام نشد',
+              message: 'ذخیره‌سازی دستگاه دارو را حذف نکرد. دوباره تلاش کنید.',
+              confirmLabel: 'متوجه شدم',
+              showCancel: false,
+              variant: 'info',
+              onConfirm: () => setConfirm(null),
+            });
+          }
+        })();
       },
     });
 

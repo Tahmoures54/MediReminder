@@ -1,4 +1,5 @@
 import { useEffect, useRef, useId } from 'react';
+import { Portal } from './Portal';
 
 interface NotificationPopupProps {
   title: string;
@@ -88,8 +89,9 @@ export function NotificationPopup({
   }, [onClose, onRestart, onSnooze]);
 
   return (
+    <Portal>
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/85 backdrop-blur-sm p-4"
+      className="fixed inset-0 z-[500] flex items-center justify-center bg-black/85 backdrop-blur-sm p-4"
       onClick={closeOnOverlayClick ? onClose : undefined}
     >
       <div
@@ -186,5 +188,6 @@ export function NotificationPopup({
         </div>
       </div>
     </div>
+    </Portal>
   );
 }

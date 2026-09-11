@@ -2,6 +2,16 @@
 
 All notable changes to MediReminder are documented in this file.
 
+## [3.3.1] — 2026-09-11
+
+### Fixed
+- Delete now removes the card immediately and the 1-second tick can no longer resurrect it.
+- Confirm / report overlays portal to `document.body` so they sit above cards.
+
+### Improved
+- Medication cards: cleaner hierarchy, status rail, meta chips, equal action row.
+- CI always builds a **signed** release APK + AAB. If upload-key secrets are missing, a new keystore is generated and attached next to the APK (`signing-key/`).
+
 ## [3.3.0] — 2026-09-11
 
 ### Fixed

@@ -1,4 +1,4 @@
-# Technical Documentation — MediReminder 3.3.0
+# Technical Documentation — MediReminder 3.3.1
 
 ## Stack
 

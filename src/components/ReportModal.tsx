@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Share } from '@capacitor/share';
 import type { Medication, HistoryRecord } from '../db/database';
+import { Portal } from './Portal';
 
 interface ReportModalProps {
   medication: Medication;
@@ -375,15 +376,18 @@ export function ReportModal({ medication, onClose }: ReportModalProps) {
 
   // --- رابط کاربری (تقریباً مشابه قبل، با افزودن بخش هش) ---
   return (
+    <Portal>
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm animate-fade-in"
-      onClick={onClose}
+      className="fixed inset-0 z-[400] flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-sm animate-fade-in"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
       role="dialog"
       aria-modal="true"
       aria-labelledby="modal-title"
     >
       <div
-        className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-2xl border border-gray-700 bg-gray-800 p-6 shadow-2xl animate-zoom-in custom-scrollbar"
+        className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-2xl border border-white/10 bg-slate-900 p-6 shadow-2xl animate-zoom-in custom-scrollbar"
         onClick={(e) => e.stopPropagation()}
       >
         {/* هدر */}
@@ -513,5 +517,6 @@ export function ReportModal({ medication, onClose }: ReportModalProps) {
         </button>
       </div>
     </div>
+    </Portal>
   );
 }

@@ -11,6 +11,8 @@ ios/
 *.keystore
 *.jks
 release.keystore
+signing-key/
+keystore.properties
 local.properties
 google-services.json
 

@@ -1,4 +1,4 @@
-# MediReminder 3.3.0
+# MediReminder 3.3.1
 
 **یادآور دارو** — Offline-first · هشدار تا تأیید مصرف · PWA + Android  
 React 19 · TypeScript · Vite · Capacitor · IndexedDB
@@ -37,10 +37,21 @@ npx cap sync android
 
 ## ساخت APK در GitHub Actions
 
-از بخش **Actions**، workflow با نام **Build MediReminder Android APK** را با گزینه **Run workflow** اجرا کنید؛ همچنین با push کردن یک tag مانند `v3.3.0` به‌صورت خودکار اجرا می‌شود.
+از بخش **Actions**، workflow با نام **Build MediReminder Android APK** را با گزینه **Run workflow** اجرا کنید؛ همچنین با push کردن یک tag مانند `v3.3.1` به‌صورت خودکار اجرا می‌شود.
 
-- بدون تنظیم secret، یک APK قابل نصب debug در artifact خروجی قرار می‌گیرد.
-- برای APK release و AAB امضاشده، این secretها را در تنظیمات repository بسازید: `ANDROID_KEYSTORE_BASE64`، `ANDROID_KEYSTORE_PASSWORD`، `ANDROID_KEY_ALIAS` و `ANDROID_KEY_PASSWORD`.
+خروجی artifact شامل این‌هاست:
+
+- `MediReminder-<version>.apk` امضاشده برای نصب و مارکت‌هایی که APK می‌گیرند (بازار، مایکت، …)
+- `MediReminder-<version>.aab` برای Google Play
+- اگر secretهای امضا هنوز تنظیم نشده باشند، پوشهٔ `signing-key/` هم همراهش می‌آید: فایل `.jks` و `credentials.txt`
+
+**این کلید را برای همیشه نگه دارید.** آپدیت بعدی در مارکت فقط با همین کلید پذیرفته می‌شود. بعد از اولین ساخت، این secretها را در Settings → Secrets بگذارید تا کلید جدید ساخته نشود: `ANDROID_KEYSTORE_BASE64`، `ANDROID_KEYSTORE_PASSWORD`، `ANDROID_KEY_ALIAS`، `ANDROID_KEY_PASSWORD`.
+
+ساخت کلید به‌صورت محلی:
+
+```bash
+bash scripts/generate_upload_keystore.sh ./signing-key
+```
 
 ## معماری کوتاه
 
