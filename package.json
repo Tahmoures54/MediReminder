@@ -1,7 +1,7 @@
 {
   "name": "medi-reminder",
   "private": true,
-  "version": "3.2.1",
+  "version": "3.3.0",
   "type": "module",
   "description": "Offline-first medication reminder with persistent alerts until dose confirmed",
   "scripts": {
@@ -9,7 +9,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
-    "check": "npm run typecheck && npm run build",
+    "test": "vitest run",
+    "check": "npm run typecheck && npm run test && npm run build",
     "prebuild": "python3 scripts/generate_icons.py || true",
     "icons": "python3 scripts/generate_icons.py"
   },
@@ -33,6 +34,7 @@
     "@vitejs/plugin-react": "5.1.1",
     "tailwindcss": "4.1.17",
     "typescript": "5.9.3",
-    "vite": "7.3.2"
+    "vite": "7.3.2",
+    "vitest": "^5.0.0"
   }
 }

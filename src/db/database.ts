@@ -193,7 +193,7 @@ class Database {
   }
 
   async importBackup(payload: BackupPayload): Promise<void> {
-    if (!payload || !Array.isArray(payload.medications)) {
+    if (!payload || typeof payload !== 'object' || !Array.isArray(payload.medications)) {
       throw new Error('Invalid backup file');
     }
     const sanitized = payload.medications.map((m) =>

@@ -1,4 +1,4 @@
-# MediReminder 3.2.1
+# MediReminder 3.3.0
 
 **یادآور دارو** — Offline-first · هشدار تا تأیید مصرف · PWA + Android  
 React 19 · TypeScript · Vite · Capacitor · IndexedDB
@@ -12,7 +12,7 @@ React 19 · TypeScript · Vite · Capacitor · IndexedDB
 - زمان‌بندی مطلق (`nextDoseAt`)
 - هشدار **تکرارشونده** تا «مصرف کردم» یا اسنوز
 - پس از تأیید → **شروع فوری** تایمر دوز بعدی
-- پشتیبان JSON، گزارش پایبندی، ویرایش دارو
+- پشتیبان JSON (ورود با تأیید جایگزینی)، گزارش پایبندی، ویرایش دارو
 - راهنمای مجوز اعلان + پشتیبانی واتساپ
 - داده فقط روی دستگاه کاربر
 
@@ -31,11 +31,13 @@ npm run dev
 npx cap sync android
 ```
 
+`npm run check` شامل typecheck، تست واحد و بیلد است.
+
 جزئیات فنی: [TECHNICAL_DOCS.md](./TECHNICAL_DOCS.md) · تاریخچه: [CHANGELOG.md](./CHANGELOG.md)
 
 ## ساخت APK در GitHub Actions
 
-از بخش **Actions**، workflow با نام **Build MediReminder Android APK** را با گزینه **Run workflow** اجرا کنید؛ همچنین با push کردن یک tag مانند `v3.2.1` به‌صورت خودکار اجرا می‌شود.
+از بخش **Actions**، workflow با نام **Build MediReminder Android APK** را با گزینه **Run workflow** اجرا کنید؛ همچنین با push کردن یک tag مانند `v3.3.0` به‌صورت خودکار اجرا می‌شود.
 
 - بدون تنظیم secret، یک APK قابل نصب debug در artifact خروجی قرار می‌گیرد.
 - برای APK release و AAB امضاشده، این secretها را در تنظیمات repository بسازید: `ANDROID_KEYSTORE_BASE64`، `ANDROID_KEYSTORE_PASSWORD`، `ANDROID_KEY_ALIAS` و `ANDROID_KEY_PASSWORD`.
@@ -45,7 +47,7 @@ npx cap sync android
 | مفهوم | توضیح |
 |-------|--------|
 | Source of truth | `nextDoseAt` (ms epoch) |
-| UI tick | فقط نمایش‌دهنده — مالک زمان‌بندی نیست |
+| UI tick | فقط نمایش‌دهنده — مالک زمان‌بندی نیست و تیک ۱ثانیه‌ای persist نمی‌شود |
 | Pending | تا «مصرف کردم» یا اسنوز، هشدار تکرار می‌شود |
 | Storage | IndexedDB محلی — بدون سرور |
 

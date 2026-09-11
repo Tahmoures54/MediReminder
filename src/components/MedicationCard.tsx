@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import type { Medication } from '../db/database';
-import { formatTime } from '../utils/audio';
+import { formatTime } from '../utils/time';
+import { LOW_STOCK_THRESHOLD } from '../constants';
 import { cn } from '../utils/cn';
 
 interface Props {
@@ -14,8 +15,6 @@ interface Props {
   onTake: () => void;
   onSnooze: () => void;
 }
-
-const LOW_STOCK_THRESHOLD = 5;
 
 export function MedicationCard({
   medication,

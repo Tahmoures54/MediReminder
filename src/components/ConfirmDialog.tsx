@@ -6,10 +6,25 @@ interface ConfirmDialogProps {
   message: string;
   onConfirm: () => void;
   onCancel: () => void;
+  confirmLabel?: string;
+  cancelLabel?: string;
+  /** Hide the cancel button (e.g. informational errors). */
+  showCancel?: boolean;
+  variant?: 'default' | 'danger' | 'info';
 }
 
-export function ConfirmDialog({ title, message, onConfirm, onCancel }: ConfirmDialogProps) {
+export function ConfirmDialog({
+  title,
+  message,
+  onConfirm,
+  onCancel,
+  confirmLabel = 'بله',
+  cancelLabel = 'انصراف',
+  showCancel = true,
+  variant = 'default',
+}: ConfirmDialogProps) {
   const confirmButtonRef = useRef<HTMLButtonElement>(null);
+  const cancelButtonRef = useRef<HTMLButtonElement>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -21,13 +36,15 @@ export function ConfirmDialog({ title, message, onConfirm, onCancel }: ConfirmDi
   }, [onCancel]);
 
   useEffect(() => {
-    confirmButtonRef.current?.focus();
-  }, []);
+    const focusTarget = variant === 'danger' && showCancel ? cancelButtonRef : confirmButtonRef;
+    focusTarget.current?.focus();
+  }, [variant, showCancel]);
 
   useEffect(() => {
+    const previous = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     return () => {
-      document.body.style.overflow = '';
+      document.body.style.overflow = previous;
     };
   }, []);
 
@@ -52,6 +69,8 @@ export function ConfirmDialog({ title, message, onConfirm, onCancel }: ConfirmDi
     }
   };
 
+  const danger = variant === 'danger';
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-md animate-fade-in"
@@ -67,7 +86,14 @@ export function ConfirmDialog({ title, message, onConfirm, onCancel }: ConfirmDi
         onClick={(e) => e.stopPropagation()}
         onKeyDown={handleDialogKeyDown}
       >
-        <div className="border-b border-slate-700/50 bg-gradient-to-l from-rose-950/20 via-transparent to-transparent px-6 py-5">
+        <div
+          className={cn(
+            'border-b border-slate-700/50 px-6 py-5',
+            danger
+              ? 'bg-gradient-to-l from-rose-950/40 via-transparent to-transparent'
+              : 'bg-gradient-to-l from-cyan-950/20 via-transparent to-transparent'
+          )}
+        >
           <h3 id="confirm-title" className="text-xl font-black text-white">
             {title}
           </h3>
@@ -83,22 +109,27 @@ export function ConfirmDialog({ title, message, onConfirm, onCancel }: ConfirmDi
               type="button"
               onClick={onConfirm}
               className={cn(
-                'flex-1 rounded-2xl bg-gradient-to-b from-emerald-400 to-emerald-600 py-3.5 font-bold text-slate-950',
-                'shadow-lg shadow-emerald-900/30 transition hover:from-emerald-300 hover:to-emerald-500 active:scale-[0.97]'
+                'flex-1 rounded-2xl py-3.5 font-bold shadow-lg transition active:scale-[0.97]',
+                danger
+                  ? 'bg-gradient-to-b from-rose-400 to-rose-600 text-white shadow-rose-900/40 hover:from-rose-300 hover:to-rose-500'
+                  : 'bg-gradient-to-b from-emerald-400 to-emerald-600 text-slate-950 shadow-emerald-900/30 hover:from-emerald-300 hover:to-emerald-500'
               )}
             >
-              بله
+              {confirmLabel}
             </button>
-            <button
-              type="button"
-              onClick={onCancel}
-              className={cn(
-                'flex-1 rounded-2xl border border-slate-600/70 bg-slate-800/80 py-3.5 font-bold text-slate-100',
-                'transition hover:bg-slate-700 active:scale-[0.97]'
-              )}
-            >
-              انصراف
-            </button>
+            {showCancel && (
+              <button
+                ref={cancelButtonRef}
+                type="button"
+                onClick={onCancel}
+                className={cn(
+                  'flex-1 rounded-2xl border border-slate-600/70 bg-slate-800/80 py-3.5 font-bold text-slate-100',
+                  'transition hover:bg-slate-700 active:scale-[0.97]'
+                )}
+              >
+                {cancelLabel}
+              </button>
+            )}
           </div>
         </div>
       </div>

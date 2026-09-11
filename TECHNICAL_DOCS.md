@@ -1,4 +1,4 @@
-# Technical Documentation — MediReminder 3.2.1
+# Technical Documentation — MediReminder 3.3.0
 
 ## Stack
 
@@ -11,7 +11,7 @@
 
 **Source of truth for timing:** `nextDoseAt` (Unix ms).
 
-UI 1-second tick only *reflects* remaining time; it does not own the schedule.
+UI 1-second tick only *reflects* remaining time; it does not own the schedule and must not persist countdown ticks.
 
 ### Dose lifecycle
 
@@ -25,13 +25,18 @@ scheduled (running + nextDoseAt)
 Dismiss / «بعداً» does **not** clear `pendingDose`.
 Follow-up notifications continue until Taken or Snooze.
 
+Reset while a dose is pending records `skipped` in history (after confirmation).
+
 ### Adherence
 
 `statusFor(takenAt, scheduledAt)`:
 
 - early: more than 30 minutes before schedule
 - late: more than 60 minutes after schedule
+- missed: more than 4 hours after schedule
 - else on-time
+
+Report score = `(on-time + early) / (on-time + early + late + missed)`. Skipped rows are listed but excluded from the score.
 
 History is capped at **120** records per medication (`trimHistory`).
 
@@ -39,8 +44,8 @@ History is capped at **120** records per medication (`trimHistory`).
 
 | Platform | Mechanism |
 |----------|-----------|
-| Web/PWA | Service Worker stores alarms; follow-ups ~every 45s while pending |
-| Android | LocalNotifications; pending ≈ every 2 min for ~6h pre-scheduled; **re-sync on foreground** extends window |
+| Web/PWA | Service Worker stores alarms; follow-ups ~every 45s while pending; navigation is network-first |
+| Android | LocalNotifications; pending/overdue ≈ every 2 min for ~6h pre-scheduled; **re-sync on foreground** extends window |
 
 Sync is **debounced** (`createDebouncedSync`) and native schedules are sent in **chunks** (64).
 
@@ -49,14 +54,17 @@ Sync is **debounced** (`createDebouncedSync`) and native schedules are sent in *
 ```
 src/
   App.tsx                    # orchestration (UI state + effects)
+  constants.ts               # version, nag interval, support link
   hooks/
     useDoseActions.ts        # take / snooze / toggle / reset
   components/                # UI
   db/database.ts             # IndexedDB + types
   utils/
-    medication.ts            # normalize, statusFor, toDue (pure)
+    medication.ts            # normalize, statusFor, toDue, sort (pure)
     alarms.ts                # SW + native bridge
     audio.ts                 # alarm sound + haptics
+    time.ts                  # duration formatting
+    backup.ts                # JSON download / parse
     permissions.ts           # notification permission + channel
   public/sw.js               # PWA alarms + follow-ups
 ```
