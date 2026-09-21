@@ -1,10 +1,10 @@
-// public/sw.js — Service Worker یادآور دارو
-// هشدارهای تکرارشونده تا تأیید «مصرف کردم» یا اسنوز
-const CACHE_NAME = 'medi-reminder-v8';
+// public/sw.js — Service Worker یادآور دارو — Final Release v10
+// هشدارهای تکرارشونده تا تأیید «مصرف کردم» یا اسنوز — بهینه برای موبایل
+const CACHE_NAME = 'medi-reminder-v10-final';
 const ALARM_DB_NAME = 'MedicationAlarmDB';
 const ALARM_STORE = 'alarms';
-/** فاصله تکرار اعلان تا تأیید مصرف */
-const FOLLOW_UP_INTERVAL = 45_000; // 45 seconds
+/** فاصله تکرار اعلان تا تأیید مصرف — 45s */
+const FOLLOW_UP_INTERVAL = 45_000;
 
 const urlsToCache = [
   '/',
@@ -15,25 +15,33 @@ const urlsToCache = [
   '/apple-touch-icon.png',
   '/favicon-32x32.png',
   '/favicon-16x16.png',
-  '/favicon.ico'
+  '/favicon.ico',
+  '/icon-192.png',
+  '/icon-512.png'
 ];
 
 self.addEventListener('install', event => {
+  console.info('[SW] install', CACHE_NAME);
   event.waitUntil(
-    caches.open(CACHE_NAME).then(cache => cache.addAll(urlsToCache))
+    caches.open(CACHE_NAME).then(cache => cache.addAll(urlsToCache)).catch(err => {
+      console.warn('[SW] cache addAll failed', err);
+    })
   );
   self.skipWaiting();
 });
 
 self.addEventListener('activate', event => {
+  console.info('[SW] activate', CACHE_NAME);
   event.waitUntil(
     (async () => {
       const keys = await caches.keys();
       await Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k)));
       await rescheduleStoredAlarms();
+      // Ensure clients are controlled immediately for alarm accuracy
+      await self.clients.claim();
+      console.info('[SW] activated and claimed');
     })()
   );
-  self.clients.claim();
 });
 
 self.addEventListener('fetch', event => {
@@ -43,19 +51,33 @@ self.addEventListener('fetch', event => {
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
 
+  // Navigation: network-first, fallback to cache (offline support)
   if (request.mode === 'navigate') {
     event.respondWith(
       fetch(request)
         .then(response => {
-          const copy = response.clone();
-          caches.open(CACHE_NAME).then(cache => cache.put(request, copy)).catch(() => {});
+          // Cache successful navigations
+          if (response && response.ok) {
+            const copy = response.clone();
+            caches.open(CACHE_NAME).then(cache => cache.put(request, copy)).catch(() => {});
+          }
           return response;
         })
-        .catch(() => caches.match('/index.html').then(cached => cached || caches.match('/')))
+        .catch(() =>
+          caches.match('/index.html').then(cached => cached || caches.match('/')).then(cached => {
+            if (cached) return cached;
+            // Fallback minimal offline page
+            return new Response('آفلاین — لطفاً اتصال را بررسی کنید', {
+              status: 503,
+              headers: { 'Content-Type': 'text/html; charset=utf-8' }
+            });
+          })
+        )
     );
     return;
   }
 
+  // Assets: cache-first, network fallback, cache update
   event.respondWith(
     caches.match(request).then(cached => {
       const fetched = fetch(request)
@@ -92,7 +114,12 @@ async function withStore(mode, callback) {
     const tx = db.transaction(ALARM_STORE, mode);
     const store = tx.objectStore(ALARM_STORE);
     let result;
-    try { result = callback(store); } catch (err) { reject(err); }
+    try {
+      result = callback(store);
+    } catch (err) {
+      reject(err);
+      return;
+    }
     tx.oncomplete = () => resolve(result);
     tx.onerror = () => reject(tx.error);
     tx.onabort = () => reject(tx.error || new Error('Transaction aborted'));
@@ -140,17 +167,15 @@ function clearAllTimers() {
 }
 
 async function showStandardNotification(alarm, isFollowUp = false) {
-  const title = isFollowUp
-    ? '🔔 یادآوری مجدد دارو — لطفاً تأیید کنید'
-    : '🔔 زمان مصرف دارو!';
+  const title = isFollowUp ? '🔔 یادآوری مجدد دارو — لطفاً تأیید کنید' : '🔔 زمان مصرف دارو!';
 
   const body = [
     `💊 ${alarm.name || 'دارو'}`,
     `⚖️ ${alarm.dosage || ''}`,
-    isFollowUp
-      ? 'هنوز مصرف را تأیید نکرده‌اید. لطفاً «مصرف کردم» را بزنید.'
-      : 'الان مصرف کنید و سپس تأیید کنید.'
-  ].filter(Boolean).join('\n');
+    isFollowUp ? 'هنوز مصرف را تأیید نکرده‌اید. لطفاً «مصرف کردم» را بزنید.' : 'الان مصرف کنید و سپس تأیید کنید.'
+  ]
+    .filter(Boolean)
+    .join('\n');
 
   await self.registration.showNotification(title, {
     body,
@@ -188,7 +213,7 @@ async function scheduleAlarm(alarm) {
     const timerId = setTimeout(() => triggerAlarm(alarm), delay);
     activeTimers.set(String(alarm.id), timerId);
   } catch (err) {
-    console.error('scheduleAlarm error', err);
+    console.error('[SW] scheduleAlarm error', err);
   }
 }
 
@@ -202,11 +227,11 @@ async function triggerAlarm(alarm, isFollowUp = false) {
         clearTimeout(activeTimers.get(String(alarm.id)));
         activeTimers.delete(String(alarm.id));
       }
-      // Start repeating until Taken or Snooze
+      // Start repeating until Taken or Snooze — critical for mobile accuracy
       startFollowUpAlarms(alarm);
     }
   } catch (err) {
-    console.error('triggerAlarm error', err);
+    console.error('[SW] triggerAlarm error', err);
   }
 }
 
@@ -219,9 +244,10 @@ function startFollowUpAlarms(alarm) {
       medicationId: alarm.id,
       name: alarm.name,
       dosage: alarm.dosage,
-      pending: true
+      pending: true,
+      startedAt: Date.now()
     });
-  });
+  }).catch(() => {});
 
   const sendFollowUp = () => {
     withStore('readonly', store => {
@@ -256,7 +282,7 @@ function stopFollowUpAlarms(alarmId) {
   }
   withStore('readwrite', store => {
     store.delete(`followup-${alarmId}`);
-  });
+  }).catch(() => {});
 }
 
 async function cancelAlarmCompletely(alarmId) {
@@ -300,67 +326,76 @@ async function snoozeAlarm(alarmId, minutes = 10) {
 
 async function rescheduleStoredAlarms() {
   clearAllTimers();
-  const alarms = await getAllStoredAlarms();
-  const now = Date.now();
-  for (const alarm of alarms) {
-    if (String(alarm.id).startsWith('followup-')) {
-      // Resume pending follow-ups after SW restart
-      const medId = alarm.medicationId ?? String(alarm.id).replace(/^followup-/, '');
-      startFollowUpAlarms({
-        id: medId,
-        name: alarm.name,
-        dosage: alarm.dosage,
-        time: now
-      });
-      continue;
+  try {
+    const alarms = await getAllStoredAlarms();
+    const now = Date.now();
+    console.info('[SW] rescheduling', alarms.length, 'alarms');
+    for (const alarm of alarms) {
+      if (String(alarm.id).startsWith('followup-')) {
+        // Resume pending follow-ups after SW restart — critical for mobile
+        const medId = alarm.medicationId ?? String(alarm.id).replace(/^followup-/, '');
+        startFollowUpAlarms({
+          id: medId,
+          name: alarm.name,
+          dosage: alarm.dosage,
+          time: now
+        });
+        continue;
+      }
+      if (alarm.time > now) {
+        await scheduleAlarm(alarm);
+      } else {
+        await triggerAlarm(alarm);
+      }
     }
-    if (alarm.time > now) {
-      await scheduleAlarm(alarm);
-    } else {
-      await triggerAlarm(alarm);
-    }
+  } catch (e) {
+    console.warn('[SW] reschedule failed', e);
   }
 }
 
 self.addEventListener('message', event => {
-  event.waitUntil((async () => {
-    try {
-      const data = event.data || {};
-      if (data.type === 'SKIP_WAITING') {
-        self.skipWaiting();
-        return;
-      }
-      if (data.type === 'SCHEDULE_ALARMS') {
-        const alarms = Array.isArray(data.alarms) ? data.alarms : [];
-        clearAllTimers();
-        const allAlarms = await getAllStoredAlarms();
-        for (const old of allAlarms) {
-          stopFollowUpAlarms(old.id);
+  event.waitUntil(
+    (async () => {
+      try {
+        const data = event.data || {};
+        if (data.type === 'SKIP_WAITING') {
+          self.skipWaiting();
+          return;
         }
-        await storeAlarms(alarms);
-        for (const alarm of alarms) {
-          await scheduleAlarm(alarm);
+        if (data.type === 'SCHEDULE_ALARMS') {
+          const alarms = Array.isArray(data.alarms) ? data.alarms : [];
+          clearAllTimers();
+          const allAlarms = await getAllStoredAlarms();
+          for (const old of allAlarms) {
+            if (String(old.id).startsWith('followup-')) {
+              stopFollowUpAlarms(old.medicationId ?? old.id);
+            }
+          }
+          await storeAlarms(alarms);
+          for (const alarm of alarms) {
+            await scheduleAlarm(alarm);
+          }
+          console.info('[SW] scheduled', alarms.length, 'alarms');
+        } else if (data.type === 'CANCEL_ALARM' && data.id != null) {
+          await cancelAlarmCompletely(data.id);
+        } else if (data.type === 'DISMISS_ALARM' && data.id != null) {
+          stopFollowUpAlarms(data.id);
+          await removeAlarmFromDB(data.id);
+          try {
+            const notifications = await self.registration.getNotifications({ tag: `med-${data.id}` });
+            notifications.forEach(n => n.close());
+          } catch {}
+        } else if (data.type === 'SNOOZE_ALARM' && data.id != null) {
+          await snoozeAlarm(data.id, data.minutes || 10);
+        } else if (data.type === 'LIST_ALARMS') {
+          const list = await getAllStoredAlarms();
+          event.source?.postMessage({ type: 'ALARMS_LIST', alarms: list });
         }
-      } else if (data.type === 'CANCEL_ALARM' && data.id != null) {
-        await cancelAlarmCompletely(data.id);
-      } else if (data.type === 'DISMISS_ALARM' && data.id != null) {
-        // Full stop of follow-ups (used after Taken)
-        stopFollowUpAlarms(data.id);
-        await removeAlarmFromDB(data.id);
-        try {
-          const notifications = await self.registration.getNotifications({ tag: `med-${data.id}` });
-          notifications.forEach(n => n.close());
-        } catch {}
-      } else if (data.type === 'SNOOZE_ALARM' && data.id != null) {
-        await snoozeAlarm(data.id, data.minutes || 10);
-      } else if (data.type === 'LIST_ALARMS') {
-        const list = await getAllStoredAlarms();
-        event.source?.postMessage({ type: 'ALARMS_LIST', alarms: list });
+      } catch (err) {
+        console.error('[SW] message handler error', err);
       }
-    } catch (err) {
-      console.error('message handler error', err);
-    }
-  })());
+    })()
+  );
 });
 
 self.addEventListener('notificationclick', event => {
@@ -369,53 +404,64 @@ self.addEventListener('notificationclick', event => {
 
   event.notification.close();
 
-  event.waitUntil((async () => {
-    if (action === 'taken') {
-      // Stop all nags; tell the app to start next timer
-      stopFollowUpAlarms(medicationId);
-      await removeAlarmFromDB(medicationId);
-      await notifyClients({ type: 'ALARM_TAKEN', medicationId });
-      await openOrFocusApp(medicationId);
-    } else if (action === 'snooze') {
-      await snoozeAlarm(medicationId, 10);
-      await notifyClients({ type: 'ALARM_SNOOZED', medicationId, minutes: 10 });
-      await openOrFocusApp(medicationId);
-    } else if (action === 'dismiss') {
-      // Dismiss does NOT stop follow-ups — patient must confirm or snooze
-      await notifyClients({ type: 'ALARM_DISMISSED', medicationId });
-      await openOrFocusApp(medicationId);
-    } else {
-      await openOrFocusApp(medicationId);
-      await notifyClients({ type: 'ALARM_TRIGGERED', medicationId });
-    }
-  })());
+  event.waitUntil(
+    (async () => {
+      if (action === 'taken') {
+        stopFollowUpAlarms(medicationId);
+        await removeAlarmFromDB(medicationId);
+        await notifyClients({ type: 'ALARM_TAKEN', medicationId });
+        await openOrFocusApp(medicationId);
+      } else if (action === 'snooze') {
+        await snoozeAlarm(medicationId, 10);
+        await notifyClients({ type: 'ALARM_SNOOZED', medicationId, minutes: 10 });
+        await openOrFocusApp(medicationId);
+      } else if (action === 'dismiss') {
+        await notifyClients({ type: 'ALARM_DISMISSED', medicationId });
+        await openOrFocusApp(medicationId);
+      } else {
+        await openOrFocusApp(medicationId);
+        await notifyClients({ type: 'ALARM_TRIGGERED', medicationId });
+      }
+    })()
+  );
 });
 
-// Some browsers fire notificationclose; we intentionally do not stop follow-ups here.
 self.addEventListener('notificationclose', () => {
-  // no-op: closing the banner must not mean the dose was taken
+  // Intentionally no-op: closing banner must not stop follow-ups
 });
 
 async function notifyClients(payload) {
-  const allClients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
-  for (const client of allClients) {
-    client.postMessage(payload);
-  }
+  try {
+    const allClients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    for (const client of allClients) {
+      client.postMessage(payload);
+    }
+  } catch {}
 }
 
 async function openOrFocusApp(medicationId) {
-  const allClients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
-  let client = allClients.find(c => c.visibilityState === 'visible') || allClients[0];
-  if (client) {
-    await client.focus();
-    client.postMessage({ type: 'ALARM_TRIGGERED', medicationId });
-  } else {
-    const newClient = await self.clients.openWindow('/');
-    if (newClient) {
-      // slight delay so the page can attach the message listener
-      setTimeout(() => {
-        newClient.postMessage({ type: 'ALARM_TRIGGERED', medicationId });
-      }, 500);
+  try {
+    const allClients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    let client = allClients.find(c => c.visibilityState === 'visible') || allClients[0];
+    if (client) {
+      await client.focus();
+      client.postMessage({ type: 'ALARM_TRIGGERED', medicationId });
+    } else {
+      const newClient = await self.clients.openWindow('/?source=notification&med=' + medicationId);
+      if (newClient) {
+        setTimeout(() => {
+          newClient.postMessage({ type: 'ALARM_TRIGGERED', medicationId });
+        }, 600);
+      }
     }
+  } catch (e) {
+    console.warn('[SW] openOrFocus failed', e);
   }
 }
+
+// Periodic sync for PWA — keep alarms alive (if supported)
+self.addEventListener('periodicsync', event => {
+  if (event.tag === 'medi-reminder-sync') {
+    event.waitUntil(rescheduleStoredAlarms());
+  }
+});

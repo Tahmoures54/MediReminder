@@ -67,9 +67,7 @@ async function copyTextToClipboard(text: string): Promise<boolean> {
       await navigator.clipboard.writeText(text);
       return true;
     }
-  } catch {
-    // Use the legacy fallback below when Clipboard API is unavailable.
-  }
+  } catch {}
 
   try {
     const textarea = document.createElement('textarea');
@@ -147,12 +145,6 @@ ${recentLines}
 ${window.location.origin}`;
 }
 
-// --- توابع جدید برای هش ---
-
-/**
- * محاسبه هش SHA-256 با استفاده از Web Crypto API
- * در صورت عدم پشتیبانی، از هش FNV-1a (ساده) استفاده می‌کند.
- */
 async function computeHash(text: string): Promise<string> {
   try {
     if (window.crypto && window.crypto.subtle) {
@@ -164,10 +156,9 @@ async function computeHash(text: string): Promise<string> {
       return `sha256:${hashHex}`;
     }
   } catch (error) {
-    console.warn('SHA-256 در دسترس نیست، استفاده از هش جایگزین', error);
+    console.warn('SHA-256 fallback', error);
   }
 
-  // Fallback: هش FNV-1a 32 بیتی
   let hash = 0x811c9dc5;
   for (let i = 0; i < text.length; i++) {
     hash ^= text.charCodeAt(i);
@@ -176,10 +167,6 @@ async function computeHash(text: string): Promise<string> {
   return `fnv1a:${(hash >>> 0).toString(16).padStart(8, '0')}`;
 }
 
-/**
- * ساخت متن نهایی گزارش با هش
- * ابتدا متن پایه ساخته می‌شود، سپس هش محاسبه و به انتها اضافه می‌شود.
- */
 async function buildSignedReport(
   medication: Medication,
   stats: ReportStats,
@@ -191,7 +178,6 @@ async function buildSignedReport(
   return { text: signedText, hash };
 }
 
-// --- کامپوننت اصلی ---
 export function ReportModal({ medication, onClose }: ReportModalProps) {
   const history = medication.history || [];
 
@@ -217,12 +203,10 @@ export function ReportModal({ medication, onClose }: ReportModalProps) {
     return { total, onTimeCount, earlyCount, lateCount, missedCount, skippedCount, score, lastDose };
   }, [sortedHistory]);
 
-  // متن گزارش پایه (بدون هش)
   const baseReportText = useMemo(() => {
     return buildReportText(medication, stats, recentHistory);
   }, [medication, stats, recentHistory]);
 
-  // وضعیت‌ها
   const [feedback, setFeedback] = useState<FeedbackState>(null);
   const [isSharing, setIsSharing] = useState(false);
   const [isCopying, setIsCopying] = useState(false);
@@ -230,7 +214,6 @@ export function ReportModal({ medication, onClose }: ReportModalProps) {
   const [isHashing, setIsHashing] = useState(false);
   const [reportHash, setReportHash] = useState<string>('');
 
-  // محاسبه هش اولیه برای نمایش در UI
   useEffect(() => {
     let isMounted = true;
     (async () => {
@@ -246,21 +229,24 @@ export function ReportModal({ medication, onClose }: ReportModalProps) {
     };
   }, [baseReportText]);
 
-  // مدیریت Escape و اسکرول
   useEffect(() => {
     const previousOverflow = document.body.style.overflow;
+    const prevPadRight = document.body.style.paddingRight;
+    const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
     document.body.style.overflow = 'hidden';
+    if (scrollbarWidth > 0) document.body.style.paddingRight = `${scrollbarWidth}px`;
+
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') onClose();
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => {
       document.body.style.overflow = previousOverflow;
+      document.body.style.paddingRight = prevPadRight;
       window.removeEventListener('keydown', handleKeyDown);
     };
   }, [onClose]);
 
-  // پاک‌سازی خودکار feedback
   useEffect(() => {
     if (!feedback) return;
     const timer = window.setTimeout(() => setFeedback(null), 2800);
@@ -271,7 +257,6 @@ export function ReportModal({ medication, onClose }: ReportModalProps) {
     setFeedback({ type, message });
   };
 
-  // توابع عملیات با استفاده از نسخه امضاشده
   const handleCopyReport = async () => {
     setIsCopying(true);
     setIsHashing(true);
@@ -284,7 +269,7 @@ export function ReportModal({ medication, onClose }: ReportModalProps) {
         showFeedback('error', '⚠️ امکان کپی گزارش وجود نداشت.');
       }
     } catch (error) {
-      console.error('خطای کپی:', error);
+      console.error('copy error:', error);
       showFeedback('error', '⚠️ امکان کپی گزارش وجود نداشت.');
     } finally {
       setIsCopying(false);
@@ -301,7 +286,7 @@ export function ReportModal({ medication, onClose }: ReportModalProps) {
       downloadTextFile(filename, text);
       showFeedback('success', '⬇️ گزارش با اثر انگشت دانلود شد.');
     } catch (error) {
-      console.error('خطای دانلود:', error);
+      console.error('download error:', error);
       showFeedback('error', '⚠️ امکان دانلود گزارش وجود نداشت.');
     } finally {
       setIsDownloading(false);
@@ -327,7 +312,7 @@ export function ReportModal({ medication, onClose }: ReportModalProps) {
           return;
         }
       } catch (pluginError) {
-        console.warn('اشتراک نیتیو در دسترس نیست:', pluginError);
+        console.warn('native share unavailable:', pluginError);
       }
 
       if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
@@ -342,30 +327,30 @@ export function ReportModal({ medication, onClose }: ReportModalProps) {
 
       const copied = await copyTextToClipboard(text);
       if (copied) {
-        showFeedback('info', '📋 اشتراک در دسترس نیست. گزارش با اثر انگشت کپی شد.');
+        showFeedback('info', '📋 اشتراک در دسترس نیست. گزارش کپی شد.');
         return;
       }
 
       const filename = `${sanitizeFileName(medication.name || 'دارو')}-گزارش.txt`;
       downloadTextFile(filename, text);
-      showFeedback('info', '⬇️ اشتراک در دسترس نیست. گزارش با اثر انگشت دانلود شد.');
+      showFeedback('info', '⬇️ اشتراک در دسترس نیست. گزارش دانلود شد.');
     } catch (error) {
       if (isUserCancelledShare(error)) {
         return;
       }
-      console.error('خطای اشتراک:', error);
+      console.error('share error:', error);
       try {
         const { text } = await buildSignedReport(medication, stats, recentHistory);
         const copied = await copyTextToClipboard(text);
         if (copied) {
-          showFeedback('info', '📋 اشتراک ناموفق. گزارش با اثر انگشت کپی شد.');
+          showFeedback('info', '📋 اشتراک ناموفق. گزارش کپی شد.');
           return;
         }
         const filename = `${sanitizeFileName(medication.name || 'دارو')}-گزارش.txt`;
         downloadTextFile(filename, text);
-        showFeedback('info', '⬇️ اشتراک ناموفق. گزارش با اثر انگشت دانلود شد.');
+        showFeedback('info', '⬇️ اشتراک ناموفق. گزارش دانلود شد.');
       } catch (fallbackError) {
-        console.error('خطای جایگزین اشتراک:', fallbackError);
+        console.error('share fallback error:', fallbackError);
         showFeedback('error', '⚠️ امکان اشتراک گزارش وجود نداشت.');
       }
     } finally {
@@ -374,149 +359,152 @@ export function ReportModal({ medication, onClose }: ReportModalProps) {
     }
   };
 
-  // --- رابط کاربری (تقریباً مشابه قبل، با افزودن بخش هش) ---
   return (
     <Portal>
-    <div
-      className="fixed inset-0 z-[400] flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-sm animate-fade-in"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="modal-title"
-    >
       <div
-        className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-2xl border border-white/10 bg-slate-900 p-6 shadow-2xl animate-zoom-in custom-scrollbar"
-        onClick={(e) => e.stopPropagation()}
+        className="fixed inset-0 z-[400] flex items-center justify-center bg-slate-950/80 p-4 pb-[calc(1rem+var(--sab))] pt-[calc(1rem+var(--sat))] backdrop-blur-sm animate-fade-in touch-manipulation"
+        onClick={(e) => {
+          if (e.target === e.currentTarget) onClose();
+        }}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="modal-title"
+        style={{ paddingLeft: 'max(1rem, var(--sal))', paddingRight: 'max(1rem, var(--sar))' }}
       >
-        {/* هدر */}
-        <div className="mb-5 flex items-start justify-between gap-3">
-          <div>
-            <h2 id="modal-title" className="flex items-center gap-2 text-xl font-bold text-white">
-              📊 گزارش {medication.name}
-            </h2>
-            <p className="mt-1 text-xs text-gray-400">
-              خلاصه قابل اشتراک برای پزشک یا مراقب
+        <div
+          className="max-h-[90dvh] w-full max-w-md overflow-y-auto rounded-2xl border border-white/10 bg-slate-900 p-5 shadow-2xl animate-zoom-in custom-scrollbar sm:p-6"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="mb-5 flex items-start justify-between gap-3">
+            <div className="min-w-0 flex-1">
+              <h2 id="modal-title" className="flex items-center gap-2 text-xl font-bold text-white">
+                📊 گزارش {medication.name}
+              </h2>
+              <p className="mt-1 text-xs text-gray-400">خلاصه قابل اشتراک برای پزشک یا مراقب</p>
+            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              className="tap-target flex shrink-0 items-center justify-center rounded-xl bg-gray-700/50 p-2.5 text-gray-400 transition-colors hover:bg-gray-700 hover:text-white active:scale-95 touch-manipulation"
+              title="بستن"
+              aria-label="بستن پنجره"
+            >
+              ✕
+            </button>
+          </div>
+
+          {feedback && (
+            <div
+              aria-live="polite"
+              className={`mb-4 rounded-xl border px-4 py-3 text-sm leading-relaxed ${
+                feedback.type === 'success'
+                  ? 'border-green-500/30 bg-green-500/10 text-green-300'
+                  : feedback.type === 'info'
+                    ? 'border-blue-500/30 bg-blue-500/10 text-blue-300'
+                    : 'border-red-500/30 bg-red-500/10 text-red-300'
+              }`}
+            >
+              {feedback.message}
+            </div>
+          )}
+
+          <div className="mb-4 rounded-xl border border-gray-700 bg-gray-900 p-4">
+            <p className="mb-1 text-xs text-gray-400">🔐 اثر انگشت متن (SHA-256)</p>
+            <p className="break-all font-mono text-sm text-cyan-300">
+              {isHashing ? 'در حال محاسبه...' : reportHash}
+            </p>
+            <p className="mt-2 text-xs leading-relaxed text-gray-500">
+              این هش از روی محتوای گزارش محاسبه شده است. هرگونه تغییر در متن گزارش باعث عدم تطابق هش می‌شود.
             </p>
           </div>
+
+          <div className="mb-4 flex items-center justify-between rounded-xl border border-gray-700 bg-gray-900 p-4">
+            <div>
+              <p className="mb-1 text-sm text-gray-400">پایبندی کلی</p>
+              <p className="text-sm text-gray-200">{getAdherenceLabel(stats.score, stats.total)}</p>
+            </div>
+            <div
+              className={`text-3xl font-bold ${stats.total === 0 ? 'text-gray-400' : stats.score >= 80 ? 'text-green-400' : stats.score >= 50 ? 'text-yellow-400' : 'text-red-400'}`}
+            >
+              {stats.total > 0 ? `${stats.score}٪` : '-'}
+            </div>
+          </div>
+
+          <div className="mb-4 grid grid-cols-2 gap-2 text-center text-xs sm:grid-cols-3">
+            {[
+              ['به‌موقع', stats.onTimeCount, 'text-green-300'],
+              ['زودتر', stats.earlyCount, 'text-yellow-300'],
+              ['دیرتر', stats.lateCount, 'text-red-300'],
+              ['از دست رفته', stats.missedCount, 'text-rose-300'],
+              ['رد شده', stats.skippedCount, 'text-gray-300'],
+            ].map(([label, count, color]) => (
+              <div key={label as string} className="rounded-xl border border-gray-700 bg-gray-900 p-3">
+                <p className="text-gray-400">{label as string}</p>
+                <p className={`mt-1 text-xl font-bold ${color as string}`}>{count as number}</p>
+              </div>
+            ))}
+          </div>
+
+          <div className="mb-4 rounded-xl border border-gray-700 bg-gray-900 p-4">
+            <p className="mb-3 text-sm font-semibold text-gray-300">دوزهای اخیر</p>
+            {recentHistory.length > 0 ? (
+              <div className="space-y-2">
+                {recentHistory.map((record) => {
+                  const status = getStatusDisplay(record.status);
+                  return (
+                    <div
+                      key={record.id ?? `${record.takenAt}-${record.status}`}
+                      className={`flex items-center justify-between rounded-lg px-3 py-2.5 ${status.bg}`}
+                    >
+                      <span className="text-xs text-gray-300">{formatDateTime(record.takenAt)}</span>
+                      <span className={`text-xs font-medium ${status.color}`}>
+                        {status.icon} {status.text}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="text-sm text-gray-500">هنوز دوزی ثبت نشده است.</p>
+            )}
+          </div>
+
+          <div className="mb-4 grid grid-cols-1 gap-2.5 sm:grid-cols-3">
+            <button
+              type="button"
+              onClick={handleShareReport}
+              disabled={isSharing || isHashing}
+              className="tap-target rounded-xl bg-blue-600 px-4 py-3.5 text-[14px] font-bold text-white transition-colors duration-200 hover:bg-blue-500 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-60 touch-manipulation"
+            >
+              {isSharing ? 'در حال اشتراک...' : '📤 اشتراک'}
+            </button>
+            <button
+              type="button"
+              onClick={handleCopyReport}
+              disabled={isCopying || isHashing}
+              className="tap-target rounded-xl bg-cyan-600 px-4 py-3.5 text-[14px] font-bold text-white transition-colors duration-200 hover:bg-cyan-500 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-60 touch-manipulation"
+            >
+              {isCopying ? 'در حال کپی...' : '📋 کپی'}
+            </button>
+            <button
+              type="button"
+              onClick={handleDownloadReport}
+              disabled={isDownloading || isHashing}
+              className="tap-target rounded-xl bg-emerald-600 px-4 py-3.5 text-[14px] font-bold text-white transition-colors duration-200 hover:bg-emerald-500 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-60 touch-manipulation"
+            >
+              {isDownloading ? 'در حال آماده‌سازی...' : '⬇️ دانلود'}
+            </button>
+          </div>
+
           <button
             type="button"
             onClick={onClose}
-            className="flex items-center justify-center rounded-lg bg-gray-700/50 p-2.5 text-gray-400 transition-colors hover:bg-gray-700 hover:text-white"
-            title="بستن"
-            aria-label="بستن پنجره"
+            className="tap-target w-full rounded-xl bg-gray-700 px-4 py-3.5 text-[15px] font-bold text-white transition-colors duration-300 hover:bg-gray-600 active:scale-[0.97] touch-manipulation"
           >
-            ✕
+            بستن گزارش
           </button>
         </div>
-
-        {/* بازخورد */}
-        {feedback && (
-          <div
-            aria-live="polite"
-            className={`mb-4 rounded-xl border px-4 py-3 text-sm ${
-              feedback.type === 'success'
-                ? 'border-green-500/30 bg-green-500/10 text-green-300'
-                : feedback.type === 'info'
-                ? 'border-blue-500/30 bg-blue-500/10 text-blue-300'
-                : 'border-red-500/30 bg-red-500/10 text-red-300'
-            }`}
-          >
-            {feedback.message}
-          </div>
-        )}
-
-        {/* نمایش هش برای تأیید صحت */}
-        <div className="mb-4 rounded-xl border border-gray-700 bg-gray-900 p-4">
-          <p className="mb-1 text-xs text-gray-400">🔐 اثر انگشت متن (SHA-256)</p>
-          <p className="break-all font-mono text-sm text-cyan-300">
-            {isHashing ? 'در حال محاسبه...' : reportHash}
-          </p>
-          <p className="mt-2 text-xs text-gray-500">
-            این هش از روی محتوای گزارش محاسبه شده است. هرگونه تغییر در متن گزارش باعث عدم تطابق هش می‌شود.
-          </p>
-        </div>
-
-        <div className="mb-4 flex items-center justify-between rounded-xl border border-gray-700 bg-gray-900 p-4">
-          <div>
-            <p className="mb-1 text-sm text-gray-400">پایبندی کلی</p>
-            <p className="text-sm text-gray-200">{getAdherenceLabel(stats.score, stats.total)}</p>
-          </div>
-          <div className={`text-3xl font-bold ${stats.total === 0 ? 'text-gray-400' : stats.score >= 80 ? 'text-green-400' : stats.score >= 50 ? 'text-yellow-400' : 'text-red-400'}`}>
-            {stats.total > 0 ? `${stats.score}٪` : '-'}
-          </div>
-        </div>
-
-        <div className="mb-4 grid grid-cols-2 gap-2 text-center text-xs sm:grid-cols-3">
-          {[
-            ['به‌موقع', stats.onTimeCount, 'text-green-300'],
-            ['زودتر', stats.earlyCount, 'text-yellow-300'],
-            ['دیرتر', stats.lateCount, 'text-red-300'],
-            ['از دست رفته', stats.missedCount, 'text-rose-300'],
-            ['رد شده', stats.skippedCount, 'text-gray-300'],
-          ].map(([label, count, color]) => (
-            <div key={label} className="rounded-xl border border-gray-700 bg-gray-900 p-3">
-              <p className="text-gray-400">{label}</p>
-              <p className={`mt-1 text-xl font-bold ${color}`}>{count}</p>
-            </div>
-          ))}
-        </div>
-
-        <div className="mb-4 rounded-xl border border-gray-700 bg-gray-900 p-4">
-          <p className="mb-3 text-sm font-semibold text-gray-300">دوزهای اخیر</p>
-          {recentHistory.length > 0 ? (
-            <div className="space-y-2">
-              {recentHistory.map(record => {
-                const status = getStatusDisplay(record.status);
-                return (
-                  <div key={record.id ?? `${record.takenAt}-${record.status}`} className={`flex items-center justify-between rounded-lg px-3 py-2 ${status.bg}`}>
-                    <span className="text-xs text-gray-300">{formatDateTime(record.takenAt)}</span>
-                    <span className={`text-xs ${status.color}`}>{status.icon} {status.text}</span>
-                  </div>
-                );
-              })}
-            </div>
-          ) : <p className="text-sm text-gray-500">هنوز دوزی ثبت نشده است.</p>}
-        </div>
-
-        {/* دکمه‌های عملیات */}
-        <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
-          <button
-            type="button"
-            onClick={handleShareReport}
-            disabled={isSharing || isHashing}
-            className="rounded-xl bg-blue-600 px-4 py-3 font-bold text-white transition-colors duration-200 hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {isSharing ? 'در حال اشتراک...' : '📤 اشتراک'}
-          </button>
-          <button
-            type="button"
-            onClick={handleCopyReport}
-            disabled={isCopying || isHashing}
-            className="rounded-xl bg-cyan-600 px-4 py-3 font-bold text-white transition-colors duration-200 hover:bg-cyan-500 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {isCopying ? 'در حال کپی...' : '📋 کپی'}
-          </button>
-          <button
-            type="button"
-            onClick={handleDownloadReport}
-            disabled={isDownloading || isHashing}
-            className="rounded-xl bg-emerald-600 px-4 py-3 font-bold text-white transition-colors duration-200 hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {isDownloading ? 'در حال آماده‌سازی...' : '⬇️ دانلود'}
-          </button>
-        </div>
-
-        <button
-          type="button"
-          onClick={onClose}
-          className="w-full rounded-lg bg-gray-700 px-4 py-3 font-bold text-white transition-colors duration-300 hover:bg-gray-600"
-        >
-          بستن گزارش
-        </button>
       </div>
-    </div>
     </Portal>
   );
 }

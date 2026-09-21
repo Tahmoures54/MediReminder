@@ -55,6 +55,16 @@ function openSupportWhatsApp() {
   window.open(SUPPORT_WHATSAPP_URL, '_blank', 'noopener,noreferrer');
 }
 
+// Try to dynamically import Capacitor App plugin if available (for final release)
+async function getCapacitorApp() {
+  try {
+    const mod = await import('@capacitor/app');
+    return mod.App;
+  } catch {
+    return null;
+  }
+}
+
 export default function App() {
   const [medications, setMedications] = useState<Medication[]>([]);
   const [showAdd, setShowAdd] = useState(false);
@@ -82,6 +92,7 @@ export default function App() {
   const tickLock = useRef(false);
   const deletedIdsRef = useRef(new Set<number>());
   const debouncedSync = useRef(createDebouncedSync(400));
+  const resumeSyncTimeout = useRef<number | null>(null);
 
   useEffect(() => {
     medsRef.current = medications;
@@ -152,8 +163,9 @@ export default function App() {
       title: 'زمان مصرف دارو',
       message: `وقت مصرف ${m.name} (${m.dosage}) فرا رسیده است.\nلطفاً پس از مصرف، دکمه «مصرف کردم» را بزنید.`,
     });
-    playAlarm();
-    triggerHaptics();
+    // On mobile, audio may need gesture — but we try
+    playAlarm().catch(() => {});
+    triggerHaptics().catch(() => {});
   }, []);
 
   const closeAlertUi = useCallback(() => {
@@ -168,12 +180,12 @@ export default function App() {
     setAlert: () => setAlert(null),
   });
 
-  const clearNagTimer = () => {
+  const clearNagTimer = useCallback(() => {
     if (nagTimer.current != null) {
       window.clearTimeout(nagTimer.current);
       nagTimer.current = null;
     }
-  };
+  }, []);
 
   useEffect(() => {
     clearNagTimer();
@@ -182,22 +194,22 @@ export default function App() {
 
     nagTimer.current = window.setTimeout(() => {
       const pending = medsRef.current.filter((m) => m.pendingDose);
-      const next =
-        pending.find((m) => m.id !== alertId.current) ?? pending[0];
+      const next = pending.find((m) => m.id !== alertId.current) ?? pending[0];
       if (next) openAlert(next, true);
     }, IN_APP_NAG_MS);
 
     return clearNagTimer;
-  }, [medications, alert, openAlert]);
+  }, [medications, alert, openAlert, clearNagTimer]);
 
+  // Boot sequence — final release: check only, no auto-prompt
   useEffect(() => {
     let active = true;
 
     (async () => {
       try {
         const native = Capacitor.isNativePlatform();
-        const p = await initAllPermissions();
-        const status = p.notification ? 'granted' : await checkNotificationPermission();
+        const permCheck = await initAllPermissions(); // only checks + channel
+        const status = permCheck.notification ? 'granted' : await checkNotificationPermission();
         const exactAlarm = await checkExactAlarmPermission();
         await registerNotificationActions();
         await load();
@@ -209,57 +221,139 @@ export default function App() {
         setBootDone(true);
       } catch (error) {
         if (!active) return;
-        console.error('[MediReminder] راه‌اندازی برنامه ناموفق بود:', error);
-        setBootError(
-          error instanceof Error ? error.message : 'خطای ناشناخته در راه‌اندازی برنامه'
-        );
+        console.error('[MediReminder] boot failed:', error);
+        setBootError(error instanceof Error ? error.message : 'خطای ناشناخته در راه‌اندازی برنامه');
         setBootDone(false);
       }
     })();
     return () => {
       active = false;
       debouncedSync.current.cancel();
+      if (resumeSyncTimeout.current) {
+        clearTimeout(resumeSyncTimeout.current);
+      }
     };
   }, [load, bootAttempt]);
 
+  // Resume / visibility handling — critical for mobile accuracy
   useEffect(() => {
-    const onVisible = async () => {
+    const handleVisible = async () => {
       if (document.visibilityState !== 'visible') return;
-      const status = await checkNotificationPermission();
-      const exactAlarm = await checkExactAlarmPermission();
-      setPermission(status);
-      setExactAlarmGranted(exactAlarm);
-      const current = medsRef.current;
-      if (current.some((m) => m.pendingDose || m.running)) {
-        await syncAllAlarms(current);
+      try {
+        const status = await checkNotificationPermission();
+        const exactAlarm = await checkExactAlarmPermission();
+        setPermission(status);
+        setExactAlarmGranted(exactAlarm);
+        const current = medsRef.current;
+        if (current.some((m) => m.pendingDose || m.running)) {
+          await syncAllAlarms(current);
+        }
+        // Also trigger immediate tick check for overdue doses
+        const now = Date.now();
+        for (const m of current) {
+          if (m.running && m.nextDoseAt && m.nextDoseAt <= now && !m.pendingDose) {
+            const due = toDue(normalize(m), now);
+            setMedications((prev) => prev.map((x) => (x.id === m.id ? due : x)));
+            persist(due).catch(() => {});
+            openAlert(due, true);
+          }
+        }
+      } catch (e) {
+        console.warn('[App] visibility sync failed', e);
       }
     };
-    document.addEventListener('visibilitychange', onVisible);
-    return () => document.removeEventListener('visibilitychange', onVisible);
-  }, []);
+
+    document.addEventListener('visibilitychange', handleVisible);
+
+    // Capacitor App plugin listeners for true mobile resume
+    let appListeners: Array<{ remove: () => Promise<void> }> = [];
+    (async () => {
+      const CapApp = await getCapacitorApp();
+      if (!CapApp) return;
+      try {
+        const l1 = await CapApp.addListener('appStateChange', async ({ isActive }) => {
+          if (isActive) {
+            console.info('[App] appStateChange active');
+            await handleVisible();
+          }
+        });
+        const l2 = await CapApp.addListener('resume', async () => {
+          console.info('[App] resume');
+          // Small delay for system to settle
+          if (resumeSyncTimeout.current) clearTimeout(resumeSyncTimeout.current);
+          resumeSyncTimeout.current = window.setTimeout(() => {
+            void handleVisible();
+          }, 300);
+        });
+        appListeners = [l1, l2];
+
+        // Back button handling — close modals first
+        const l3 = await CapApp.addListener('backButton', ({ canGoBack }) => {
+          if (alert) {
+            closeAlertUi();
+            return;
+          }
+          if (confirm) {
+            setConfirm(null);
+            return;
+          }
+          if (report) {
+            setReport(null);
+            return;
+          }
+          if (editing || showAdd) {
+            setEditing(null);
+            setShowAdd(false);
+            return;
+          }
+          if (!canGoBack) {
+            // Let system handle exit, or minimize
+            CapApp.exitApp().catch(() => {});
+          }
+        });
+        appListeners.push(l3);
+      } catch (e) {
+        console.warn('[App] CapApp listeners failed', e);
+      }
+    })();
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisible);
+      appListeners.forEach((l) => l.remove().catch(() => {}));
+    };
+  }, [alert, confirm, report, editing, showAdd, closeAlertUi, openAlert, persist]);
 
   const handleRequestPermission = async () => {
-    const ok = await requestNotificationPermission();
-    if (ok === 'granted') {
-      await setupAndroidChannel();
-      setExactAlarmGranted(await requestExactAlarmPermission());
-      setPermission('granted');
-      setPermBannerHidden(false);
-      try {
-        sessionStorage.removeItem(PERM_DISMISS_KEY);
-      } catch {
-        /* ignore */
+    try {
+      const ok = await requestNotificationPermission();
+      if (ok === 'granted') {
+        await setupAndroidChannel();
+        setExactAlarmGranted(await requestExactAlarmPermission());
+        setPermission('granted');
+        setPermBannerHidden(false);
+        try {
+          sessionStorage.removeItem(PERM_DISMISS_KEY);
+        } catch {
+          /* ignore */
+        }
+        await syncAllAlarms(medsRef.current);
+      } else {
+        setPermission(await checkNotificationPermission());
       }
-      await syncAllAlarms(medsRef.current);
-    } else {
+    } catch (e) {
+      console.warn('[App] request permission failed', e);
       setPermission(await checkNotificationPermission());
     }
   };
 
   const handleRequestExactAlarm = async () => {
-    const granted = await requestExactAlarmPermission();
-    setExactAlarmGranted(granted);
-    if (granted) await syncAllAlarms(medsRef.current);
+    try {
+      const granted = await requestExactAlarmPermission();
+      setExactAlarmGranted(granted);
+      if (granted) await syncAllAlarms(medsRef.current);
+    } catch (e) {
+      console.warn('[App] exact alarm request failed', e);
+    }
   };
 
   const dismissPermBanner = () => {
@@ -271,6 +365,7 @@ export default function App() {
     }
   };
 
+  // Accurate tick — handles mobile throttling by using absolute time
   useEffect(() => {
     const tick = async () => {
       if (tickLock.current) return;
@@ -308,6 +403,8 @@ export default function App() {
       }
     };
     void tick();
+    // Use 1s interval but also handle visibility — when hidden, interval may throttle to 1min
+    // So we also use a more frequent check when visible, and rely on resume sync when hidden
     const id = window.setInterval(() => {
       void tick();
     }, 1000);
@@ -337,10 +434,7 @@ export default function App() {
       if (msg.type === 'ALARM_TAKEN') {
         takeDoseRef.current({ ...m, pendingDose: true, running: false, remaining: 0 });
       } else if (msg.type === 'ALARM_SNOOZED') {
-        snoozeRef.current(
-          { ...m, pendingDose: true, running: false, remaining: 0 },
-          msg.minutes ?? 10
-        );
+        snoozeRef.current({ ...m, pendingDose: true, running: false, remaining: 0 }, msg.minutes ?? 10);
       } else if (msg.type === 'ALARM_TRIGGERED' || msg.type === 'ALARM_DISMISSED') {
         openAlert({ ...m, pendingDose: true, running: false, remaining: 0 }, true);
       }
@@ -357,7 +451,7 @@ export default function App() {
         if (!m.pendingDose) {
           const due = toDue(m);
           setMedications((v) => sortMedications(v.map((x) => (x.id === m.id ? due : x))));
-          persist(due);
+          persist(due).catch(() => {});
           openAlert(due, true);
         } else {
           openAlert(m, true);
@@ -381,8 +475,8 @@ export default function App() {
     });
 
     return () => {
-      received.then((l) => l.remove());
-      action.then((l) => l.remove());
+      received.then((l) => l.remove()).catch(() => {});
+      action.then((l) => l.remove()).catch(() => {});
     };
   }, [isNative, openAlert, persist, takeDoseRef, snoozeRef]);
 
@@ -496,7 +590,7 @@ export default function App() {
               dismissSwFollowUps(id);
             }
           } catch (error) {
-            console.error('[MediReminder] حذف دارو ناموفق بود:', error);
+            console.error('[MediReminder] delete failed:', error);
             if (id != null) deletedIdsRef.current.delete(id);
             await load();
             setConfirm({
@@ -536,8 +630,7 @@ export default function App() {
   );
   const emptyCount = useMemo(() => medications.filter((m) => m.quantity <= 0).length, [medications]);
   const formVisible = showAdd || editing !== null;
-  const showPermBanner =
-    (permission !== 'granted' || (isNative && !exactAlarmGranted)) && !permBannerHidden;
+  const showPermBanner = (permission !== 'granted' || (isNative && !exactAlarmGranted)) && !permBannerHidden;
 
   if (bootError) {
     return (
@@ -556,34 +649,39 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 text-white">
-      <div className="mx-auto max-w-lg px-4 py-6">
+    <div className="min-h-screen min-h-[100dvh] bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 text-white antialiased selection:bg-cyan-500/30">
+      {/* Safe area top spacer for native */}
+      <div className="h-[var(--sat)] w-full bg-slate-950 lg:hidden" aria-hidden />
+
+      <div className="mx-auto flex min-h-screen min-h-[100dvh] max-w-lg flex-col px-4 py-4 pb-[calc(1rem+var(--sab))] sm:py-6">
         <header className="mb-6">
           <div className="flex items-start justify-between gap-3">
-            <div>
-              <h1 className="text-3xl font-black text-cyan-300">💊 یادآور هوشمند دارو</h1>
-              <p className="mt-1 text-sm text-slate-400">یادآوری مکرر تا تأیید مصرف دارو</p>
+            <div className="min-w-0 flex-1">
+              <h1 className="text-balance text-2xl font-black leading-tight text-cyan-300 sm:text-3xl">
+                💊 یادآور هوشمند دارو
+              </h1>
+              <p className="mt-1 text-sm text-slate-400">یادآوری مکرر تا تأیید مصرف دارو — دقیق و آفلاین</p>
             </div>
-            <span className="rounded-full border border-cyan-500/20 bg-cyan-500/10 px-3 py-1 text-xs text-cyan-300">
+            <span className="shrink-0 rounded-full border border-cyan-500/20 bg-cyan-500/10 px-3 py-1 text-xs font-medium text-cyan-300">
               v{APP_VERSION}
             </span>
           </div>
 
-          <div className="mt-4 flex flex-wrap gap-2">
+          <div className="mt-4 grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
             <button
               type="button"
               onClick={() => {
                 setEditing(null);
                 setShowAdd(true);
               }}
-              className="rounded-2xl bg-gradient-to-b from-cyan-400 to-cyan-600 px-5 py-3 font-bold text-slate-950 shadow-lg shadow-cyan-950/40 hover:from-cyan-300 hover:to-cyan-500"
+              className="col-span-2 rounded-2xl bg-gradient-to-b from-cyan-400 to-cyan-600 px-5 py-3.5 text-[15px] font-bold text-slate-950 shadow-lg shadow-cyan-950/40 transition active:scale-[0.98] hover:from-cyan-300 hover:to-cyan-500 sm:col-span-1 touch-manipulation"
             >
               + افزودن دارو
             </button>
             <button
               type="button"
               onClick={openSupportWhatsApp}
-              className="rounded-2xl border border-emerald-500/40 bg-emerald-500/15 px-4 py-3 text-sm font-semibold text-emerald-200 hover:bg-emerald-500/25"
+              className="rounded-2xl border border-emerald-500/40 bg-emerald-500/15 px-4 py-3.5 text-sm font-semibold text-emerald-200 transition active:scale-[0.98] hover:bg-emerald-500/25 touch-manipulation"
               aria-label="پشتیبانی واتساپ"
               title="پشتیبانی واتساپ"
             >
@@ -592,11 +690,11 @@ export default function App() {
             <button
               type="button"
               onClick={() => void exportBackup()}
-              className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-slate-200 hover:bg-white/10"
+              className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3.5 text-sm font-semibold text-slate-200 transition active:scale-[0.98] hover:bg-white/10 touch-manipulation"
             >
               خروجی پشتیبان
             </button>
-            <label className="cursor-pointer rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-slate-200 hover:bg-white/10">
+            <label className="flex cursor-pointer items-center justify-center rounded-2xl border border-white/10 bg-white/5 px-4 py-3.5 text-sm font-semibold text-slate-200 transition active:scale-[0.98] hover:bg-white/10 touch-manipulation">
               ورود پشتیبان
               <input
                 type="file"
@@ -622,22 +720,22 @@ export default function App() {
           )}
 
           {dueCount > 0 && (
-            <p className="mt-3 rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-xs text-rose-200">
-              {dueCount} دارو منتظر تأیید مصرف است. هشدارها تا زدن «مصرف کردم» یا «اسنوز» ادامه
-              می‌یابند.
-            </p>
+            <div className="mt-3 rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-xs leading-relaxed text-rose-200">
+              <span className="font-bold">⏰ {dueCount} دارو منتظر تأیید مصرف است.</span> هشدارها تا زدن «مصرف کردم» یا «اسنوز»
+              ادامه می‌یابند.
+            </div>
           )}
 
           {(lowStockCount > 0 || emptyCount > 0) && (
-            <p className="mt-3 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-100">
+            <div className="mt-3 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-xs leading-relaxed text-amber-100">
               {emptyCount > 0 ? `${emptyCount} دارو تمام شده است. ` : ''}
               {lowStockCount > 0 ? `${lowStockCount} دارو موجودی کمی دارد.` : ''}
-            </p>
+            </div>
           )}
         </header>
 
         {formVisible && (
-          <div className="mb-5">
+          <div className="mb-5 animate-slide-in-from-top">
             <AddMedicationForm
               initial={editing ?? undefined}
               onSubmit={editing ? saveEdit : add}
@@ -649,26 +747,27 @@ export default function App() {
           </div>
         )}
 
-        <div className="space-y-4">
+        <div className="flex-1 space-y-4">
           {medications.length === 0 ? (
-            <div className="rounded-3xl border border-dashed border-slate-700 p-12 text-center">
+            <div className="rounded-3xl border border-dashed border-slate-700 p-8 text-center sm:p-12">
               <div className="text-6xl" aria-hidden="true">
                 💊
               </div>
               <h2 className="mt-4 text-xl font-bold">هنوز دارویی ثبت نشده</h2>
-              <p className="mt-2 text-sm text-slate-400">
-                اولین دارو را اضافه کنید و یادآوری را شروع کنید.
-              </p>
+              <p className="mt-2 text-sm text-slate-400">اولین دارو را اضافه کنید و یادآوری را شروع کنید.</p>
               <button
                 type="button"
                 onClick={() => {
                   setEditing(null);
                   setShowAdd(true);
                 }}
-                className="mt-6 rounded-2xl bg-gradient-to-b from-cyan-400 to-cyan-600 px-6 py-3 font-bold text-slate-950 shadow-lg shadow-cyan-950/40 hover:from-cyan-300 hover:to-cyan-500"
+                className="mt-6 rounded-2xl bg-gradient-to-b from-cyan-400 to-cyan-600 px-6 py-3.5 text-[15px] font-bold text-slate-950 shadow-lg shadow-cyan-950/40 transition active:scale-[0.98] hover:from-cyan-300 hover:to-cyan-500 touch-manipulation"
               >
                 افزودن اولین دارو
               </button>
+              <p className="mt-6 text-xs text-slate-500">
+                نکته: برای یادآوری دقیق، مجوز اعلان را فعال کنید و در اندروید باتری را روی «بدون محدودیت» بگذارید.
+              </p>
             </div>
           ) : (
             medications.map((m, i) => (
@@ -682,6 +781,8 @@ export default function App() {
                 onEdit={() => {
                   setShowAdd(false);
                   setEditing(m);
+                  // Scroll to form on mobile
+                  setTimeout(() => window.scrollTo({ top: 0, behavior: 'smooth' }), 100);
                 }}
                 onShowReport={() => setReport(m)}
                 onTake={() => takeDose(m)}
@@ -691,14 +792,12 @@ export default function App() {
           )}
         </div>
 
-        <footer className="mt-8 pb-8 text-center text-xs text-slate-500">
-          <p>
-            داده‌ها فقط روی همین دستگاه ذخیره می‌شوند. تا تأیید «مصرف کردم»، یادآوری تکرار می‌شود و
-            سپس تایمر دوز بعدی بلافاصله شروع می‌شود.
+        <footer className="mt-8 pb-[calc(1rem+var(--sab))] text-center text-xs text-slate-500">
+          <p className="leading-relaxed">
+            داده‌ها فقط روی همین دستگاه ذخیره می‌شوند. تا تأیید «مصرف کردم»، یادآوری تکرار می‌شود و سپس تایمر دوز بعدی
+            بلافاصله شروع می‌شود.
           </p>
-          <p className="mt-2 text-slate-600">
-            MediReminder v{APP_VERSION} — ابزار یادآوری است و جایگزین توصیه پزشک نیست.
-          </p>
+          <p className="mt-2 text-slate-600">MediReminder v{APP_VERSION} — ابزار یادآوری است و جایگزین توصیه پزشک نیست.</p>
         </footer>
       </div>
 

@@ -1,4 +1,4 @@
-// src/utils/audio.ts
+// src/utils/audio.ts — Final release: mobile-safe audio + haptics
 import { Capacitor } from '@capacitor/core';
 import { Haptics, ImpactStyle } from '@capacitor/haptics';
 
@@ -8,8 +8,9 @@ let gainNode: GainNode | null = null;
 let beepInterval: ReturnType<typeof setInterval> | null = null;
 let hapticInterval: ReturnType<typeof setInterval> | null = null;
 let isAlarmPlaying = false;
+let userGestureUnlocked = false;
 
-// ثابت‌های قابل تنظیم
+// ثابت‌های قابل تنظیم — tuned for mobile audibility
 const BEEP_FREQUENCY = 920;
 const BEEP_ON_MS = 280;
 const BEEP_OFF_MS = 140;
@@ -22,11 +23,17 @@ function createAudioContext(): AudioContext | null {
   if (typeof window === 'undefined') return null;
 
   const AudioContextClass =
-    window.AudioContext || (window as any).webkitAudioContext;
+    (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext) as
+      | typeof AudioContext
+      | undefined;
 
   if (!AudioContextClass) return null;
 
-  return new AudioContextClass();
+  try {
+    return new AudioContextClass();
+  } catch {
+    return null;
+  }
 }
 
 function clearAudioResources() {
@@ -61,18 +68,22 @@ function clearAudioResources() {
     const ctx = audioContext;
     audioContext = null;
     try {
-      ctx.close();
+      // Don't close if suspended — reuse later
+      if (ctx.state !== 'closed') {
+        ctx.close().catch(() => {});
+      }
     } catch {}
   }
 
   if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
-    navigator.vibrate(0);
+    try {
+      navigator.vibrate(0);
+    } catch {}
   }
 }
 
 /**
- * برنامه‌ریزی یک چرخه بیپ (چند بیپ با فاصله) روی TimeLine
- * این تابع فقط فرکانس و gain را زمان‌بندی می‌کند و oscillator در حال اجراست.
+ * برنامه‌ریزی یک چرخه بیپ روی TimeLine
  */
 function scheduleBeepCycle(ctx: AudioContext, gain: GainNode) {
   const now = ctx.currentTime;
@@ -81,17 +92,56 @@ function scheduleBeepCycle(ctx: AudioContext, gain: GainNode) {
   for (let i = 0; i < BEEPS_PER_CYCLE; i++) {
     const freq = BEEP_FREQUENCY + (i % 2 === 0 ? 0 : 80);
     if (oscillator) {
-      oscillator.frequency.setValueAtTime(freq, t);
+      try {
+        oscillator.frequency.setValueAtTime(freq, t);
+      } catch {}
     }
-    gain.gain.setValueAtTime(ALARM_VOLUME, t);
-    gain.gain.setValueAtTime(0.0001, t + BEEP_ON_MS / 1000);
+    try {
+      gain.gain.setValueAtTime(ALARM_VOLUME, t);
+      gain.gain.setValueAtTime(0.0001, t + BEEP_ON_MS / 1000);
+    } catch {}
     t += (BEEP_ON_MS + BEEP_OFF_MS) / 1000;
   }
-  gain.gain.setValueAtTime(0.0001, t);
+  try {
+    gain.gain.setValueAtTime(0.0001, t);
+  } catch {}
+}
+
+/**
+ * Unlock audio on first user gesture — required for mobile autoplay
+ */
+function unlockAudioOnGesture() {
+  if (userGestureUnlocked) return;
+  const events = ['touchstart', 'touchend', 'click', 'keydown'];
+  const unlock = async () => {
+    try {
+      const ctx = createAudioContext();
+      if (ctx) {
+        if (ctx.state === 'suspended') await ctx.resume().catch(() => {});
+        // Play silent buffer to unlock
+        const buffer = ctx.createBuffer(1, 1, 22050);
+        const source = ctx.createBufferSource();
+        source.buffer = buffer;
+        source.connect(ctx.destination);
+        source.start(0);
+        await ctx.close().catch(() => {});
+      }
+      userGestureUnlocked = true;
+      console.info('[Audio] unlocked via gesture');
+    } catch {}
+    events.forEach((e) => document.removeEventListener(e, unlock));
+  };
+  events.forEach((e) => document.addEventListener(e, unlock, { once: true, passive: true }));
+}
+
+// Auto-setup unlock listener on load
+if (typeof document !== 'undefined') {
+  unlockAudioOnGesture();
 }
 
 /**
  * پخش صدای آلارم به‌صورت تکرارشونده تا توقف
+ * Safe on mobile: handles suspended context, user gesture, and fallback
  */
 export async function playAlarm() {
   if (isAlarmPlaying) return;
@@ -99,13 +149,13 @@ export async function playAlarm() {
   isAlarmPlaying = true;
   clearAudioResources();
 
-  // شروع ویبره تکرارشونده
+  // شروع ویبره تکرارشونده — works even if audio fails
   startPersistentHaptics();
 
   try {
     const ctx = createAudioContext();
     if (!ctx) {
-      isAlarmPlaying = false;
+      console.warn('[Audio] AudioContext not available, haptics only');
       return;
     }
 
@@ -115,7 +165,12 @@ export async function playAlarm() {
       try {
         await audioContext.resume();
       } catch (error) {
-        console.warn('خطا در resume کردن AudioContext:', error);
+        console.warn('[Audio] resume failed:', error);
+        // On mobile, resume may need gesture — keep haptics, don't fail
+        if (!userGestureUnlocked) {
+          console.info('[Audio] waiting for gesture to resume');
+          return;
+        }
       }
     }
 
@@ -123,8 +178,10 @@ export async function playAlarm() {
     gainNode = audioContext.createGain();
 
     oscillator.type = 'square';
-    oscillator.frequency.setValueAtTime(BEEP_FREQUENCY, audioContext.currentTime);
-    gainNode.gain.setValueAtTime(0.0001, audioContext.currentTime);
+    try {
+      oscillator.frequency.setValueAtTime(BEEP_FREQUENCY, audioContext.currentTime);
+      gainNode.gain.setValueAtTime(0.0001, audioContext.currentTime);
+    } catch {}
 
     oscillator.connect(gainNode);
     gainNode.connect(audioContext.destination);
@@ -132,26 +189,29 @@ export async function playAlarm() {
     try {
       oscillator.start();
     } catch (error) {
-      console.error('خطا در شروع oscillator:', error);
+      console.error('[Audio] oscillator start failed:', error);
       stopAlarm();
       return;
     }
 
     const runCycle = () => {
       if (!isAlarmPlaying || !audioContext || !gainNode) return;
+      // Ensure context is running
+      if (audioContext.state === 'suspended') {
+        audioContext.resume().catch(() => {});
+      }
       scheduleBeepCycle(audioContext, gainNode);
     };
 
-    runCycle(); // اجرای اولین چرخه بلافاصله
+    runCycle();
 
-    // برنامه‌ریزی چرخه‌های بعدی با setInterval
-    const cycleDurationMs =
-      BEEPS_PER_CYCLE * (BEEP_ON_MS + BEEP_OFF_MS) + GAP_AFTER_CYCLE_MS;
-
+    const cycleDurationMs = BEEPS_PER_CYCLE * (BEEP_ON_MS + BEEP_OFF_MS) + GAP_AFTER_CYCLE_MS;
     beepInterval = setInterval(runCycle, cycleDurationMs);
+
+    console.info('[Audio] alarm started');
   } catch (error) {
-    console.error('خطا در پخش آلارم:', error);
-    stopAlarm();
+    console.error('[Audio] play failed:', error);
+    // Don't stop haptics if audio fails
   }
 }
 
@@ -159,12 +219,17 @@ export async function playAlarm() {
  * توقف کامل آلارم و ویبره
  */
 export function stopAlarm() {
+  if (!isAlarmPlaying) {
+    clearAudioResources();
+    return;
+  }
   isAlarmPlaying = false;
   clearAudioResources();
+  console.info('[Audio] alarm stopped');
 }
 
 /**
- * یک‌بار ویبره قوی
+ * یک‌بار ویبره قوی — mobile optimized
  */
 export async function triggerHaptics() {
   if (Capacitor.isNativePlatform()) {
@@ -175,13 +240,21 @@ export async function triggerHaptics() {
       await delay(100);
       await Haptics.impact({ style: ImpactStyle.Heavy });
     } catch (error) {
-      console.warn('خطای ویبره نیتیو:', error);
+      console.warn('[Haptics] native failed:', error);
+      // Fallback to web vibrate
+      if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+        try {
+          navigator.vibrate([400, 120, 400, 120, 400, 120, 400]);
+        } catch {}
+      }
     }
     return;
   }
 
   if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
-    navigator.vibrate([400, 120, 400, 120, 400, 120, 400]);
+    try {
+      navigator.vibrate([400, 120, 400, 120, 400, 120, 400]);
+    } catch {}
   }
 }
 
@@ -198,7 +271,9 @@ function startPersistentHaptics() {
         if (isAlarmPlaying) Haptics.impact({ style: ImpactStyle.Medium }).catch(() => {});
       }, 80);
     } else if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
-      navigator.vibrate([300, 100, 300, 100, 300]);
+      try {
+        navigator.vibrate([300, 100, 300, 100, 300]);
+      } catch {}
     }
   };
 
@@ -207,7 +282,7 @@ function startPersistentHaptics() {
 }
 
 function delay(ms: number) {
-  return new Promise(resolve => setTimeout(resolve, ms));
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 export { formatTime } from './time';

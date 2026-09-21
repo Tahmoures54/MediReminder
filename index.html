@@ -2,31 +2,81 @@
 <html lang="fa" dir="rtl">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <!-- Mobile-first viewport: prevent iOS zoom on input focus (16px min), support safe areas, disable user zoom for app-like feel but allow accessibility -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, minimum-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content" />
+    <meta name="color-scheme" content="dark" />
+    <meta name="format-detection" content="telephone=no, email=no, address=no" />
+    <meta name="HandheldFriendly" content="true" />
+    <meta name="MobileOptimized" content="width" />
 
-    <title>یادآور دارو</title>
+    <title>یادآور دارو — MediReminder</title>
 
+    <!-- Icons: correct sizes and types -->
     <link rel="icon" href="/favicon.ico" sizes="any" />
-    <link rel="icon" type="image/png" sizes="32x32" href="/icon-192.png" />
-    <link rel="icon" type="image/png" sizes="16x16" href="/icon-192.png" />
-    <link rel="apple-touch-icon" sizes="180x180" href="/icon-192.png" />
-    <link rel="manifest" href="/manifest.json" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+    <link rel="mask-icon" href="/icon-512.png" color="#0891b2" />
+    <link rel="manifest" href="/manifest.json" crossorigin="use-credentials" />
 
-    <meta name="theme-color" content="#0c4a6e" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <!-- PWA / Mobile theming -->
+    <meta name="theme-color" content="#0891b2" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#0891b2" />
+    <meta name="apple-mobile-web-app-title" content="یادآور دارو" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="application-name" content="یادآور دارو" />
+    <meta name="msapplication-TileColor" content="#0f172a" />
+    <meta name="msapplication-config" content="none" />
 
-    <meta name="description" content="یادآور هوشمند دارو — آفلاین، امن و با هشدار مکرر تا تأیید مصرف" />
-    <meta name="keywords" content="دارو, یادآور, سلامت, PWA, اعلان" />
+    <!-- SEO / Description -->
+    <meta name="description" content="یادآور هوشمند دارو — آفلاین، امن و با هشدار مکرر تا تأیید مصرف. بدون نیاز به اینترنت، تمام داده‌ها روی دستگاه شما." />
+    <meta name="keywords" content="دارو, یادآور, سلامت, PWA, اعلان, MediReminder" />
+    <meta name="author" content="MediReminder" />
+    <meta name="robots" content="index, follow" />
 
-    <meta property="og:title" content="یادآور دارو" />
-    <meta property="og:description" content="یادآور هوشمند دارو با اعلان مکرر، تایمر و پیگیری موجودی" />
+    <!-- Open Graph -->
+    <meta property="og:title" content="یادآور دارو — MediReminder" />
+    <meta property="og:description" content="یادآور هوشمند دارو با اعلان مکرر، تایمر و پیگیری موجودی — آفلاین و امن" />
     <meta property="og:type" content="website" />
     <meta property="og:image" content="/icon-512.png" />
+    <meta property="og:image:width" content="512" />
+    <meta property="og:image:height" content="512" />
+    <meta property="og:locale" content="fa_IR" />
+    <meta property="og:site_name" content="یادآور دارو" />
+
+    <!-- Preload critical assets -->
+    <link rel="preload" href="/icon-192.png" as="image" type="image/png" />
+    
+    <!-- Prevent FOUC for dark theme -->
+    <style>
+      html { background-color: #0f172a; }
+      body { background-color: #0f172a; margin: 0; }
+      #root { min-height: 100vh; min-height: 100dvh; }
+      /* Prevent iOS rubber-band overscroll for app-like feel */
+      html, body { overscroll-behavior-y: none; -webkit-overflow-scrolling: touch; }
+      /* Safe area support */
+      :root {
+        --sat: env(safe-area-inset-top, 0px);
+        --sar: env(safe-area-inset-right, 0px);
+        --sab: env(safe-area-inset-bottom, 0px);
+        --sal: env(safe-area-inset-left, 0px);
+      }
+    </style>
   </head>
   <body>
     <div id="root"></div>
+    <noscript>
+      <div style="display:flex;min-height:100vh;align-items:center;justify-content:center;background:#0f172a;color:#e5e7eb;padding:24px;text-align:center;font-family:system-ui">
+        <div>
+          <div style="font-size:48px">💊</div>
+          <h1 style="margin-top:16px;font-size:20px;font-weight:bold;color:#22d3ee">یادآور دارو</h1>
+          <p style="margin-top:8px;color:#94a3b8">برای استفاده از این برنامه، لطفاً JavaScript را فعال کنید.</p>
+        </div>
+      </div>
+    </noscript>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

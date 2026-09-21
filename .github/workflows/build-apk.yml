@@ -1,4 +1,4 @@
-name: Build MediReminder Android APK
+name: Build MediReminder Android APK — Final Release
 
 on:
   workflow_dispatch:
@@ -46,8 +46,10 @@ jobs:
       - name: Run unit tests
         run: npm test
 
-      - name: Build web app
+      - name: Build web app — Final Release
         run: npm run build
+        env:
+          NODE_ENV: production
 
       - name: Add Android platform if missing
         run: |
@@ -62,6 +64,7 @@ jobs:
           set -euo pipefail
           mkdir -p android/app/src/main/res/raw
           cp src/main/res/raw/medication_alarm.wav android/app/src/main/res/raw/medication_alarm.wav
+          ls -lh android/app/src/main/res/raw/
 
       - name: Install launcher icons
         run: |
@@ -102,7 +105,7 @@ jobs:
           print('launcher icons installed')
           PY
 
-      - name: Configure Android permissions
+      - name: Configure Android permissions — Final Release
         run: |
           set -euo pipefail
           python3 - <<'PY'
@@ -113,15 +116,41 @@ jobs:
               'android.permission.POST_NOTIFICATIONS',
               'android.permission.VIBRATE',
               'android.permission.SCHEDULE_EXACT_ALARM',
+              'android.permission.USE_EXACT_ALARM',
               'android.permission.RECEIVE_BOOT_COMPLETED',
               'android.permission.WAKE_LOCK',
+              'android.permission.FOREGROUND_SERVICE',
+              'android.permission.FOREGROUND_SERVICE_SPECIAL_USE',
+              'android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS',
+              'android.permission.INTERNET',
+              'android.permission.ACCESS_NETWORK_STATE',
+              'android.permission.USE_FULL_SCREEN_INTENT',
           ]
           for perm in perms:
               line = f'    <uses-permission android:name="{perm}" />'
-              if line not in s:
+              if perm not in s:
+                  # Insert before <application
                   s = s.replace('<application', line + '\n    <application', 1)
+          # Ensure hardware acceleration and largeHeap for smooth UI on low-end devices
+          if 'android:hardwareAccelerated="true"' not in s:
+              s = s.replace('<application', '<application android:hardwareAccelerated="true"', 1)
           p.write_text(s)
+          print('Permissions configured for final release')
+          print(s[:2000])
           PY
+
+      - name: Optimize Android build for release
+        run: |
+          set -euo pipefail
+          # Ensure minification and shrinking enabled for release
+          GRADLE_FILE="android/app/build.gradle"
+          if grep -q "minifyEnabled false" "$GRADLE_FILE"; then
+            sed -i 's/minifyEnabled false/minifyEnabled true/' "$GRADLE_FILE"
+          fi
+          if grep -q "shrinkResources false" "$GRADLE_FILE"; then
+            sed -i 's/shrinkResources false/shrinkResources true/' "$GRADLE_FILE"
+          fi
+          echo "Gradle release optimizations checked"
 
       - name: Read app version from package.json
         id: version
@@ -184,7 +213,7 @@ jobs:
       - name: Configure signing in build.gradle
         run: python3 scripts/add_signing.py
 
-      - name: Set versionCode and versionName
+      - name: Set versionCode and versionName — Final
         run: |
           set -euo pipefail
           VERSION_CODE=$((1000 + GITHUB_RUN_NUMBER))
@@ -197,14 +226,15 @@ jobs:
           fi
           sed -i "s/versionCode [0-9][0-9]*/versionCode $VERSION_CODE/" android/app/build.gradle
           sed -i "s/versionName \"[^\"]*\"/versionName \"$VERSION_NAME\"/" android/app/build.gradle
+          echo "Set versionCode=$VERSION_CODE versionName=$VERSION_NAME"
 
-      - name: Build signed AAB
+      - name: Build signed AAB — Final Release
         working-directory: android
-        run: ./gradlew bundleRelease
+        run: ./gradlew bundleRelease --no-daemon
 
-      - name: Build signed APK
+      - name: Build signed APK — Final Release
         working-directory: android
-        run: ./gradlew assembleRelease
+        run: ./gradlew assembleRelease --no-daemon
 
       - name: Cleanup sensitive files
         if: always()
@@ -215,12 +245,14 @@ jobs:
           set -euo pipefail
           mkdir -p dist-artifacts
           VERSION="${{ steps.version.outputs.version }}"
-          cp android/app/build/outputs/bundle/release/*.aab "dist-artifacts/MediReminder-$VERSION.aab"
-          cp android/app/build/outputs/apk/release/*release.apk "dist-artifacts/MediReminder-$VERSION.apk"
+          cp android/app/build/outputs/bundle/release/*.aab "dist-artifacts/MediReminder-$VERSION-final.aab"
+          cp android/app/build/outputs/apk/release/*release.apk "dist-artifacts/MediReminder-$VERSION-final.apk"
           ls -lh dist-artifacts dist-artifacts/signing-key 2>/dev/null || true
+          echo "Final release artifacts ready: v$VERSION"
 
-      - name: Upload artifacts
+      - name: Upload artifacts — Final Release
         uses: actions/upload-artifact@v4
         with:
-          name: MediReminder-Android-${{ steps.version.outputs.version }}
+          name: MediReminder-Final-${{ steps.version.outputs.version }}
           path: dist-artifacts/
+          retention-days: 30
