@@ -111,97 +111,128 @@ export function AddMedicationForm({ initial, onSubmit, onCancel }: Props) {
     });
   };
 
+  // Scroll into view on mobile when focused
+  const handleFocus = (e: React.FocusEvent<HTMLInputElement>) => {
+    // Delay to allow keyboard to appear
+    setTimeout(() => {
+      e.target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 300);
+  };
+
   return (
-    <div className="rounded-3xl border border-slate-700/80 bg-gradient-to-br from-slate-900 via-slate-900 to-slate-950 p-5 shadow-xl shadow-black/30">
-      <div className="mb-5 flex items-center justify-between">
-        <h2 className="text-xl font-bold">{isEdit ? 'ویرایش دارو' : 'افزودن دارو'}</h2>
+    <div className="rounded-3xl border border-slate-700/80 bg-gradient-to-br from-slate-900 via-slate-900 to-slate-950 p-5 shadow-xl shadow-black/30 backdrop-blur-sm">
+      <div className="mb-5 flex items-center justify-between gap-3">
+        <h2 className="text-xl font-bold tracking-tight">{isEdit ? 'ویرایش دارو' : 'افزودن دارو'}</h2>
         <button
           type="button"
           onClick={onCancel}
-          className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 hover:bg-white/10"
-          aria-label="بستن"
+          className="tap-target rounded-xl border border-white/10 bg-white/5 text-sm text-slate-200 transition hover:bg-white/10 active:scale-95 touch-manipulation"
+          aria-label="بستن فرم"
         >
           ✕
         </button>
       </div>
 
-      <form onSubmit={submit} className="space-y-4" noValidate>
+      <form onSubmit={submit} className="space-y-4" noValidate autoComplete="off">
         {error && (
           <div
             role="alert"
-            className="rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300"
+            className="animate-slide-in-from-top rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm leading-relaxed text-red-300"
           >
             {error}
           </div>
         )}
 
-        <div className="space-y-1">
-          <label htmlFor="med-name" className="block text-sm">
-            نام دارو
+        <div className="space-y-1.5">
+          <label htmlFor="med-name" className="block text-sm font-medium text-slate-300">
+            نام دارو <span className="text-rose-400">*</span>
           </label>
           <input
             id="med-name"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            className="mt-1 w-full rounded-xl border border-slate-600 bg-slate-950 p-3"
+            onFocus={handleFocus}
+            className="w-full rounded-xl border border-slate-600 bg-slate-950 px-4 py-3.5 text-[16px] text-white placeholder:text-slate-500 focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/20"
             placeholder="مثلاً Amoxicillin"
             autoFocus
+            autoComplete="off"
+            autoCorrect="off"
+            spellCheck={false}
+            inputMode="text"
+            enterKeyHint="next"
           />
         </div>
 
-        <div className="space-y-1">
-          <label htmlFor="med-condition" className="block text-sm">
-            بیماری مرتبط <span className="text-xs text-slate-500">(اختیاری)</span>
+        <div className="space-y-1.5">
+          <label htmlFor="med-condition" className="block text-sm font-medium text-slate-300">
+            بیماری مرتبط <span className="text-xs font-normal text-slate-500">(اختیاری)</span>
           </label>
           <input
             id="med-condition"
             value={condition}
             onChange={(e) => setCondition(e.target.value)}
-            className="mt-1 w-full rounded-xl border border-slate-600 bg-slate-950 p-3"
+            onFocus={handleFocus}
+            className="w-full rounded-xl border border-slate-600 bg-slate-950 px-4 py-3.5 text-[16px] text-white placeholder:text-slate-500 focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/20"
             placeholder="مثلاً فشار خون یا دیابت"
+            autoComplete="off"
+            inputMode="text"
+            enterKeyHint="next"
           />
         </div>
 
-        <div className="space-y-1">
-          <label htmlFor="med-dosage" className="block text-sm">
-            دوز
-          </label>
-          <input
-            id="med-dosage"
-            value={dosage}
-            onChange={(e) => setDosage(e.target.value)}
-            className="mt-1 w-full rounded-xl border border-slate-600 bg-slate-950 p-3"
-            placeholder="500 mg"
-          />
-        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-1.5">
+            <label htmlFor="med-dosage" className="block text-sm font-medium text-slate-300">
+              دوز <span className="text-rose-400">*</span>
+            </label>
+            <input
+              id="med-dosage"
+              value={dosage}
+              onChange={(e) => setDosage(e.target.value)}
+              onFocus={handleFocus}
+              className="w-full rounded-xl border border-slate-600 bg-slate-950 px-4 py-3.5 text-[16px] text-white placeholder:text-slate-500 focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/20"
+              placeholder="500 mg"
+              autoComplete="off"
+              inputMode="text"
+              enterKeyHint="next"
+            />
+          </div>
 
-        <div className="space-y-1">
-          <label htmlFor="med-quantity" className="block text-sm">
-            تعداد
-          </label>
-          <input
-            id="med-quantity"
-            type="number"
-            min={isEdit ? 0 : 1}
-            value={quantity}
-            onChange={(e) => setQuantity(e.target.value)}
-            className="mt-1 w-full rounded-xl border border-slate-600 bg-slate-950 p-3"
-            placeholder="30"
-          />
+          <div className="space-y-1.5">
+            <label htmlFor="med-quantity" className="block text-sm font-medium text-slate-300">
+              تعداد <span className="text-rose-400">*</span>
+            </label>
+            <input
+              id="med-quantity"
+              type="text"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              value={quantity}
+              onChange={(e) => {
+                // Only allow numbers
+                const v = e.target.value.replace(/[^0-9]/g, '');
+                setQuantity(v);
+              }}
+              onFocus={handleFocus}
+              className="w-full rounded-xl border border-slate-600 bg-slate-950 px-4 py-3.5 text-[16px] text-white placeholder:text-slate-500 focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/20"
+              placeholder="30"
+              enterKeyHint="next"
+            />
+          </div>
         </div>
 
         <div>
-          <p className="mb-2 text-sm">یادآوری هر چند ساعت؟</p>
+          <p className="mb-2.5 text-sm font-medium text-slate-300">یادآوری هر چند ساعت؟</p>
           <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
             {PRESETS.map((v) => (
               <button
                 key={v}
                 type="button"
                 onClick={() => setHours(v)}
-                className={`rounded-lg border px-2 py-2 text-sm transition-colors ${
+                className={`tap-target rounded-xl border px-2 py-3 text-sm font-medium transition-all touch-manipulation active:scale-[0.96] ${
                   hours === v
-                    ? 'border-cyan-400 bg-cyan-600 text-white'
-                    : 'border-slate-600 bg-slate-950 hover:bg-slate-800'
+                    ? 'border-cyan-400 bg-cyan-600 text-white shadow-md shadow-cyan-900/30'
+                    : 'border-slate-600 bg-slate-950 text-slate-300 hover:bg-slate-800 hover:border-slate-500'
                 }`}
               >
                 {presetLabel(v)}
@@ -210,10 +241,10 @@ export function AddMedicationForm({ initial, onSubmit, onCancel }: Props) {
             <button
               type="button"
               onClick={() => setHours(null)}
-              className={`rounded-lg border border-dashed px-2 py-2 text-sm transition-colors ${
+              className={`tap-target rounded-xl border border-dashed px-2 py-3 text-sm font-medium transition-all touch-manipulation active:scale-[0.96] ${
                 hours === null
-                  ? 'border-cyan-400 bg-cyan-600 text-white'
-                  : 'border-slate-500 bg-slate-950 hover:bg-slate-800'
+                  ? 'border-cyan-400 bg-cyan-600 text-white shadow-md'
+                  : 'border-slate-500 bg-slate-950 text-slate-400 hover:bg-slate-800 hover:text-slate-200'
               }`}
             >
               سفارشی
@@ -222,40 +253,55 @@ export function AddMedicationForm({ initial, onSubmit, onCancel }: Props) {
         </div>
 
         {hours === null && (
-          <div className="space-y-1">
-            <label htmlFor="custom-hours" className="block text-sm">
+          <div className="animate-slide-in-from-top space-y-1.5">
+            <label htmlFor="custom-hours" className="block text-sm font-medium text-slate-300">
               بازه سفارشی (ساعت)
             </label>
             <input
               id="custom-hours"
-              type="number"
-              min={1}
-              max={MAX_INTERVAL_HOURS}
-              step={1}
+              type="text"
+              inputMode="numeric"
+              pattern="[0-9]*"
               value={custom}
-              onChange={(e) => setCustom(e.target.value)}
+              onChange={(e) => setCustom(e.target.value.replace(/[^0-9]/g, ''))}
+              onFocus={handleFocus}
               placeholder="مثلاً ۱۰"
-              className="mt-1 w-full rounded-xl border border-cyan-700 bg-slate-950 p-3"
+              className="w-full rounded-xl border border-cyan-700 bg-slate-950 px-4 py-3.5 text-[16px] text-white placeholder:text-slate-500 focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/20"
+              enterKeyHint="done"
             />
           </div>
         )}
 
-        <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-slate-700 bg-slate-950 p-3 text-sm">
+        <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-slate-700 bg-slate-950 p-4 text-sm transition hover:bg-slate-900 active:scale-[0.99] touch-manipulation">
           <input
             type="checkbox"
             checked={startImmediately}
             onChange={(e) => setStartImmediately(e.target.checked)}
-            className="h-4 w-4 accent-cyan-500"
+            className="mt-0.5 h-5 w-5 shrink-0 rounded border-slate-600 bg-slate-900 accent-cyan-500"
           />
-          {isEdit ? 'شروع / بازنشانی تایمر با ذخیره' : 'شروع اولین شمارش بلافاصله'}
+          <span className="leading-relaxed text-slate-300">
+            {isEdit ? 'شروع / بازنشانی تایمر با ذخیره' : 'شروع اولین شمارش بلافاصله'}
+            <span className="mt-1 block text-xs text-slate-500">
+              {isEdit ? 'تایمر با بازه جدید دوباره شروع می‌شود' : 'اگر خاموش باشد، بعداً دستی شروع کنید'}
+            </span>
+          </span>
         </label>
 
-        <button
-          type="submit"
-          className="w-full rounded-2xl bg-gradient-to-b from-emerald-400 to-emerald-600 py-3 font-bold text-slate-950 shadow-lg shadow-emerald-900/30 transition hover:from-emerald-300 hover:to-emerald-500"
-        >
-          {isEdit ? 'ذخیره تغییرات' : 'افزودن دارو'}
-        </button>
+        <div className="flex gap-3 pt-2">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="flex-1 rounded-2xl border border-white/10 bg-white/5 py-4 text-[15px] font-bold text-slate-200 transition active:scale-[0.97] hover:bg-white/10 touch-manipulation"
+          >
+            انصراف
+          </button>
+          <button
+            type="submit"
+            className="flex-[1.5] rounded-2xl bg-gradient-to-b from-emerald-400 to-emerald-600 py-4 text-[15px] font-bold text-slate-950 shadow-lg shadow-emerald-900/30 transition active:scale-[0.97] hover:from-emerald-300 hover:to-emerald-500 touch-manipulation"
+          >
+            {isEdit ? 'ذخیره تغییرات' : 'افزودن دارو'}
+          </button>
+        </div>
       </form>
     </div>
   );

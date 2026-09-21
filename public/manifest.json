@@ -1,33 +1,81 @@
 {
-  "name": "MediReminder",
+  "id": "/",
+  "name": "یادآور دارو - MediReminder",
   "short_name": "یادآور دارو",
-  "description": "Offline-first medication reminder and dose tracking",
-  "start_url": "/",
+  "description": "یادآور هوشمند دارو — آفلاین، امن و با هشدار مکرر تا تأیید مصرف",
+  "start_url": "/?source=pwa",
+  "scope": "/",
   "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone", "browser"],
   "background_color": "#0f172a",
   "theme_color": "#0891b2",
-  "orientation": "portrait-primary",
+  "orientation": "any",
   "lang": "fa",
   "dir": "rtl",
-  "categories": ["health", "medical", "lifestyle"],
+  "categories": ["health", "medical", "lifestyle", "productivity"],
+  "launch_handler": {
+    "client_mode": ["navigate-existing", "auto"]
+  },
+  "handle_links": "preferred",
+  "edge_side_panel": {
+    "preferred_width": 480
+  },
   "icons": [
     {
+      "src": "/android-chrome-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/android-chrome-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
       "src": "/icon-192.png",
-      "sizes": "any",
+      "sizes": "192x192",
       "type": "image/png",
-      "purpose": "any"
+      "purpose": "maskable",
+      "label": "Maskable 192"
     },
     {
       "src": "/icon-512.png",
-      "sizes": "any",
+      "sizes": "512x512",
       "type": "image/png",
-      "purpose": "any"
+      "purpose": "maskable",
+      "label": "Maskable 512"
     },
     {
-      "src": "/icon-512.png",
-      "sizes": "any",
+      "src": "/apple-touch-icon.png",
+      "sizes": "180x180",
       "type": "image/png",
-      "purpose": "maskable"
+      "purpose": "any"
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "/android-chrome-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "یادآور دارو - صفحه اصلی"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "افزودن دارو",
+      "short_name": "افزودن",
+      "description": "افزودن داروی جدید",
+      "url": "/?action=add",
+      "icons": [
+        {
+          "src": "/android-chrome-192x192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
     }
   ]
 }

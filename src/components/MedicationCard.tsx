@@ -51,7 +51,8 @@ export function MedicationCard({
     <article
       className={cn(
         'relative isolate overflow-hidden rounded-[1.75rem] border',
-        'bg-slate-900/90 shadow-[0_18px_50px_-24px_rgba(0,0,0,0.85)]',
+        'bg-slate-900/90 shadow-[0_18px_50px_-24px_rgba(0,0,0,0.85)] backdrop-blur-sm',
+        'transition-all duration-300 touch-manipulation',
         due && 'border-rose-400/50 med-card-due',
         !due && running && 'border-cyan-400/35 med-card-running',
         !due && !running && 'border-white/10'
@@ -60,7 +61,11 @@ export function MedicationCard({
       <div
         className={cn(
           'pointer-events-none absolute inset-y-0 end-0 w-1.5',
-          due ? 'bg-gradient-to-b from-rose-300 to-rose-600' : running ? 'bg-gradient-to-b from-cyan-300 to-teal-500' : 'bg-slate-600'
+          due
+            ? 'bg-gradient-to-b from-rose-300 to-rose-600'
+            : running
+              ? 'bg-gradient-to-b from-cyan-300 to-teal-500'
+              : 'bg-slate-600'
         )}
         aria-hidden
       />
@@ -70,12 +75,12 @@ export function MedicationCard({
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
             <div className="mb-3 flex flex-wrap items-center gap-2">
-              <span className="rounded-full bg-white/5 px-2.5 py-0.5 text-[11px] font-bold text-slate-400">
+              <span className="rounded-full bg-white/5 px-2.5 py-1 text-[11px] font-bold text-slate-400">
                 #{index}
               </span>
               <span
                 className={cn(
-                  'inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-semibold',
+                  'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold',
                   due
                     ? 'bg-rose-500/20 text-rose-100'
                     : running
@@ -92,15 +97,25 @@ export function MedicationCard({
                 />
                 {due ? 'منتظر تأیید' : running ? 'در حال شمارش' : 'متوقف'}
               </span>
+              {low && !due && (
+                <span className="rounded-full bg-amber-500/15 px-2 py-1 text-[10px] font-bold text-amber-200">
+                  موجودی کم
+                </span>
+              )}
+              {empty && (
+                <span className="rounded-full bg-rose-500/20 px-2 py-1 text-[10px] font-bold text-rose-200">
+                  تمام شده
+                </span>
+              )}
             </div>
 
-            <h3 className="break-words text-[1.45rem] font-black leading-snug tracking-tight text-white">
+            <h3 className="break-words text-[1.35rem] font-black leading-snug tracking-tight text-white sm:text-[1.45rem]">
               {name}
             </h3>
             <p className="mt-1.5 truncate text-sm text-slate-400">برای {condition}</p>
           </div>
 
-          <div className="flex shrink-0 gap-1">
+          <div className="flex shrink-0 gap-1.5">
             <IconButton onClick={onEdit} label={`ویرایش ${name}`} title="ویرایش">
               ✎
             </IconButton>
@@ -124,7 +139,7 @@ export function MedicationCard({
       <div className="relative px-5 pb-5">
         <div
           className={cn(
-            'rounded-[1.35rem] border px-4 py-6 text-center',
+            'rounded-[1.35rem] border px-4 py-6 text-center transition-colors',
             due
               ? 'border-rose-400/25 bg-rose-500/10'
               : running
@@ -135,23 +150,24 @@ export function MedicationCard({
           {due ? (
             <>
               <div className="text-3xl font-black tracking-tight text-rose-200 sm:text-4xl">زمان مصرف</div>
-              <p className="mt-2 text-sm text-rose-100/70">پس از مصرف، تأیید کنید</p>
+              <p className="mt-2 text-sm text-rose-100/70">پس از مصرف، تأیید کنید — هشدار ادامه دارد</p>
             </>
           ) : (
             <>
               <div
                 className={cn(
-                  'font-black tabular-nums tracking-tight',
+                  'font-black tabular-nums tracking-tight transition-colors',
                   remaining >= 86400 ? 'text-3xl sm:text-4xl' : 'text-5xl sm:text-6xl',
                   running ? 'text-cyan-200' : 'text-slate-500'
                 )}
                 role="timer"
                 aria-label={`${formatTime(remaining)} باقی مانده`}
+                aria-live={running ? 'off' : 'polite'}
               >
                 {formatTime(remaining)}
               </div>
               <p className="mt-2 text-xs text-slate-400">
-                {running ? `دوز بعدی حدود ${next}` : 'تایمر متوقف است'}
+                {running ? `دوز بعدی حدود ${next}` : 'تایمر متوقف است — برای شروع، دکمه شروع را بزنید'}
               </p>
             </>
           )}
@@ -175,18 +191,18 @@ export function MedicationCard({
         </div>
 
         {due ? (
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-2 gap-2.5">
             <ActionButton
               onClick={onTake}
-              className="bg-emerald-400 text-slate-950 shadow-lg shadow-emerald-950/30 hover:bg-emerald-300"
+              className="bg-emerald-400 text-slate-950 shadow-lg shadow-emerald-950/30 hover:bg-emerald-300 active:bg-emerald-500"
             >
-              مصرف کردم
+              ✅ مصرف کردم
             </ActionButton>
             <ActionButton
               onClick={onSnooze}
-              className="bg-amber-400 text-slate-950 shadow-lg shadow-amber-950/30 hover:bg-amber-300"
+              className="bg-amber-400 text-slate-950 shadow-lg shadow-amber-950/30 hover:bg-amber-300 active:bg-amber-500"
             >
-              ۱۰ دقیقه بعد
+              ⏰ ۱۰ دقیقه بعد
             </ActionButton>
           </div>
         ) : (
@@ -194,24 +210,24 @@ export function MedicationCard({
             <ActionButton
               onClick={onToggle}
               className={cn(
-                'col-span-1',
+                'col-span-1 shadow-md',
                 running
-                  ? 'bg-orange-400 text-slate-950 hover:bg-orange-300'
-                  : 'bg-emerald-400 text-slate-950 hover:bg-emerald-300'
+                  ? 'bg-orange-400 text-slate-950 hover:bg-orange-300 active:bg-orange-500 shadow-orange-950/20'
+                  : 'bg-emerald-400 text-slate-950 hover:bg-emerald-300 active:bg-emerald-500 shadow-emerald-950/20'
               )}
             >
               {running ? 'توقف' : 'شروع'}
             </ActionButton>
             <ActionButton
               onClick={onReset}
-              className="bg-white/10 text-slate-100 ring-1 ring-white/10 hover:bg-white/15"
+              className="bg-white/10 text-slate-100 ring-1 ring-white/10 hover:bg-white/15 active:bg-white/20"
               ariaLabel="ریست تایمر"
             >
               ریست
             </ActionButton>
             <ActionButton
               onClick={onDelete}
-              className="bg-rose-500/90 text-white hover:bg-rose-400"
+              className="bg-rose-500/90 text-white hover:bg-rose-400 active:bg-rose-600 shadow-rose-950/20"
               ariaLabel={`حذف ${name}`}
             >
               حذف
@@ -235,7 +251,7 @@ function MetaChip({
   return (
     <span
       className={cn(
-        'flex min-w-0 flex-col items-center rounded-2xl border px-2 py-2.5',
+        'flex min-w-0 flex-col items-center rounded-2xl border px-2 py-2.5 transition-colors',
         tone === 'danger' && 'border-rose-400/30 bg-rose-500/10 text-rose-100',
         tone === 'warn' && 'border-amber-400/30 bg-amber-500/10 text-amber-100',
         tone === 'default' && 'border-white/10 bg-white/5 text-slate-200'
@@ -262,7 +278,7 @@ function IconButton({
     <button
       type="button"
       onClick={onClick}
-              className="rounded-xl border border-white/10 bg-white/5 px-2.5 py-2 text-sm text-slate-200 transition hover:bg-white/10"
+      className="tap-target rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-slate-200 transition hover:bg-white/10 active:scale-95 active:bg-white/15 touch-manipulation"
       aria-label={label}
       title={title}
     >
@@ -288,8 +304,9 @@ function ActionButton({
       onClick={onClick}
       aria-label={ariaLabel}
       className={cn(
-        'rounded-2xl py-3.5 text-sm font-bold transition active:scale-[0.98]',
+        'tap-target rounded-2xl py-3.5 text-[14px] font-bold transition-all active:scale-[0.97]',
         'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-400',
+        'touch-manipulation select-none',
         className
       )}
     >

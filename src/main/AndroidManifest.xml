@@ -1,22 +1,36 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <!-- نمایش اعلان‌ها (اندروید ۱۳+) -->
+    <!-- ===================== Final Release Permissions ===================== -->
+    <!-- نمایش اعلان‌ها (اندروید ۱۳+) — ضروری برای یادآوری دقیق -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
-    <!-- ویبره -->
+    <!-- ویبره برای هشدار قوی -->
     <uses-permission android:name="android.permission.VIBRATE" />
 
-    <!-- زمان‌بندی دقیق آلارم (بدون USE_EXACT_ALARM) -->
+    <!-- زمان‌بندی دقیق آلارم — برای دقت ثانیه‌ای حتی در Doze -->
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <!-- برای اندروید ۱۲+، آلارم دقیق با اجازه کاربر -->
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
 
-    <!-- دریافت رویداد راه‌اندازی مجدد -->
+    <!-- دریافت رویداد راه‌اندازی مجدد — بازگردانی آلارم‌ها پس از ریبوت -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <!-- جلوگیری از خواب CPU هنگام اجرای آلارم -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
 
-    <!-- اگر از سرویس پیش‌زمینه استفاده می‌کنید، این مجوز را اضافه کنید -->
-    <!-- <uses-permission android:name="android.permission.FOREGROUND_SERVICE" /> -->
+    <!-- سرویس پیش‌زمینه برای اعلان‌های پایدار (در صورت نیاز) -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
 
-    <!-- برای درخواست معافیت از بهینه‌سازی باتری (اختیاری) -->
-    <!-- <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" /> -->
+    <!-- برای درخواست معافیت از بهینه‌سازی باتری — دقت در پس‌زمینه -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+
+    <!-- دسترسی به حالت Doze برای آلارم دقیق -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+
+    <!-- اینترنت برای لینک پشتیبانی واتساپ (اختیاری) -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <!-- برای نمایش اعلان تمام صفحه در زمان قفل (اختیاری، برای هشدار فوری) -->
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
 </manifest>
