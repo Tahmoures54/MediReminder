@@ -32,7 +32,7 @@ jobs:
           cache: npm
 
       - name: Setup Java
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '21'
@@ -58,6 +58,11 @@ jobs:
             npx cap add android
           fi
           npx cap sync android
+
+      - name: Setup Gradle with cache
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-provider: basic
 
       - name: Install notification sound resource
         run: |
@@ -129,9 +134,7 @@ jobs:
           for perm in perms:
               line = f'    <uses-permission android:name="{perm}" />'
               if perm not in s:
-                  # Insert before <application
                   s = s.replace('<application', line + '\n    <application', 1)
-          # Ensure hardware acceleration and largeHeap for smooth UI on low-end devices
           if 'android:hardwareAccelerated="true"' not in s:
               s = s.replace('<application', '<application android:hardwareAccelerated="true"', 1)
           p.write_text(s)
@@ -142,7 +145,6 @@ jobs:
       - name: Optimize Android build for release
         run: |
           set -euo pipefail
-          # Ensure minification and shrinking enabled for release
           GRADLE_FILE="android/app/build.gradle"
           if grep -q "minifyEnabled false" "$GRADLE_FILE"; then
             sed -i 's/minifyEnabled false/minifyEnabled true/' "$GRADLE_FILE"
@@ -230,11 +232,35 @@ jobs:
 
       - name: Build signed AAB — Final Release
         working-directory: android
-        run: ./gradlew bundleRelease --no-daemon
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3; do
+            echo "AAB build attempt $attempt/3"
+            if ./gradlew bundleRelease --no-daemon; then
+              exit 0
+            fi
+            if [ "$attempt" -lt 3 ]; then
+              echo "Gradle build failed; waiting before retry..."
+              sleep $((attempt * 10))
+            fi
+          done
+          exit 1
 
       - name: Build signed APK — Final Release
         working-directory: android
-        run: ./gradlew assembleRelease --no-daemon
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3; do
+            echo "APK build attempt $attempt/3"
+            if ./gradlew assembleRelease --no-daemon; then
+              exit 0
+            fi
+            if [ "$attempt" -lt 3 ]; then
+              echo "Gradle build failed; waiting before retry..."
+              sleep $((attempt * 10))
+            fi
+          done
+          exit 1
 
       - name: Cleanup sensitive files
         if: always()
