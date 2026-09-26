@@ -91,6 +91,9 @@ export default function App() {
   const nagTimer = useRef<number | null>(null);
   const tickLock = useRef(false);
   const deletedIdsRef = useRef(new Set<number>());
+  // Prevent the timer loop, resume handler, and native notification callback
+  // from transitioning the same scheduled dose to "pending" more than once.
+  const dueTransitionRef = useRef(new Set<string>());
   const debouncedSync = useRef(createDebouncedSync(400));
   const resumeSyncTimeout = useRef<number | null>(null);
 
@@ -109,6 +112,19 @@ export default function App() {
 
   const latestMed = useCallback((m: Medication) => {
     return findMedication(medsRef.current, m.id) ?? m;
+  }, []);
+
+  const claimDueTransition = useCallback((m: Medication) => {
+    const id = toMedId(m.id);
+    if (id == null) return false;
+    const cycle = `${id}:${m.nextDoseAt ?? 'none'}`;
+    if (dueTransitionRef.current.has(cycle)) return false;
+    dueTransitionRef.current.add(cycle);
+    if (dueTransitionRef.current.size > 500) {
+      const first = dueTransitionRef.current.values().next().value;
+      if (first) dueTransitionRef.current.delete(first);
+    }
+    return true;
   }, []);
 
   const exportBackup = useCallback(async () => {
@@ -251,7 +267,7 @@ export default function App() {
         // Also trigger immediate tick check for overdue doses
         const now = Date.now();
         for (const m of current) {
-          if (m.running && m.nextDoseAt && m.nextDoseAt <= now && !m.pendingDose) {
+          if (m.running && m.nextDoseAt && m.nextDoseAt <= now && !m.pendingDose && claimDueTransition(m)) {
             const due = toDue(normalize(m), now);
             setMedications((prev) => prev.map((x) => (x.id === m.id ? due : x)));
             persist(due).catch(() => {});
@@ -380,7 +396,7 @@ export default function App() {
           const id = toMedId(m.id);
           if (id == null || deletedIdsRef.current.has(id)) continue;
           const n = normalize(m);
-          if (n.running && n.nextDoseAt && n.nextDoseAt <= now) {
+          if (n.running && n.nextDoseAt && n.nextDoseAt <= now && claimDueTransition(n)) {
             const due = toDue(n, now);
             updates.set(id, due);
             dueToPersist.push(due);
@@ -409,7 +425,7 @@ export default function App() {
       void tick();
     }, 1000);
     return () => window.clearInterval(id);
-  }, [openAlert, persist]);
+  }, [claimDueTransition, openAlert, persist]);
 
   useEffect(() => {
     if (!bootDone) return;
@@ -448,7 +464,7 @@ export default function App() {
       const id = Number(n.extra?.medicationId);
       const m = findMedication(medsRef.current, id);
       if (m) {
-        if (!m.pendingDose) {
+        if (!m.pendingDose && claimDueTransition(m)) {
           const due = toDue(m);
           setMedications((v) => sortMedications(v.map((x) => (x.id === m.id ? due : x))));
           persist(due).catch(() => {});
