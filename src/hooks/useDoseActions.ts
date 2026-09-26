@@ -25,8 +25,31 @@ export function useDoseActions({
   alertIdRef,
   setAlert,
 }: DoseActionsOptions) {
+  // Native notification delivery can produce duplicate callbacks (for example,
+  // the notification event and an action callback can arrive very close together).
+  // Guard each dose-cycle so one physical dose cannot be recorded twice.
+  const completedDoseActionsRef = useRef(new Set<string>());
+
+  const doseActionKey = (m: Medication) =>
+    `${m.id ?? 'new'}:${m.dueScheduledAt ?? m.nextDoseAt ?? 'none'}`;
+
+  const rememberDoseAction = (key: string) => {
+    const set = completedDoseActionsRef.current;
+    if (set.has(key)) return false;
+    set.add(key);
+    // Keep the guard bounded for long-running installations.
+    if (set.size > 200) {
+      const first = set.values().next().value;
+      if (first) set.delete(first);
+    }
+    return true;
+  };
+
   const takeDose = useCallback(
     async (m: Medication) => {
+      const actionKey = doseActionKey(m);
+      if (!rememberDoseAction(actionKey)) return;
+
       const now = Date.now();
       const scheduledAt = m.dueScheduledAt ?? m.nextDoseAt;
       const record: HistoryRecord = {
@@ -65,6 +88,9 @@ export function useDoseActions({
 
   const snooze = useCallback(
     async (m: Medication, minutes = 10) => {
+      const actionKey = doseActionKey(m);
+      if (!rememberDoseAction(actionKey)) return;
+
       const now = Date.now();
       const secs = Math.max(1, Math.round(minutes * 60));
       const updated: Medication = {
