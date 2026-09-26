@@ -9,11 +9,15 @@ import { NOTIFICATION_CHANNEL_ID } from './permissions';
 
 const ACTION_TYPE_ID = 'MED_ALARM_ACTIONS';
 
-/** Re-notify every 2 minutes while dose is pending (native). */
-export const NATIVE_FOLLOW_UP_MS = 2 * 60 * 1000;
-/** ~6 hours of pre-scheduled nags; app resync on foreground extends further. */
-export const NATIVE_FOLLOW_UP_SLOTS = 180;
-/** Pre-scheduled follow-ups after a future dose, covering roughly six hours. */
+/**
+ * Native follow-up cadence is deliberately aligned with Android Doze limits.
+ * Capacitor documents that allowWhileIdle notifications can fire at most
+ * once per 9 minutes per app while the device is in Doze.
+ */
+export const NATIVE_FOLLOW_UP_MS = 9 * 60 * 1000;
+/** 40 slots cover 6 hours of reminders without flooding AlarmManager. */
+export const NATIVE_FOLLOW_UP_SLOTS = 40;
+/** Keep the same six-hour coverage for a future dose. */
 export const NATIVE_SCHEDULE_EXTRA_SLOTS = NATIVE_FOLLOW_UP_SLOTS;
 /** حداکثر تعداد اعلان‌های زمان‌بندی‌شده در هر دسته برای جلوگیری از مشکلات OEM */
 const SCHEDULE_CHUNK_SIZE = 64;
@@ -61,8 +65,8 @@ export async function registerNotificationActions(): Promise<void> {
 }
 
 function notifIdsFor(medId: number): number[] {
-  // Use stable range per medication to avoid collisions
-  // medId * 1000 + 100 gives room for 900 ids per med, we need ~364
+  // Use a stable range per medication to avoid collisions.
+  // 1000 IDs are reserved per medication; only 44 are currently needed.
   const base = Math.max(1, medId) * 1000 + 100;
   const count = Math.max(NATIVE_FOLLOW_UP_SLOTS, NATIVE_SCHEDULE_EXTRA_SLOTS) + 4;
   return Array.from({ length: count }, (_, i) => base + i);
@@ -147,7 +151,8 @@ function syncWeb(medications: Medication[]): void {
 async function syncNative(medications: Medication[]): Promise<void> {
   const now = Date.now();
 
-  // لغو همه اعلان‌های قبلی برای همه داروها — با chunk
+  // لغو همه اعلان‌های قبلی برای همه داروها — با chunk.
+  // Keeping the pending set small is important for reliability on Android/OEMs.
   try {
     const allIds = medications
       .filter((m) => m.id != null)
