@@ -649,7 +649,7 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen min-h-[100dvh] bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 text-white antialiased selection:bg-cyan-500/30">
+    <div className="h-[100dvh] max-h-[100dvh] overflow-y-auto overscroll-contain touch-pan-y bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 text-white antialiased selection:bg-cyan-500/30">
       {/* Safe area top spacer for native */}
       <div className="h-[var(--sat)] w-full bg-slate-950 lg:hidden" aria-hidden />
 
