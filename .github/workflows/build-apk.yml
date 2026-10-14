@@ -276,9 +276,21 @@ jobs:
           ls -lh dist-artifacts dist-artifacts/signing-key 2>/dev/null || true
           echo "Final release artifacts ready: v$VERSION"
 
-      - name: Upload artifacts — Final Release
+      - name: Upload installable release artifacts — Final Release
         uses: actions/upload-artifact@v4
         with:
           name: MediReminder-Final-${{ steps.version.outputs.version }}
-          path: dist-artifacts/
+          path: |
+            dist-artifacts/MediReminder-${{ steps.version.outputs.version }}-final.aab
+            dist-artifacts/MediReminder-${{ steps.version.outputs.version }}-final.apk
+          if-no-files-found: error
           retention-days: 30
+
+      - name: Upload generated signing key separately
+        if: ${{ steps.signing.outputs.generated == 'true' && github.event_name != 'pull_request' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: MediReminder-Signing-Key-${{ steps.version.outputs.version }}
+          path: dist-artifacts/signing-key/
+          if-no-files-found: error
+          retention-days: 90
