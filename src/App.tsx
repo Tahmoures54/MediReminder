@@ -28,6 +28,7 @@ import {
   dismissSwFollowUps,
   createDebouncedSync,
   syncAllAlarms,
+  NATIVE_PENDING_REFRESH_MS,
 } from './utils/alarms';
 import { findMedication, normalize, patchMedications, sortMedications, toDue } from './utils/medication';
 import { toMedId } from './utils/ids';
@@ -354,6 +355,23 @@ export default function App() {
     if (!bootDone) return;
     debouncedSync.current.schedule(medications);
   }, [medications, bootDone]);
+
+  // Native Android notifications are queued in a bounded ~5.4h window to
+  // avoid flooding AlarmManager/OEM limits. Refill that queue every 4h while
+  // the app process is alive; resume/visibility handlers also resync on return.
+  // Android may suspend JS timers in the background, so this is a mitigation,
+  // not a promise of unlimited alerts after force-stop or reboot.
+  useEffect(() => {
+    if (!bootDone || !isNative) return;
+    const refreshPendingDoseAlarms = () => {
+      const current = medsRef.current;
+      if (current.some((m) => m.pendingDose)) {
+        void syncAllAlarms(current);
+      }
+    };
+    const timer = window.setInterval(refreshPendingDoseAlarms, NATIVE_PENDING_REFRESH_MS);
+    return () => window.clearInterval(timer);
+  }, [bootDone, isNative]);
 
   useEffect(() => {
     if (!bootDone) return;
