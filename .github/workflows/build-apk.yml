@@ -158,7 +158,7 @@ jobs:
         id: version
         run: echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
 
-      - name: Prepare release signing
+      - name: Prepare persistent release signing
         id: signing
         env:
           KS: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
@@ -167,51 +167,20 @@ jobs:
           KP: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           set -euo pipefail
-          mkdir -p android dist-artifacts/signing-key
-          if [ -n "${KS:-}" ] && [ -n "${KSP:-}" ] && [ -n "${ALIAS:-}" ] && [ -n "${KP:-}" ]; then
-            echo "$KS" | base64 --decode > android/release.keystore
-            {
-              echo "storeFile=release.keystore"
-              echo "storePassword=$KSP"
-              echo "keyAlias=$ALIAS"
-              echo "keyPassword=$KP"
-            } > android/keystore.properties
-            echo "generated=false" >> "$GITHUB_OUTPUT"
-            echo "Using repository upload-keystore secrets."
-          else
-            STORE_PASS="$(openssl rand -base64 24 | tr -d '/+=' | head -c 24)"
-            KEY_PASS="$(openssl rand -base64 24 | tr -d '/+=' | head -c 24)"
-            ALIAS_NAME=medireminder
-            keytool -genkeypair -noprompt \
-              -keystore android/release.keystore \
-              -storetype JKS \
-              -alias "$ALIAS_NAME" \
-              -keyalg RSA -keysize 2048 -validity 10000 \
-              -storepass "$STORE_PASS" \
-              -keypass "$KEY_PASS" \
-              -dname "CN=MediReminder, OU=Release, O=MediReminder, L=Tehran, C=IR"
-            {
-              echo "storeFile=release.keystore"
-              echo "storePassword=$STORE_PASS"
-              echo "keyAlias=$ALIAS_NAME"
-              echo "keyPassword=$KEY_PASS"
-            } > android/keystore.properties
-            cp android/release.keystore dist-artifacts/signing-key/medireminder-release.jks
-            {
-              echo "این فایل را برای همیشه نگه دارید. بدون همین کلید نمی‌توانید آپدیت در گوگل‌پلی / بازار / مایکت منتشر کنید."
-              echo
-              echo "alias=$ALIAS_NAME"
-              echo "storePassword=$STORE_PASS"
-              echo "keyPassword=$KEY_PASS"
-              echo "storeFile=medireminder-release.jks"
-              echo "validityDays=10000"
-              echo "keyalg=RSA"
-              echo "keysize=2048"
-            } > dist-artifacts/signing-key/credentials.txt
-            echo "generated=true" >> "$GITHUB_OUTPUT"
-            echo "Generated a new upload keystore. Download signing-key from the workflow artifacts and keep it forever."
+          if [ -z "${KS:-}" ] || [ -z "${KSP:-}" ] || [ -z "${ALIAS:-}" ] || [ -z "${KP:-}" ]; then
+            echo "::error::Persistent signing secrets are missing. Download the existing signing-key artifact, keep a secure backup, and configure ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS, and ANDROID_KEY_PASSWORD in repository Actions secrets before building a release."
+            exit 1
           fi
-
+          mkdir -p android
+          echo "$KS" | base64 --decode > android/release.keystore
+          {
+            echo "storeFile=release.keystore"
+            echo "storePassword=$KSP"
+            echo "keyAlias=$ALIAS"
+            echo "keyPassword=$KP"
+          } > android/keystore.properties
+          echo "generated=false" >> "$GITHUB_OUTPUT"
+          echo "Using the persistent repository release key."
       - name: Configure signing in build.gradle
         run: python3 scripts/add_signing.py
 
@@ -286,11 +255,3 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-      - name: Upload generated signing key separately
-        if: ${{ steps.signing.outputs.generated == 'true' && github.event_name != 'pull_request' }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: MediReminder-Signing-Key-${{ steps.version.outputs.version }}
-          path: dist-artifacts/signing-key/
-          if-no-files-found: error
-          retention-days: 90
