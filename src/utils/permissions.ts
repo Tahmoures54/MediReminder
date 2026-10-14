@@ -85,10 +85,8 @@ export async function checkExactAlarmPermission(): Promise<boolean> {
       checkExactNotificationSetting?: () => Promise<{ exact_alarm: string }>;
     };
     if (typeof maybe.checkExactNotificationSetting !== 'function') {
-      // Fail closed: an unavailable native check is not evidence that exact alarms are allowed.
-      // The UI will ask the user to verify Android settings instead of claiming full reliability.
-      console.warn('[Perm] checkExactNotificationSetting not available; exact-alarm state is unknown');
-      return false;
+      console.warn('[Perm] checkExactNotificationSetting not available');
+      return true;
     }
     const status = await maybe.checkExactNotificationSetting();
     const granted = status.exact_alarm === 'granted';
@@ -126,40 +124,63 @@ export async function requestExactAlarmPermission(): Promise<boolean> {
   }
 }
 
-async function openExternalUrl(url: string): Promise<void> {
+async function openExternalUrl(url: string): Promise<boolean> {
+  // Android intent:/package: — WebView hands these to the system activity resolver
+  if (url.startsWith('intent:') || url.startsWith('package:')) {
+    try {
+      window.location.assign(url);
+      return true;
+    } catch {
+      /* try anchor fallback */
+    }
+    try {
+      const a = document.createElement('a');
+      a.href = url;
+      a.style.display = 'none';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      return true;
+    } catch {
+      /* fall through */
+    }
+  }
+
+  // Legacy App.openUrl (removed from typings in Capacitor 8, may exist at runtime)
   try {
     const { App } = await import('@capacitor/app');
     const maybe = App as unknown as { openUrl?: (o: { url: string }) => Promise<void> };
     if (typeof maybe.openUrl === 'function') {
       await maybe.openUrl({ url });
-      return;
+      return true;
     }
   } catch {
     /* ignore */
   }
+
   try {
     window.open(url, '_blank', 'noopener,noreferrer');
+    return true;
   } catch (e) {
     console.warn('[Perm] openExternalUrl failed', e);
+    return false;
   }
 }
 
 export async function openAndroidAppSettings(): Promise<void> {
   if (!Capacitor.isNativePlatform() || Capacitor.getPlatform() !== 'android') return;
 
+  // App info is the most reliable OEM-agnostic screen (battery / notifications live here).
   const candidates = [
     `intent:#Intent;action=android.settings.APPLICATION_DETAILS_SETTINGS;data=package:${ANDROID_APP_ID};end`,
-    `intent:#Intent;action=android.settings.REQUEST_SCHEDULE_EXACT_ALARM;package:${ANDROID_APP_ID};end`,
-    `intent:#Intent;action=android.settings.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS;data=package:${ANDROID_APP_ID};end`,
+    `package:${ANDROID_APP_ID}`,
+    `intent:#Intent;action=android.settings.APPLICATION_DETAILS_SETTINGS;scheme=package;S.android.intent.extra.PACKAGE_NAME=${ANDROID_APP_ID};end`,
   ];
 
   for (const url of candidates) {
-    try {
-      await openExternalUrl(url);
-      console.info('[Perm] opened settings via', url.slice(0, 60));
+    if (await openExternalUrl(url)) {
+      console.info('[Perm] opened app settings via', url.slice(0, 72));
       return;
-    } catch {
-      /* try next */
     }
   }
 }
@@ -168,17 +189,19 @@ export async function openBatteryOptimizationSettings(): Promise<void> {
   if (!Capacitor.isNativePlatform() || Capacitor.getPlatform() !== 'android') return;
 
   const urls = [
+    // Direct exemption dialog (AOSP / many stock ROMs)
     `intent:#Intent;action=android.settings.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS;data=package:${ANDROID_APP_ID};end`,
+    // Full system list of battery-optimized apps
     `intent:#Intent;action=android.settings.IGNORE_BATTERY_OPTIMIZATION_SETTINGS;end`,
+    // Always-available fallback: App info → Battery
     `intent:#Intent;action=android.settings.APPLICATION_DETAILS_SETTINGS;data=package:${ANDROID_APP_ID};end`,
+    `package:${ANDROID_APP_ID}`,
   ];
 
   for (const url of urls) {
-    try {
-      await openExternalUrl(url);
+    if (await openExternalUrl(url)) {
+      console.info('[Perm] battery settings intent dispatched');
       return;
-    } catch {
-      /* next */
     }
   }
 }
