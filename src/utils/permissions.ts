@@ -85,8 +85,10 @@ export async function checkExactAlarmPermission(): Promise<boolean> {
       checkExactNotificationSetting?: () => Promise<{ exact_alarm: string }>;
     };
     if (typeof maybe.checkExactNotificationSetting !== 'function') {
-      console.warn('[Perm] checkExactNotificationSetting not available');
-      return true;
+      // Fail closed: an unavailable native check is not evidence that exact alarms are allowed.
+      // The UI will ask the user to verify Android settings instead of claiming full reliability.
+      console.warn('[Perm] checkExactNotificationSetting not available; exact-alarm state is unknown');
+      return false;
     }
     const status = await maybe.checkExactNotificationSetting();
     const granted = status.exact_alarm === 'granted';
