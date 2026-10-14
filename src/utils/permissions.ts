@@ -123,28 +123,41 @@ export async function requestExactAlarmPermission(): Promise<boolean> {
   }
 }
 
+async function openExternalUrl(url: string): Promise<void> {
+  try {
+    const { App } = await import('@capacitor/app');
+    const maybe = App as unknown as { openUrl?: (o: { url: string }) => Promise<void> };
+    if (typeof maybe.openUrl === 'function') {
+      await maybe.openUrl({ url });
+      return;
+    }
+  } catch {
+    /* ignore */
+  }
+  try {
+    window.open(url, '_blank', 'noopener,noreferrer');
+  } catch (e) {
+    console.warn('[Perm] openExternalUrl failed', e);
+  }
+}
+
 export async function openAndroidAppSettings(): Promise<void> {
   if (!Capacitor.isNativePlatform() || Capacitor.getPlatform() !== 'android') return;
 
   const candidates = [
     `intent:#Intent;action=android.settings.APPLICATION_DETAILS_SETTINGS;data=package:${ANDROID_APP_ID};end`,
-    `intent:#Intent;action=android.settings.REQUEST_SCHEDULE_EXACT_ALARM;package=${ANDROID_APP_ID};end`,
+    `intent:#Intent;action=android.settings.REQUEST_SCHEDULE_EXACT_ALARM;package:${ANDROID_APP_ID};end`,
     `intent:#Intent;action=android.settings.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS;data=package:${ANDROID_APP_ID};end`,
   ];
 
-  try {
-    const { App } = await import('@capacitor/app');
-    for (const url of candidates) {
-      try {
-        await App.openUrl({ url });
-        console.info('[Perm] opened settings via', url.slice(0, 60));
-        return;
-      } catch {
-        /* try next */
-      }
+  for (const url of candidates) {
+    try {
+      await openExternalUrl(url);
+      console.info('[Perm] opened settings via', url.slice(0, 60));
+      return;
+    } catch {
+      /* try next */
     }
-  } catch (e) {
-    console.warn('[Perm] openAndroidAppSettings failed', e);
   }
 }
 
@@ -157,18 +170,13 @@ export async function openBatteryOptimizationSettings(): Promise<void> {
     `intent:#Intent;action=android.settings.APPLICATION_DETAILS_SETTINGS;data=package:${ANDROID_APP_ID};end`,
   ];
 
-  try {
-    const { App } = await import('@capacitor/app');
-    for (const url of urls) {
-      try {
-        await App.openUrl({ url });
-        return;
-      } catch {
-        /* next */
-      }
+  for (const url of urls) {
+    try {
+      await openExternalUrl(url);
+      return;
+    } catch {
+      /* next */
     }
-  } catch (e) {
-    console.warn('[Perm] openBatteryOptimizationSettings failed', e);
   }
 }
 
