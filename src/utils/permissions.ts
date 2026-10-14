@@ -1,8 +1,9 @@
-// src/utils/permissions.ts — Final release: robust mobile permission handling
+// src/utils/permissions.ts — Robust mobile permission + reliability helpers
 import { Capacitor } from '@capacitor/core';
 import { LocalNotifications } from '@capacitor/local-notifications';
 
 export const NOTIFICATION_CHANNEL_ID = 'medication-alarms';
+export const ANDROID_APP_ID = 'com.tahmoures.medireminder';
 
 export type AppNotificationPermission =
   | 'granted'
@@ -23,10 +24,6 @@ function normalizePermission(value: string | undefined): AppNotificationPermissi
   }
 }
 
-/**
- * بررسی وضعیت فعلی مجوز اعلان — بدون درخواست
- * Safe to call on boot, no prompt triggered
- */
 export async function checkNotificationPermission(): Promise<AppNotificationPermission> {
   if (Capacitor.isNativePlatform()) {
     try {
@@ -42,7 +39,6 @@ export async function checkNotificationPermission(): Promise<AppNotificationPerm
     return 'unavailable';
   }
 
-  // Web: Notification.permission is sync
   if (Notification.permission === 'default') {
     return 'prompt';
   }
@@ -50,10 +46,6 @@ export async function checkNotificationPermission(): Promise<AppNotificationPerm
   return Notification.permission as AppNotificationPermission;
 }
 
-/**
- * درخواست مجوز اعلان — باید با user gesture فراخوانی شود در موبایل
- * @returns وضعیت نهایی مجوز پس از درخواست
- */
 export async function requestNotificationPermission(): Promise<AppNotificationPermission> {
   if (Capacitor.isNativePlatform()) {
     try {
@@ -88,13 +80,12 @@ export async function checkExactAlarmPermission(): Promise<boolean> {
   if (!Capacitor.isNativePlatform() || Capacitor.getPlatform() !== 'android') return true;
 
   try {
-    // Plugin method may not exist on older versions — guard
     const maybe = LocalNotifications as unknown as {
       checkExactNotificationSetting?: () => Promise<{ exact_alarm: string }>;
     };
     if (typeof maybe.checkExactNotificationSetting !== 'function') {
       console.warn('[Perm] checkExactNotificationSetting not available');
-      return true; // assume granted if API missing (older Android)
+      return true;
     }
     const status = await maybe.checkExactNotificationSetting();
     const granted = status.exact_alarm === 'granted';
@@ -102,7 +93,6 @@ export async function checkExactAlarmPermission(): Promise<boolean> {
     return granted;
   } catch (error) {
     console.warn('[Perm] exact alarm check error:', error);
-    // On error, assume not granted to show banner, but don't block
     return false;
   }
 }
@@ -118,13 +108,12 @@ export async function requestExactAlarmPermission(): Promise<boolean> {
     };
     if (typeof maybe.changeExactNotificationSetting !== 'function') {
       console.warn('[Perm] changeExactNotificationSetting not available');
+      await openAndroidAppSettings();
       return false;
     }
 
     await maybe.changeExactNotificationSetting();
-    // Re-check after user returns from settings
-    // Small delay to allow system to update
-    await new Promise((r) => setTimeout(r, 500));
+    await new Promise((r) => setTimeout(r, 600));
     const granted = await checkExactAlarmPermission();
     console.info('[Perm] exact alarm after request:', granted);
     return granted;
@@ -134,21 +123,65 @@ export async function requestExactAlarmPermission(): Promise<boolean> {
   }
 }
 
-/**
- * ساخت کانال اعلان اندروید با صدا و ویبره قوی
- * Must be called after permission granted, but safe to call anytime on Android
- */
+export async function openAndroidAppSettings(): Promise<void> {
+  if (!Capacitor.isNativePlatform() || Capacitor.getPlatform() !== 'android') return;
+
+  const candidates = [
+    `intent:#Intent;action=android.settings.APPLICATION_DETAILS_SETTINGS;data=package:${ANDROID_APP_ID};end`,
+    `intent:#Intent;action=android.settings.REQUEST_SCHEDULE_EXACT_ALARM;package=${ANDROID_APP_ID};end`,
+    `intent:#Intent;action=android.settings.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS;data=package:${ANDROID_APP_ID};end`,
+  ];
+
+  try {
+    const { App } = await import('@capacitor/app');
+    for (const url of candidates) {
+      try {
+        await App.openUrl({ url });
+        console.info('[Perm] opened settings via', url.slice(0, 60));
+        return;
+      } catch {
+        /* try next */
+      }
+    }
+  } catch (e) {
+    console.warn('[Perm] openAndroidAppSettings failed', e);
+  }
+}
+
+export async function openBatteryOptimizationSettings(): Promise<void> {
+  if (!Capacitor.isNativePlatform() || Capacitor.getPlatform() !== 'android') return;
+
+  const urls = [
+    `intent:#Intent;action=android.settings.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS;data=package:${ANDROID_APP_ID};end`,
+    `intent:#Intent;action=android.settings.IGNORE_BATTERY_OPTIMIZATION_SETTINGS;end`,
+    `intent:#Intent;action=android.settings.APPLICATION_DETAILS_SETTINGS;data=package:${ANDROID_APP_ID};end`,
+  ];
+
+  try {
+    const { App } = await import('@capacitor/app');
+    for (const url of urls) {
+      try {
+        await App.openUrl({ url });
+        return;
+      } catch {
+        /* next */
+      }
+    }
+  } catch (e) {
+    console.warn('[Perm] openBatteryOptimizationSettings failed', e);
+  }
+}
+
 export async function setupAndroidChannel(): Promise<void> {
   if (!Capacitor.isNativePlatform() || Capacitor.getPlatform() !== 'android') return;
 
   try {
-    // Delete old channel if exists to update sound/vibration? Plugin handles upsert
     await LocalNotifications.createChannel({
       id: NOTIFICATION_CHANNEL_ID,
       name: 'هشدار مصرف دارو',
       description: 'یادآوری مکرر زمان مصرف دارو تا تأیید کاربر — با صدای بلند و ویبره',
-      importance: 5, // Max importance
-      visibility: 1, // Public
+      importance: 5,
+      visibility: 1,
       sound: 'medication_alarm.wav',
       vibration: true,
       lights: true,
@@ -160,16 +193,11 @@ export async function setupAndroidChannel(): Promise<void> {
   }
 }
 
-/**
- * راه‌اندازی مجوزها در بوت — فقط چک، بدون درخواست خودکار
- * درخواست باید با کلیک کاربر انجام شود تا در iOS/Android WebView بلاک نشود
- */
 export async function initAllPermissions(): Promise<{ notification: boolean; checked: boolean }> {
   try {
     const permission = await checkNotificationPermission();
     console.info('[Perm] boot check:', permission);
 
-    // ساخت کانال برای اندروید در هر صورت (حتی اگر مجوز رد شده باشد، ممکن است بعداً اعطا شود)
     if (Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android') {
       await setupAndroidChannel();
     }
@@ -181,9 +209,6 @@ export async function initAllPermissions(): Promise<{ notification: boolean; che
   }
 }
 
-/**
- * درخواست کامل با UX مناسب موبایل — باید از handler کلیک فراخوانی شود
- */
 export async function requestAllPermissionsWithUX(): Promise<{
   notification: AppNotificationPermission;
   exactAlarm: boolean;

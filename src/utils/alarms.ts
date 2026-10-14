@@ -15,12 +15,14 @@ const ACTION_TYPE_ID = 'MED_ALARM_ACTIONS';
  * once per 9 minutes per app while the device is in Doze.
  */
 export const NATIVE_FOLLOW_UP_MS = 9 * 60 * 1000;
-/** 40 slots cover 6 hours of reminders without flooding AlarmManager. */
-export const NATIVE_FOLLOW_UP_SLOTS = 40;
-/** Keep the same six-hour coverage for a future dose. */
+/** 36 slots ≈ 5.4h of follow-ups — keeps AlarmManager under OEM caps (e.g. Samsung ~500). */
+export const NATIVE_FOLLOW_UP_SLOTS = 36;
+/** Keep the same coverage for a future dose. */
 export const NATIVE_SCHEDULE_EXTRA_SLOTS = NATIVE_FOLLOW_UP_SLOTS;
 /** حداکثر تعداد اعلان‌های زمان‌بندی‌شده در هر دسته برای جلوگیری از مشکلات OEM */
-const SCHEDULE_CHUNK_SIZE = 64;
+const SCHEDULE_CHUNK_SIZE = 48;
+/** پراکندگی زمانی بین داروهای مختلف تا با محدودیت 9دقیقه‌ای Doze برخورد نکنند */
+const MED_STAGGER_MS = 20_000;
 
 // Prevent duplicate registration of action types
 let actionsRegistered = false;
@@ -66,7 +68,7 @@ export async function registerNotificationActions(): Promise<void> {
 
 function notifIdsFor(medId: number): number[] {
   // Use a stable range per medication to avoid collisions.
-  // 1000 IDs are reserved per medication; only 44 are currently needed.
+  // 1000 IDs are reserved per medication; only ~40 are currently needed.
   const base = Math.max(1, medId) * 1000 + 100;
   const count = Math.max(NATIVE_FOLLOW_UP_SLOTS, NATIVE_SCHEDULE_EXTRA_SLOTS) + 4;
   return Array.from({ length: count }, (_, i) => base + i);
@@ -79,7 +81,6 @@ export async function cancelMedNotifications(medId: number): Promise<void> {
   }
   try {
     const ids = notifIdsFor(medId).map((id) => ({ id }));
-    // لغو در قطعات کوچک‌تر برای جلوگیری از timeout در دستگاه‌های ضعیف
     for (let i = 0; i < ids.length; i += SCHEDULE_CHUNK_SIZE) {
       const chunk = ids.slice(i, i + SCHEDULE_CHUNK_SIZE);
       await LocalNotifications.cancel({ notifications: chunk });
@@ -114,6 +115,7 @@ function postToSw(payload: SwOutgoingMessage): void {
 export async function syncAllAlarms(medications: Medication[]): Promise<void> {
   try {
     if (isNative()) {
+      await registerNotificationActions();
       await syncNative(medications);
     } else {
       syncWeb(medications);
@@ -123,21 +125,23 @@ export async function syncAllAlarms(medications: Medication[]): Promise<void> {
   }
 }
 
+/** آفست پایدار بر اساس id دارو تا آلارم‌های همزمان روی هم نیفتند */
+function medStagger(medId: number): number {
+  return (Math.max(1, medId) % 9) * MED_STAGGER_MS;
+}
+
 function syncWeb(medications: Medication[]): void {
   const now = Date.now();
   const alarms = medications
     .filter((m) => m.id != null)
     .flatMap((m) => {
       const id = m.id!;
-      // Pending: immediate trigger to start follow-ups
       if (m.pendingDose) {
         return [{ id, time: now - 1000, name: m.name, dosage: m.dosage }];
       }
-      // Running and due (overdue but not yet marked pending) — trigger now
       if (m.running && m.nextDoseAt && m.nextDoseAt <= now) {
         return [{ id, time: now - 1000, name: m.name, dosage: m.dosage }];
       }
-      // Future scheduled
       if (m.running && m.nextDoseAt && m.nextDoseAt > now) {
         return [{ id, time: m.nextDoseAt, name: m.name, dosage: m.dosage }];
       }
@@ -151,8 +155,6 @@ function syncWeb(medications: Medication[]): void {
 async function syncNative(medications: Medication[]): Promise<void> {
   const now = Date.now();
 
-  // لغو همه اعلان‌های قبلی برای همه داروها — با chunk.
-  // Keeping the pending set small is important for reliability on Android/OEMs.
   try {
     const allIds = medications
       .filter((m) => m.id != null)
@@ -187,15 +189,19 @@ async function syncNative(medications: Medication[]): Promise<void> {
   for (const m of medications) {
     if (m.id == null) continue;
     const ids = notifIdsFor(m.id);
+    const stagger = medStagger(m.id);
 
-    // وضعیت pending: دوز در انتظار تأیید — هشدار مکرر
     if (m.pendingDose) {
       for (let slot = 0; slot < NATIVE_FOLLOW_UP_SLOTS; slot++) {
+        const atMs =
+          slot === 0
+            ? now + 900 + stagger
+            : now + slot * NATIVE_FOLLOW_UP_MS + stagger + 800;
         toSchedule.push({
           id: ids[slot],
           title: slot === 0 ? '💊 زمان مصرف دارو' : '🔔 یادآوری مجدد — لطفاً تأیید کنید',
           body: `${m.name} — ${m.dosage}\n${slot === 0 ? 'الان مصرف کنید و تأیید کنید.' : 'هنوز مصرف را تأیید نکرده‌اید.'}`,
-          schedule: { at: new Date(now + slot * NATIVE_FOLLOW_UP_MS + 800), allowWhileIdle: true },
+          schedule: { at: new Date(atMs), allowWhileIdle: true },
           channelId: NOTIFICATION_CHANNEL_ID,
           sound: 'medication_alarm.wav',
           smallIcon: 'ic_stat_icon_config_sample',
@@ -209,14 +215,15 @@ async function syncNative(medications: Medication[]): Promise<void> {
       continue;
     }
 
-    // اگر running و nextDoseAt در آینده باشد — زمان‌بندی + follow-ups
     if (m.running && m.nextDoseAt && m.nextDoseAt > now) {
       for (let slot = 0; slot < NATIVE_SCHEDULE_EXTRA_SLOTS; slot++) {
+        const atMs = m.nextDoseAt + slot * NATIVE_FOLLOW_UP_MS + (slot === 0 ? 0 : stagger);
+        if (atMs <= now + 500) continue;
         toSchedule.push({
           id: ids[slot],
           title: slot === 0 ? '💊 زمان مصرف دارو' : '🔔 یادآوری مجدد دارو',
           body: `${m.name} — ${m.dosage}${slot > 0 ? '\nلطفاً تأیید کنید.' : ''}`,
-          schedule: { at: new Date(m.nextDoseAt + slot * NATIVE_FOLLOW_UP_MS), allowWhileIdle: true },
+          schedule: { at: new Date(atMs), allowWhileIdle: true },
           channelId: NOTIFICATION_CHANNEL_ID,
           sound: 'medication_alarm.wav',
           smallIcon: 'ic_stat_icon_config_sample',
@@ -230,14 +237,17 @@ async function syncNative(medications: Medication[]): Promise<void> {
       continue;
     }
 
-    // اگر running و nextDoseAt در گذشته باشد → مثل pending، هشدار مکرر تا تأیید
     if (m.running && m.nextDoseAt && m.nextDoseAt <= now) {
       for (let slot = 0; slot < NATIVE_FOLLOW_UP_SLOTS; slot++) {
+        const atMs =
+          slot === 0
+            ? now + 900 + stagger
+            : now + slot * NATIVE_FOLLOW_UP_MS + stagger + 800;
         toSchedule.push({
           id: ids[slot],
           title: slot === 0 ? '💊 زمان مصرف دارو (معوق)' : '🔔 یادآوری مجدد — لطفاً تأیید کنید',
           body: `${m.name} — ${m.dosage}\nزمان مصرف گذشته، لطفاً تأیید کنید.`,
-          schedule: { at: new Date(now + slot * NATIVE_FOLLOW_UP_MS + 800), allowWhileIdle: true },
+          schedule: { at: new Date(atMs), allowWhileIdle: true },
           channelId: NOTIFICATION_CHANNEL_ID,
           sound: 'medication_alarm.wav',
           smallIcon: 'ic_stat_icon_config_sample',
@@ -251,16 +261,16 @@ async function syncNative(medications: Medication[]): Promise<void> {
     }
   }
 
+  toSchedule.sort((a, b) => a.schedule.at.getTime() - b.schedule.at.getTime());
+
   console.info('[Alarms] scheduling native', toSchedule.length, 'notifications');
 
-  // زمان‌بندی در قطعات برای جلوگیری از ANR در دستگاه‌های ضعیف
   for (let i = 0; i < toSchedule.length; i += SCHEDULE_CHUNK_SIZE) {
     const chunk = toSchedule.slice(i, i + SCHEDULE_CHUNK_SIZE);
     try {
       await LocalNotifications.schedule({ notifications: chunk });
     } catch (e) {
       console.warn('[Alarms] native schedule chunk failed', i, e);
-      // Continue with next chunk even if one fails
     }
   }
 }
@@ -283,7 +293,7 @@ export function createDebouncedSync(delayMs = 350) {
   let timer: ReturnType<typeof setTimeout> | null = null;
   let latest: Medication[] = [];
   let lastSync = 0;
-  const minInterval = 1000; // at least 1s between syncs to avoid spam
+  const minInterval = 1000;
 
   return {
     schedule(medications: Medication[]) {
@@ -293,7 +303,6 @@ export function createDebouncedSync(delayMs = 350) {
         timer = null;
         const now = Date.now();
         if (now - lastSync < minInterval) {
-          // Reschedule if too soon
           this.schedule(latest);
           return;
         }

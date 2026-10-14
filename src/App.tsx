@@ -17,6 +17,8 @@ import {
   checkExactAlarmPermission,
   requestExactAlarmPermission,
   setupAndroidChannel,
+  openAndroidAppSettings,
+  openBatteryOptimizationSettings,
 } from './utils/permissions';
 import { playAlarm, stopAlarm, triggerHaptics } from './utils/audio';
 import {
@@ -55,7 +57,6 @@ function openSupportWhatsApp() {
   window.open(SUPPORT_WHATSAPP_URL, '_blank', 'noopener,noreferrer');
 }
 
-// Try to dynamically import Capacitor App plugin if available (for final release)
 async function getCapacitorApp() {
   try {
     const mod = await import('@capacitor/app');
@@ -91,8 +92,6 @@ export default function App() {
   const nagTimer = useRef<number | null>(null);
   const tickLock = useRef(false);
   const deletedIdsRef = useRef(new Set<number>());
-  // Prevent the timer loop, resume handler, and native notification callback
-  // from transitioning the same scheduled dose to "pending" more than once.
   const dueTransitionRef = useRef(new Set<string>());
   const debouncedSync = useRef(createDebouncedSync(400));
   const resumeSyncTimeout = useRef<number | null>(null);
@@ -108,10 +107,6 @@ export default function App() {
   const load = useCallback(async () => {
     const all = sortMedications((await db.getAllMedications()).map(normalize));
     setMedications(all);
-  }, []);
-
-  const latestMed = useCallback((m: Medication) => {
-    return findMedication(medsRef.current, m.id) ?? m;
   }, []);
 
   const claimDueTransition = useCallback((m: Medication) => {
@@ -179,7 +174,6 @@ export default function App() {
       title: 'زمان مصرف دارو',
       message: `وقت مصرف ${m.name} (${m.dosage}) فرا رسیده است.\nلطفاً پس از مصرف، دکمه «مصرف کردم» را بزنید.`,
     });
-    // On mobile, audio may need gesture — but we try
     playAlarm().catch(() => {});
     triggerHaptics().catch(() => {});
   }, []);
@@ -217,14 +211,13 @@ export default function App() {
     return clearNagTimer;
   }, [medications, alert, openAlert, clearNagTimer]);
 
-  // Boot sequence — final release: check only, no auto-prompt
   useEffect(() => {
     let active = true;
 
     (async () => {
       try {
         const native = Capacitor.isNativePlatform();
-        const permCheck = await initAllPermissions(); // only checks + channel
+        const permCheck = await initAllPermissions();
         const status = permCheck.notification ? 'granted' : await checkNotificationPermission();
         const exactAlarm = await checkExactAlarmPermission();
         await registerNotificationActions();
@@ -251,7 +244,6 @@ export default function App() {
     };
   }, [load, bootAttempt]);
 
-  // Resume / visibility handling — critical for mobile accuracy
   useEffect(() => {
     const handleVisible = async () => {
       if (document.visibilityState !== 'visible') return;
@@ -264,7 +256,6 @@ export default function App() {
         if (current.some((m) => m.pendingDose || m.running)) {
           await syncAllAlarms(current);
         }
-        // Also trigger immediate tick check for overdue doses
         const now = Date.now();
         for (const m of current) {
           if (m.running && m.nextDoseAt && m.nextDoseAt <= now && !m.pendingDose && claimDueTransition(m)) {
@@ -281,7 +272,6 @@ export default function App() {
 
     document.addEventListener('visibilitychange', handleVisible);
 
-    // Capacitor App plugin listeners for true mobile resume
     let appListeners: Array<{ remove: () => Promise<void> }> = [];
     (async () => {
       const CapApp = await getCapacitorApp();
@@ -295,7 +285,6 @@ export default function App() {
         });
         const l2 = await CapApp.addListener('resume', async () => {
           console.info('[App] resume');
-          // Small delay for system to settle
           if (resumeSyncTimeout.current) clearTimeout(resumeSyncTimeout.current);
           resumeSyncTimeout.current = window.setTimeout(() => {
             void handleVisible();
@@ -303,7 +292,6 @@ export default function App() {
         });
         appListeners = [l1, l2];
 
-        // Back button handling — close modals first
         const l3 = await CapApp.addListener('backButton', ({ canGoBack }) => {
           if (alert) {
             closeAlertUi();
@@ -323,7 +311,6 @@ export default function App() {
             return;
           }
           if (!canGoBack) {
-            // Let system handle exit, or minimize
             CapApp.exitApp().catch(() => {});
           }
         });
@@ -337,7 +324,7 @@ export default function App() {
       document.removeEventListener('visibilitychange', handleVisible);
       appListeners.forEach((l) => l.remove().catch(() => {}));
     };
-  }, [alert, confirm, report, editing, showAdd, closeAlertUi, openAlert, persist]);
+  }, [alert, confirm, report, editing, showAdd, closeAlertUi, openAlert, persist, claimDueTransition]);
 
   const handleRequestPermission = async () => {
     try {
@@ -372,6 +359,22 @@ export default function App() {
     }
   };
 
+  const handleOpenBatterySettings = async () => {
+    try {
+      await openBatteryOptimizationSettings();
+    } catch (e) {
+      console.warn('[App] battery settings failed', e);
+    }
+  };
+
+  const handleOpenAppSettings = async () => {
+    try {
+      await openAndroidAppSettings();
+    } catch (e) {
+      console.warn('[App] app settings failed', e);
+    }
+  };
+
   const dismissPermBanner = () => {
     setPermBannerHidden(true);
     try {
@@ -381,7 +384,6 @@ export default function App() {
     }
   };
 
-  // Accurate tick — handles mobile throttling by using absolute time
   useEffect(() => {
     const tick = async () => {
       if (tickLock.current) return;
@@ -419,8 +421,6 @@ export default function App() {
       }
     };
     void tick();
-    // Use 1s interval but also handle visibility — when hidden, interval may throttle to 1min
-    // So we also use a more frequent check when visible, and rely on resume sync when hidden
     const id = window.setInterval(() => {
       void tick();
     }, 1000);
@@ -494,7 +494,7 @@ export default function App() {
       received.then((l) => l.remove()).catch(() => {});
       action.then((l) => l.remove()).catch(() => {});
     };
-  }, [isNative, openAlert, persist, takeDoseRef, snoozeRef]);
+  }, [isNative, openAlert, persist, takeDoseRef, snoozeRef, claimDueTransition]);
 
   const add = async (d: {
     name: string;
@@ -550,12 +550,10 @@ export default function App() {
       nextDoseAt = now + remaining * 1000;
     } else if (!editing.running && !editing.pendingDose) {
       remaining = newInterval;
-      nextDoseAt = undefined;
     }
 
     if (d.startImmediately && !running && !pendingDose) {
       running = true;
-      pendingDose = false;
       remaining = newInterval;
       nextDoseAt = now + newInterval * 1000;
     }
@@ -574,79 +572,50 @@ export default function App() {
       nextDoseAt,
       updatedAt: now,
     };
-
-    setMedications((v) => sortMedications(v.map((x) => (x.id === updated.id ? updated : x))));
+    setMedications((v) => sortMedications(v.map((x) => (x.id === editing.id ? updated : x))));
     await persist(updated);
     setEditing(null);
   };
 
-  const remove = (m: Medication) =>
-    setConfirm({
-      title: 'حذف دارو',
-      message: `آیا از حذف «${m.name}» مطمئن هستید؟ تاریخچه مصرف این دارو هم پاک می‌شود.`,
-      variant: 'danger',
-      confirmLabel: 'حذف',
-      onConfirm: () => {
-        const id = toMedId(m.id);
-        setConfirm(null);
-        if (id != null) deletedIdsRef.current.add(id);
-        setMedications((v) => v.filter((x) => toMedId(x.id) !== id));
-        if (alertId.current === id) {
-          alertId.current = null;
-          stopAlarm();
-          setAlert(null);
-        }
-        if (editing && toMedId(editing.id) === id) setEditing(null);
-
-        void (async () => {
-          try {
-            if (id != null) {
-              await db.deleteMedication(id);
-              await cancelMedNotifications(id);
-              dismissSwFollowUps(id);
-            }
-          } catch (error) {
-            console.error('[MediReminder] delete failed:', error);
-            if (id != null) deletedIdsRef.current.delete(id);
-            await load();
-            setConfirm({
-              title: 'حذف انجام نشد',
-              message: 'ذخیره‌سازی دستگاه دارو را حذف نکرد. دوباره تلاش کنید.',
-              confirmLabel: 'متوجه شدم',
-              showCancel: false,
-              variant: 'info',
-              onConfirm: () => setConfirm(null),
-            });
-          }
-        })();
-      },
-    });
-
-  const requestReset = (m: Medication) => {
-    if (m.pendingDose) {
-      setConfirm({
-        title: 'ریست تایمر',
-        message: `دوز در انتظار تأیید «${m.name}» به‌عنوان رد شده در گزارش ثبت می‌شود.`,
-        variant: 'danger',
-        confirmLabel: 'ریست و ثبت رد شده',
-        onConfirm: () => {
-          setConfirm(null);
-          void reset(m);
-        },
-      });
-      return;
+  const remove = async (m: Medication) => {
+    if (m.id == null) return;
+    const id = m.id;
+    deletedIdsRef.current.add(id);
+    await cancelMedNotifications(id);
+    dismissSwFollowUps(id);
+    await db.deleteMedication(id);
+    setMedications((v) => v.filter((x) => x.id !== id));
+    if (alertId.current === id) {
+      alertId.current = null;
+      stopAlarm();
+      setAlert(null);
     }
-    void reset(m);
   };
 
-  const dueCount = useMemo(() => medications.filter((m) => m.pendingDose).length, [medications]);
-  const lowStockCount = useMemo(
-    () => medications.filter((m) => m.quantity > 0 && m.quantity <= LOW_STOCK_THRESHOLD).length,
+  const requestRemove = (m: Medication) => {
+    setConfirm({
+      title: 'حذف دارو',
+      message: `«${m.name}» حذف شود؟`,
+      variant: 'danger',
+      confirmLabel: 'حذف',
+      cancelLabel: 'انصراف',
+      onConfirm: () => {
+        setConfirm(null);
+        void remove(m);
+      },
+    });
+  };
+
+  const lowStock = useMemo(
+    () => medications.filter((m) => m.quantity > 0 && m.quantity <= LOW_STOCK_THRESHOLD),
     [medications]
   );
-  const emptyCount = useMemo(() => medications.filter((m) => m.quantity <= 0).length, [medications]);
-  const formVisible = showAdd || editing !== null;
-  const showPermBanner = (permission !== 'granted' || (isNative && !exactAlarmGranted)) && !permBannerHidden;
+
+  const showPermBanner =
+    !permBannerHidden &&
+    (permission !== 'granted' ||
+      (isNative && !exactAlarmGranted) ||
+      (isNative && Capacitor.getPlatform() === 'android'));
 
   if (bootError) {
     return (
@@ -654,7 +623,7 @@ export default function App() {
         error={bootError}
         onRetry={() => {
           setBootError(null);
-          setBootAttempt((attempt) => attempt + 1);
+          setBootAttempt((n) => n + 1);
         }}
       />
     );
@@ -665,173 +634,116 @@ export default function App() {
   }
 
   return (
-    <div className="h-[100dvh] max-h-[100dvh] overflow-y-auto overscroll-contain touch-pan-y bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 text-white antialiased selection:bg-cyan-500/30">
-      {/* Safe area top spacer for native */}
-      <div className="h-[var(--sat)] w-full bg-slate-950 lg:hidden" aria-hidden />
-
-      <div className="mx-auto flex min-h-screen min-h-[100dvh] max-w-lg flex-col px-4 py-4 pb-[calc(1rem+var(--sab))] sm:py-6">
-        <header className="mb-6">
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0 flex-1">
-              <h1 className="text-balance text-2xl font-black leading-tight text-cyan-300 sm:text-3xl">
-                💊 یادآور هوشمند دارو
-              </h1>
-              <p className="mt-1 text-sm text-slate-400">یادآوری مکرر تا تأیید مصرف دارو — دقیق و آفلاین</p>
-            </div>
-            <span className="shrink-0 rounded-full border border-cyan-500/20 bg-cyan-500/10 px-3 py-1 text-xs font-medium text-cyan-300">
-              v{APP_VERSION}
-            </span>
+    <div className="min-h-dvh bg-slate-950 text-slate-100">
+      <div className="mx-auto max-w-lg px-4 pb-28 pt-5">
+        <header className="mb-5 flex items-start justify-between gap-3">
+          <div>
+            <h1 className="text-2xl font-black tracking-tight text-white">یادآور دارو</h1>
+            <p className="mt-1 text-xs text-slate-400">نسخه {APP_VERSION} · آفلاین و روی دستگاه شما</p>
           </div>
-
-          <div className="mt-4 grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
-            <button
-              type="button"
-              onClick={() => {
-                setEditing(null);
-                setShowAdd(true);
-              }}
-              className="col-span-2 rounded-2xl bg-gradient-to-b from-cyan-400 to-cyan-600 px-5 py-3.5 text-[15px] font-bold text-slate-950 shadow-lg shadow-cyan-950/40 transition active:scale-[0.98] hover:from-cyan-300 hover:to-cyan-500 sm:col-span-1 touch-manipulation"
-            >
-              + افزودن دارو
-            </button>
-            <button
-              type="button"
-              onClick={openSupportWhatsApp}
-              className="rounded-2xl border border-emerald-500/40 bg-emerald-500/15 px-4 py-3.5 text-sm font-semibold text-emerald-200 transition active:scale-[0.98] hover:bg-emerald-500/25 touch-manipulation"
-              aria-label="پشتیبانی واتساپ"
-              title="پشتیبانی واتساپ"
-            >
-              💬 پشتیبانی
-            </button>
-            <button
-              type="button"
-              onClick={() => void exportBackup()}
-              className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3.5 text-sm font-semibold text-slate-200 transition active:scale-[0.98] hover:bg-white/10 touch-manipulation"
-            >
-              خروجی پشتیبان
-            </button>
-            <label className="flex cursor-pointer items-center justify-center rounded-2xl border border-white/10 bg-white/5 px-4 py-3.5 text-sm font-semibold text-slate-200 transition active:scale-[0.98] hover:bg-white/10 touch-manipulation">
-              ورود پشتیبان
-              <input
-                type="file"
-                accept="application/json,.json"
-                className="sr-only"
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  e.target.value = '';
-                  if (file) requestImport(file);
-                }}
-              />
-            </label>
-          </div>
-
-          {showPermBanner && (
-            <PermissionsBanner
-              permission={permission}
-              exactAlarmGranted={exactAlarmGranted}
-              onRequest={handleRequestPermission}
-              onRequestExactAlarm={handleRequestExactAlarm}
-              onDismiss={dismissPermBanner}
-            />
-          )}
-
-          {dueCount > 0 && (
-            <div className="mt-3 rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-xs leading-relaxed text-rose-200">
-              <span className="font-bold">⏰ {dueCount} دارو منتظر تأیید مصرف است.</span> هشدارها تا زدن «مصرف کردم» یا «اسنوز»
-              ادامه می‌یابند.
-            </div>
-          )}
-
-          {(lowStockCount > 0 || emptyCount > 0) && (
-            <div className="mt-3 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-xs leading-relaxed text-amber-100">
-              {emptyCount > 0 ? `${emptyCount} دارو تمام شده است. ` : ''}
-              {lowStockCount > 0 ? `${lowStockCount} دارو موجودی کمی دارد.` : ''}
-            </div>
-          )}
+          <button
+            type="button"
+            onClick={openSupportWhatsApp}
+            className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs font-semibold text-emerald-200"
+          >
+            پشتیبانی
+          </button>
         </header>
 
-        {formVisible && (
-          <div className="mb-5 animate-slide-in-from-top">
-            <AddMedicationForm
-              initial={editing ?? undefined}
-              onSubmit={editing ? saveEdit : add}
-              onCancel={() => {
-                setShowAdd(false);
-                setEditing(null);
-              }}
-            />
+        {showPermBanner && (
+          <PermissionsBanner
+            permission={permission}
+            exactAlarmGranted={exactAlarmGranted}
+            onRequest={() => void handleRequestPermission()}
+            onRequestExactAlarm={handleRequestExactAlarm}
+            onOpenBatterySettings={isNative ? () => void handleOpenBatterySettings() : undefined}
+            onOpenAppSettings={isNative ? () => void handleOpenAppSettings() : undefined}
+            onDismiss={dismissPermBanner}
+          />
+        )}
+
+        {lowStock.length > 0 && (
+          <div className="mt-4 rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
+            موجودی کم: {lowStock.map((m) => m.name).join('، ')}
           </div>
         )}
 
-        <div className="flex-1 space-y-4">
+        <div className="mt-5 space-y-3">
           {medications.length === 0 ? (
-            <div className="rounded-3xl border border-dashed border-slate-700 p-8 text-center sm:p-12">
-              <div className="text-6xl" aria-hidden="true">
-                💊
-              </div>
-              <h2 className="mt-4 text-xl font-bold">هنوز دارویی ثبت نشده</h2>
-              <p className="mt-2 text-sm text-slate-400">اولین دارو را اضافه کنید و یادآوری را شروع کنید.</p>
-              <button
-                type="button"
-                onClick={() => {
-                  setEditing(null);
-                  setShowAdd(true);
-                }}
-                className="mt-6 rounded-2xl bg-gradient-to-b from-cyan-400 to-cyan-600 px-6 py-3.5 text-[15px] font-bold text-slate-950 shadow-lg shadow-cyan-950/40 transition active:scale-[0.98] hover:from-cyan-300 hover:to-cyan-500 touch-manipulation"
-              >
-                افزودن اولین دارو
-              </button>
-              <p className="mt-6 text-xs text-slate-500">
-                نکته: برای یادآوری دقیق، مجوز اعلان را فعال کنید و در اندروید باتری را روی «بدون محدودیت» بگذارید.
-              </p>
+            <div className="rounded-3xl border border-white/10 bg-white/5 p-8 text-center text-slate-300">
+              هنوز دارویی ثبت نشده است.
             </div>
           ) : (
-            medications.map((m, i) => (
+            medications.map((m) => (
               <MedicationCard
                 key={m.id}
                 medication={m}
-                index={i + 1}
-                onToggle={() => toggle(m)}
-                onReset={() => requestReset(m)}
-                onDelete={() => remove(m)}
-                onEdit={() => {
-                  setShowAdd(false);
-                  setEditing(m);
-                  // Scroll to form on mobile
-                  setTimeout(() => window.scrollTo({ top: 0, behavior: 'smooth' }), 100);
-                }}
-                onShowReport={() => setReport(m)}
-                onTake={() => takeDose(m)}
-                onSnooze={() => snooze(m, 10)}
+                onTake={() => void takeDose(m)}
+                onSnooze={() => void snooze(m, 10)}
+                onToggle={() => void toggle(m)}
+                onReset={() => void reset(m)}
+                onEdit={() => setEditing(m)}
+                onReport={() => setReport(m)}
+                onDelete={() => requestRemove(m)}
               />
             ))
           )}
         </div>
 
-        <footer className="mt-8 pb-[calc(1rem+var(--sab))] text-center text-xs text-slate-500">
-          <p className="leading-relaxed">
-            داده‌ها فقط روی همین دستگاه ذخیره می‌شوند. تا تأیید «مصرف کردم»، یادآوری تکرار می‌شود و سپس تایمر دوز بعدی
-            بلافاصله شروع می‌شود.
-          </p>
-          <p className="mt-2 text-slate-600">MediReminder v{APP_VERSION} — ابزار یادآوری است و جایگزین توصیه پزشک نیست.</p>
-        </footer>
+        <div className="mt-6 grid grid-cols-2 gap-3">
+          <button
+            type="button"
+            onClick={() => {
+              setEditing(null);
+              setShowAdd(true);
+            }}
+            className="rounded-2xl bg-cyan-500 px-4 py-3.5 text-sm font-bold text-slate-950"
+          >
+            + افزودن دارو
+          </button>
+          <button
+            type="button"
+            onClick={() => void exportBackup()}
+            className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3.5 text-sm font-semibold text-slate-200"
+          >
+            خروجی پشتیبان
+          </button>
+          <label className="col-span-2 flex cursor-pointer items-center justify-center rounded-2xl border border-white/10 bg-white/5 px-4 py-3.5 text-sm font-semibold text-slate-200">
+            ورود پشتیبان
+            <input
+              type="file"
+              accept="application/json,.json"
+              className="sr-only"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                e.target.value = '';
+                if (file) requestImport(file);
+              }}
+            />
+          </label>
+        </div>
       </div>
 
+      {showAdd && (
+        <AddMedicationForm
+          onClose={() => setShowAdd(false)}
+          onSubmit={(d) => void add(d)}
+        />
+      )}
+      {editing && (
+        <AddMedicationForm
+          initial={editing}
+          onClose={() => setEditing(null)}
+          onSubmit={(d) => void saveEdit(d)}
+        />
+      )}
       {alert && (
         <NotificationPopup
           title={alert.title}
           message={alert.message}
+          onTaken={() => void takeDose(alert.medication)}
+          onSnooze={() => void snooze(alert.medication, 10)}
           onClose={closeAlertUi}
-          onRestart={() => takeDose(latestMed(alert.medication))}
-          onSnooze={(minutes) => snooze(latestMed(alert.medication), minutes)}
-          isMedicationAlert
-        />
-      )}
-
-      {report && (
-        <ReportModal
-          medication={findMedication(medications, report.id) ?? report}
-          onClose={() => setReport(null)}
         />
       )}
       {confirm && (
@@ -845,6 +757,9 @@ export default function App() {
           onConfirm={confirm.onConfirm}
           onCancel={() => setConfirm(null)}
         />
+      )}
+      {report && (
+        <ReportModal medication={report} onClose={() => setReport(null)} />
       )}
     </div>
   );
