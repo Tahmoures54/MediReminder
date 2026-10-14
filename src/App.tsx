@@ -529,6 +529,10 @@ export default function App() {
     [medications]
   );
   const emptyCount = useMemo(() => medications.filter((m) => m.quantity <= 0).length, [medications]);
+  const activeCount = useMemo(
+    () => medications.filter((m) => m.running && !m.pendingDose).length,
+    [medications]
+  );
 
   const showPermBanner =
     !permBannerHidden &&
@@ -549,11 +553,6 @@ export default function App() {
   }
 
   if (!bootDone) return <BootScreen />;
-
-  const activeCount = useMemo(
-    () => medications.filter((m) => m.running && !m.pendingDose).length,
-    [medications]
-  );
 
   return (
     <div className="relative min-h-dvh overflow-x-hidden bg-slate-950 text-slate-100">
