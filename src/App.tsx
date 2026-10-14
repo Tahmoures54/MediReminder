@@ -550,64 +550,120 @@ export default function App() {
 
   if (!bootDone) return <BootScreen />;
 
+  const activeCount = useMemo(
+    () => medications.filter((m) => m.running && !m.pendingDose).length,
+    [medications]
+  );
+
   return (
-    <div className="min-h-dvh bg-slate-950 text-slate-100">
-      <div className="mx-auto flex min-h-dvh max-w-lg flex-col px-4 pb-10 pt-5">
-        <header className="mb-4">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <h1 className="text-2xl font-black tracking-tight text-white">یادآور دارو</h1>
-              <p className="mt-1 text-xs text-slate-400">نسخه {APP_VERSION} · آفلاین و روی دستگاه شما</p>
+    <div className="relative min-h-dvh overflow-x-hidden bg-slate-950 text-slate-100">
+      <div className="pointer-events-none absolute inset-0 -z-10" aria-hidden>
+        <div className="absolute -top-24 start-1/2 h-72 w-[36rem] -translate-x-1/2 rounded-full bg-cyan-500/15 blur-3xl" />
+        <div className="absolute top-40 -end-16 h-56 w-56 rounded-full bg-teal-500/10 blur-3xl" />
+        <div className="absolute bottom-0 start-0 h-40 w-full bg-gradient-to-t from-slate-950 to-transparent" />
+      </div>
+
+      <div className="mx-auto flex min-h-dvh max-w-lg flex-col px-4 pb-[calc(1.5rem+var(--sab))] pt-4">
+        <header className="mb-5">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex min-w-0 items-center gap-3">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-cyan-400 to-teal-600 text-xl shadow-lg shadow-cyan-950/40">
+                💊
+              </div>
+              <div className="min-w-0">
+                <h1 className="truncate text-xl font-black tracking-tight text-white sm:text-2xl">یادآور دارو</h1>
+                <p className="mt-0.5 text-[11px] text-slate-400">آفلاین · نسخه {APP_VERSION}</p>
+              </div>
             </div>
-            <div className="flex gap-2">
+            <div className="flex shrink-0 items-center gap-2">
+              <button
+                type="button"
+                onClick={openSupportWhatsApp}
+                className="rounded-2xl border border-white/10 bg-white/5 px-3 py-2.5 text-xs font-semibold text-slate-200 backdrop-blur transition active:scale-[0.97] hover:bg-white/10"
+              >
+                پشتیبانی
+              </button>
               <button
                 type="button"
                 onClick={() => {
                   setEditing(null);
                   setShowAdd((v) => !v);
                 }}
-                className="rounded-2xl bg-cyan-500 px-3 py-2 text-xs font-bold text-slate-950"
+                className="rounded-2xl bg-gradient-to-b from-cyan-400 to-cyan-600 px-3.5 py-2.5 text-xs font-bold text-slate-950 shadow-md shadow-cyan-950/40 transition active:scale-[0.97] hover:from-cyan-300 hover:to-cyan-500"
               >
-                {formVisible ? 'بستن فرم' : '+ دارو'}
-              </button>
-              <button
-                type="button"
-                onClick={openSupportWhatsApp}
-                className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs font-semibold text-emerald-200"
-              >
-                پشتیبانی
+                {formVisible ? 'بستن' : '+ دارو'}
               </button>
             </div>
           </div>
 
+          {medications.length > 0 && (
+            <div className="mt-4 grid grid-cols-3 gap-2">
+              <div className="rounded-2xl border border-white/10 bg-white/[0.04] px-3 py-2.5 text-center backdrop-blur">
+                <div className="text-lg font-black tabular-nums text-white">{medications.length}</div>
+                <div className="text-[10px] font-medium text-slate-400">کل داروها</div>
+              </div>
+              <div className="rounded-2xl border border-cyan-400/20 bg-cyan-500/10 px-3 py-2.5 text-center backdrop-blur">
+                <div className="text-lg font-black tabular-nums text-cyan-200">{activeCount}</div>
+                <div className="text-[10px] font-medium text-cyan-200/70">در حال یادآوری</div>
+              </div>
+              <div
+                className={
+                  dueCount > 0
+                    ? 'rounded-2xl border border-rose-400/30 bg-rose-500/15 px-3 py-2.5 text-center backdrop-blur'
+                    : 'rounded-2xl border border-white/10 bg-white/[0.04] px-3 py-2.5 text-center backdrop-blur'
+                }
+              >
+                <div className={dueCount > 0 ? 'text-lg font-black tabular-nums text-rose-200' : 'text-lg font-black tabular-nums text-white'}>
+                  {dueCount}
+                </div>
+                <div className={dueCount > 0 ? 'text-[10px] font-medium text-rose-200/80' : 'text-[10px] font-medium text-slate-400'}>
+                  منتظر تأیید
+                </div>
+              </div>
+            </div>
+          )}
+
           {showPermBanner && (
-            <PermissionsBanner
-              permission={permission}
-              exactAlarmGranted={exactAlarmGranted}
-              onRequest={handleRequestPermission}
-              onRequestExactAlarm={handleRequestExactAlarm}
-              onOpenBatterySettings={isNative ? () => void handleOpenBatterySettings() : undefined}
-              onOpenAppSettings={isNative ? () => void handleOpenAppSettings() : undefined}
-              onDismiss={dismissPermBanner}
-            />
+            <div className="mt-4">
+              <PermissionsBanner
+                permission={permission}
+                exactAlarmGranted={exactAlarmGranted}
+                onRequest={handleRequestPermission}
+                onRequestExactAlarm={handleRequestExactAlarm}
+                onOpenBatterySettings={isNative ? () => void handleOpenBatterySettings() : undefined}
+                onOpenAppSettings={isNative ? () => void handleOpenAppSettings() : undefined}
+                onDismiss={dismissPermBanner}
+              />
+            </div>
           )}
 
           {dueCount > 0 && (
-            <div className="mt-3 rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-xs leading-relaxed text-rose-100">
-              <span className="font-bold">⏰ {dueCount} دارو منتظر تأیید مصرف است.</span>
+            <div className="mt-3 flex items-start gap-2 rounded-2xl border border-rose-400/25 bg-gradient-to-l from-rose-500/15 to-rose-500/5 px-3.5 py-3 text-xs leading-relaxed text-rose-50">
+              <span className="text-base" aria-hidden>
+                ⏰
+              </span>
+              <span>
+                <span className="font-bold">{dueCount} دارو</span> منتظر تأیید مصرف است. تا زدن «مصرف کردم» هشدار تکرار
+                می‌شود.
+              </span>
             </div>
           )}
 
           {(lowStockCount > 0 || emptyCount > 0) && (
-            <div className="mt-3 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-xs leading-relaxed text-amber-100">
-              {emptyCount > 0 ? `${emptyCount} دارو تمام شده است. ` : ''}
-              {lowStockCount > 0 ? `${lowStockCount} دارو موجودی کمی دارد.` : ''}
+            <div className="mt-2 flex items-start gap-2 rounded-2xl border border-amber-400/25 bg-gradient-to-l from-amber-500/15 to-amber-500/5 px-3.5 py-3 text-xs leading-relaxed text-amber-50">
+              <span className="text-base" aria-hidden>
+                📦
+              </span>
+              <span>
+                {emptyCount > 0 ? <span className="font-bold">{emptyCount} دارو تمام شده. </span> : null}
+                {lowStockCount > 0 ? <span>{lowStockCount} دارو موجودی کمی دارد.</span> : null}
+              </span>
             </div>
           )}
         </header>
 
         {formVisible && (
-          <div className="mb-5">
+          <div className="mb-5 animate-slide-in-from-top">
             <AddMedicationForm
               initial={editing ?? undefined}
               onSubmit={editing ? saveEdit : add}
@@ -619,23 +675,33 @@ export default function App() {
           </div>
         )}
 
-        <div className="flex-1 space-y-4">
+        <div className="flex-1 space-y-3.5">
           {medications.length === 0 ? (
-            <div className="rounded-3xl border border-dashed border-slate-700 p-8 text-center">
-              <div className="text-6xl" aria-hidden="true">
+            <div className="relative overflow-hidden rounded-[1.75rem] border border-white/10 bg-gradient-to-b from-white/[0.06] to-white/[0.02] p-8 text-center shadow-xl shadow-black/20">
+              <div
+                className="pointer-events-none absolute -top-10 start-1/2 h-40 w-40 -translate-x-1/2 rounded-full bg-cyan-400/20 blur-2xl"
+                aria-hidden
+              />
+              <div className="relative mx-auto flex h-20 w-20 items-center justify-center rounded-3xl bg-gradient-to-br from-cyan-400/30 to-teal-600/20 text-5xl ring-1 ring-white/10">
                 💊
               </div>
-              <h2 className="mt-4 text-xl font-bold">هنوز دارویی ثبت نشده</h2>
+              <h2 className="relative mt-5 text-xl font-black text-white">هنوز دارویی ثبت نشده</h2>
+              <p className="relative mx-auto mt-2 max-w-[16rem] text-sm leading-relaxed text-slate-400">
+                اولین دارو را اضافه کنید تا یادآوری دقیق روی همین دستگاه شروع شود.
+              </p>
               <button
                 type="button"
                 onClick={() => {
                   setEditing(null);
                   setShowAdd(true);
                 }}
-                className="mt-6 rounded-2xl bg-cyan-500 px-6 py-3.5 text-[15px] font-bold text-slate-950"
+                className="relative mt-6 rounded-2xl bg-gradient-to-b from-cyan-400 to-cyan-600 px-7 py-3.5 text-[15px] font-bold text-slate-950 shadow-lg shadow-cyan-950/40 transition active:scale-[0.98] hover:from-cyan-300 hover:to-cyan-500"
               >
                 افزودن اولین دارو
               </button>
+              <p className="relative mt-5 text-[11px] leading-relaxed text-slate-500">
+                برای دقت بیشتر: مجوز اعلان و باتری بدون محدودیت را فعال کنید.
+              </p>
             </div>
           ) : (
             medications.map((m, i) => (
@@ -649,6 +715,7 @@ export default function App() {
                 onEdit={() => {
                   setShowAdd(false);
                   setEditing(m);
+                  setTimeout(() => window.scrollTo({ top: 0, behavior: 'smooth' }), 80);
                 }}
                 onShowReport={() => setReport(m)}
                 onTake={() => void takeDose(m)}
@@ -658,8 +725,9 @@ export default function App() {
           )}
         </div>
 
-        <footer className="mt-8 text-center text-xs text-slate-500">
-          <p>MediReminder v{APP_VERSION} — ابزار یادآوری است و جایگزین توصیه پزشک نیست.</p>
+        <footer className="mt-8 space-y-1 pb-2 text-center text-[11px] text-slate-500">
+          <p className="leading-relaxed">داده‌ها فقط روی همین دستگاه می‌مانند · جایگزین نظر پزشک نیست</p>
+          <p className="text-slate-600">MediReminder v{APP_VERSION}</p>
         </footer>
       </div>
 
