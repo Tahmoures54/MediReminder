@@ -51,10 +51,16 @@ describe('checkExactAlarmPermission', () => {
 
   it('fails closed when the native exact-alarm check is unavailable', async () => {
     const notifications = await import('@capacitor/local-notifications');
-    (notifications.LocalNotifications as unknown as { checkExactNotificationSetting?: unknown })
-      .checkExactNotificationSetting = undefined;
-
-    await expect(checkExactAlarmPermission()).resolves.toBe(false);
+    const nativeNotifications = notifications.LocalNotifications as unknown as {
+      checkExactNotificationSetting?: unknown;
+    };
+    const originalCheck = nativeNotifications.checkExactNotificationSetting;
+    try {
+      nativeNotifications.checkExactNotificationSetting = undefined;
+      await expect(checkExactAlarmPermission()).resolves.toBe(false);
+    } finally {
+      nativeNotifications.checkExactNotificationSetting = originalCheck;
+    }
   });
 
   it('fails closed when the native permission check throws', async () => {
