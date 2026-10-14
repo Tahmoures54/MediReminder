@@ -412,6 +412,17 @@ export default function App() {
       const id = Number(e.notification.extra?.medicationId);
       const m = findMedication(medsRef.current, id);
       if (!m) return;
+      // Reject actions from an older notification cycle (e.g. tapped twice
+      // after a dose was already recorded, or tapped after snoozing).
+      const notificationCycle = Number(e.notification.extra?.scheduledAt);
+      if (
+        Number.isFinite(notificationCycle) &&
+        m.nextDoseAt !== notificationCycle &&
+        m.dueScheduledAt !== notificationCycle
+      ) {
+        console.info('[App] ignoring stale dose notification action', { id, notificationCycle });
+        return;
+      }
       const act = e.actionId;
       if (act === 'taken') takeDoseRef.current({ ...m, pendingDose: true, running: false, remaining: 0 });
       else if (act === 'snooze') snoozeRef.current({ ...m, pendingDose: true, running: false, remaining: 0 }, 10);
