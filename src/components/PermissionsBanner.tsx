@@ -8,6 +8,8 @@ interface Props {
   exactAlarmGranted?: boolean;
   onRequest: () => void;
   onRequestExactAlarm?: () => void;
+  onOpenBatterySettings?: () => void;
+  onOpenAppSettings?: () => void;
   onDismiss?: () => void;
 }
 
@@ -16,9 +18,50 @@ export function PermissionsBanner({
   exactAlarmGranted = true,
   onRequest,
   onRequestExactAlarm,
+  onOpenBatterySettings,
+  onOpenAppSettings,
   onDismiss,
 }: Props) {
-  if (permission === 'granted' && exactAlarmGranted) return null;
+  if (permission === 'granted' && exactAlarmGranted && !onOpenBatterySettings) return null;
+  if (permission === 'granted' && exactAlarmGranted) {
+    return (
+      <div
+        role="region"
+        aria-label="راهنمای باتری"
+        className="mt-3 rounded-2xl border border-cyan-500/25 bg-gradient-to-br from-cyan-500/10 via-slate-900/40 to-slate-950/40 px-3.5 py-3 text-xs text-cyan-50/90"
+      >
+        <div className="flex flex-wrap items-center gap-2 justify-between">
+          <p className="leading-relaxed">
+            برای کارکرد پایدار در پس‌زمینه: باتری اپ را روی{' '}
+            <strong className="text-cyan-100">بدون محدودیت</strong> بگذارید
+            {Capacitor.getPlatform() === 'android' && (
+              <span className="text-cyan-200/70"> (شیائومی/سامسونگ: قفل در Recent + Autostart)</span>
+            )}
+          </p>
+          <div className="flex gap-2">
+            {onOpenBatterySettings && (
+              <button
+                type="button"
+                onClick={onOpenBatterySettings}
+                className="tap-target rounded-lg bg-cyan-400/90 px-3 py-2 text-xs font-bold text-slate-950 transition hover:bg-cyan-300 active:scale-[0.97]"
+              >
+                🔋 تنظیم باتری
+              </button>
+            )}
+            {onDismiss && (
+              <button
+                type="button"
+                onClick={onDismiss}
+                className="tap-target rounded-lg border border-cyan-500/30 px-3 py-2 text-xs text-cyan-100/70 hover:bg-cyan-500/10"
+              >
+                بستن
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   const isNative = Capacitor.isNativePlatform();
   const platform = Capacitor.getPlatform();
@@ -106,7 +149,25 @@ export function PermissionsBanner({
                 ⏰ فعال‌سازی آلارم دقیق
               </button>
             )}
-            {denied && isNative && (
+            {isAndroid && onOpenBatterySettings && (
+              <button
+                type="button"
+                onClick={onOpenBatterySettings}
+                className="tap-target rounded-xl bg-cyan-400 px-4 py-3 text-sm font-bold text-slate-950 shadow-md transition hover:bg-cyan-300 active:scale-[0.96] touch-manipulation"
+              >
+                🔋 بدون محدودیت باتری
+              </button>
+            )}
+            {denied && isNative && onOpenAppSettings && (
+              <button
+                type="button"
+                onClick={onOpenAppSettings}
+                className="tap-target rounded-xl border border-amber-400/40 bg-amber-500/15 px-4 py-3 text-sm font-semibold text-amber-100 transition hover:bg-amber-500/25 active:scale-[0.96]"
+              >
+                ⚙️ باز کردن تنظیمات اپ
+              </button>
+            )}
+            {denied && isNative && !onOpenAppSettings && (
               <p className="w-full rounded-lg bg-amber-950/40 p-2.5 text-xs leading-relaxed text-amber-200/80">
                 {isAndroid
                   ? '📱 اندروید: تنظیمات → برنامه‌ها → یادآور دارو → اعلان‌ها → اجازه دادن'
