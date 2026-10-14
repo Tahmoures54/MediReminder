@@ -1,4 +1,4 @@
-# MediReminder 3.3.1
+# MediReminder 3.4.1
 
 **یادآور دارو** — Offline-first · هشدار تا تأیید مصرف · PWA + Android  
 React 19 · TypeScript · Vite · Capacitor · IndexedDB
@@ -12,7 +12,7 @@ React 19 · TypeScript · Vite · Capacitor · IndexedDB
 - زمان‌بندی مطلق (`nextDoseAt`)
 - هشدار **تکرارشونده** تا «مصرف کردم» یا اسنوز
 - پس از تأیید → **شروع فوری** تایمر دوز بعدی
-- پشتیبان JSON (ورود با تأیید جایگزینی)، گزارش پایبندی، ویرایش دارو
+- گزارش پایبندی، ویرایش دارو
 - راهنمای مجوز اعلان + پشتیبانی واتساپ
 - داده فقط روی دستگاه کاربر
 
@@ -37,7 +37,7 @@ npx cap sync android
 
 ## ساخت APK در GitHub Actions
 
-از بخش **Actions**، workflow با نام **Build MediReminder Android APK** را با گزینه **Run workflow** اجرا کنید؛ همچنین با push کردن یک tag مانند `v3.3.1` به‌صورت خودکار اجرا می‌شود.
+از بخش **Actions**، workflow با نام **Build MediReminder Android APK** را با گزینه **Run workflow** اجرا کنید؛ همچنین با push کردن یک tag مانند `v3.4.1` به‌صورت خودکار اجرا می‌شود.
 
 خروجی artifact شامل این‌هاست:
 

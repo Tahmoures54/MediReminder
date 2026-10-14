@@ -29,12 +29,6 @@ export interface Medication {
   history?: HistoryRecord[];
 }
 
-export interface BackupPayload {
-  schemaVersion: number;
-  exportedAt: number;
-  medications: Medication[];
-}
-
 const DB_NAME = 'MedicationReminderDB';
 const DB_VERSION = 5;
 const STORE_NAME = 'medications';
@@ -82,13 +76,7 @@ class Database {
         const db = request.result;
         if (!db.objectStoreNames.contains(STORE_NAME)) {
           const store = db.createObjectStore(STORE_NAME, { keyPath: 'id', autoIncrement: true });
-          store.createIndex('name', 'name', { unique: false });
-          store.createIndex('nextDoseAt', 'nextDoseAt', { unique: false });
-        } else {
-          const store = request.transaction?.objectStore(STORE_NAME);
-          if (store && !store.indexNames.contains('nextDoseAt')) {
-            store.createIndex('nextDoseAt', 'nextDoseAt', { unique: false });
-          }
+          store.createIndex('by_name', 'name', { unique: false });
         }
         if (!db.objectStoreNames.contains(STATE_STORE)) {
           db.createObjectStore(STATE_STORE, { keyPath: 'key' });
@@ -97,24 +85,18 @@ class Database {
     });
   }
 
-  private async transaction<T>(
+  private async transaction<T = unknown>(
     storeName: string,
     mode: IDBTransactionMode,
-    fn: (store: IDBObjectStore) => IDBRequest<T> | void
+    fn: (store: IDBObjectStore) => IDBRequest | void
   ): Promise<T | void> {
     const db = await this.dbPromise;
     return new Promise((resolve, reject) => {
       const tx = db.transaction(storeName, mode);
       const store = tx.objectStore(storeName);
-      let request: IDBRequest<T> | void;
-      try {
-        request = fn(store);
-      } catch (e) {
-        reject(e);
-        return;
-      }
+      const request = fn(store);
       if (request) {
-        request.onsuccess = () => resolve(request.result);
+        request.onsuccess = () => resolve(request.result as T);
         request.onerror = () => reject(request.error);
       }
       tx.onerror = () => reject(tx.error);
@@ -165,7 +147,7 @@ class Database {
       }
       tx.oncomplete = () => resolve();
       tx.onerror = () => reject(tx.error);
-      tx.onabort = () => reject(tx.error || new Error('Import aborted'));
+      tx.onabort = () => reject(tx.error || new Error('Transaction aborted'));
     });
   }
 
@@ -184,33 +166,6 @@ class Database {
   async getState<T>(key: string): Promise<T | null> {
     const result = (await this.transaction<any>(STATE_STORE, 'readonly', (store) => store.get(key))) as any;
     return result?.value ?? null;
-  }
-
-  async exportBackup(): Promise<BackupPayload> {
-    return {
-      schemaVersion: DB_VERSION,
-      exportedAt: Date.now(),
-      medications: await this.getAllMedications(),
-    };
-  }
-
-  async importBackup(payload: BackupPayload): Promise<void> {
-    if (!payload || typeof payload !== 'object' || !Array.isArray(payload.medications)) {
-      throw new Error('Invalid backup file');
-    }
-    const sanitized = payload.medications.map((m) =>
-      sanitizeMedication({
-        ...m,
-        id: undefined,
-        history: Array.isArray(m.history) ? m.history : [],
-        running: Boolean(m.running),
-        pendingDose: Boolean(m.pendingDose),
-        interval: Number(m.interval) || Number(m.intervalHours) * 3600,
-        intervalHours: Number(m.intervalHours) || 1,
-        quantity: Math.max(0, Number(m.quantity) || 0),
-      })
-    );
-    await this.replaceAllMedications(sanitized);
   }
 }
 
