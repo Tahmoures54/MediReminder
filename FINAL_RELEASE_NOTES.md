@@ -1,7 +1,18 @@
-# MediReminder — Final Release v3.4.0 — آماده انتشار
+# MediReminder — Final Release v3.4.1 — آماده انتشار
 
-**تاریخ:** 2026-09-21
-**وضعیت:** ✅ آماده برای انتشار نهایی در موبایل (PWA + Android APK/AAB)
+**تاریخ:** 2026-10-14
+**وضعیت:** آماده برای انتشار مشروط به آزمون روی دستگاه واقعی؛ موفقیت CI به‌تنهایی تضمین‌کنندهٔ رفتار اعلان‌ها روی همهٔ گوشی‌ها نیست.
+
+## اصلاحات قابلیت اطمینان نسخه 3.4.1
+
+- بازآماده‌سازی صف اعلان‌های بومی هنگام فعال بودن برنامه و هنگام بازگشت به آن؛ صف Android محدود است و با بسته‌شدن اجباری برنامه نمی‌تواند توسط JavaScript دوباره پر شود.
+- جلوگیری از اجرای عملیات «مصرف کردم/تعویق» برای چرخهٔ اعلان قدیمی.
+- ذخیره‌سازی موفق داده پیش از تغییر وضعیت نمایشی؛ در صورت خطای ذخیره‌سازی امکان تلاش مجدد حفظ می‌شود.
+- اگر بررسی مجوز آلارم دقیق در اندروید در دسترس نباشد یا خطا دهد، برنامه دیگر مجوز را به‌اشتباه تأییدشده فرض نمی‌کند.
+- اضافه‌شدن آزمون‌های واحد برای حالت‌های مجوز آلارم دقیق.
+- در GitHub Actions، فایل APK/AAB از فایل کلید امضا و اطلاعات محرمانه جداگانه منتشر می‌شود. کلید تولیدشده فقط در اجرای غیر PR به‌عنوان artifact جداگانه با مهلت ۹۰ روزه ذخیره می‌شود؛ آن را فوراً دانلود و در محل امن پشتیبان‌گیری کنید.
+
+> **محدودیت مهم:** قبل از انتشار عمومی، هشدار زمان‌بندی‌شده، تکرار هشدار، تعویق، ثبت مصرف، خاموش/روشن شدن گوشی و تنظیمات باتری باید روی یک دستگاه واقعی Android آزمایش شوند. توقف اجباری برنامه توسط Android ممکن است اعلان‌ها را متوقف کند تا برنامه دوباره اجرا شود.
 
 ---
 
@@ -64,7 +75,7 @@ USE_FULL_SCREEN_INTENT
 **Workflow:**
 - مجوزهای بیشتر، `hardwareAccelerated=true`
 - `minifyEnabled true`, `shrinkResources true`
-- نسخه نهایی: `MediReminder-3.4.0-final.apk/aab`
+- نسخه نهایی: `MediReminder-3.4.1-final.apk/aab`
 - `retention-days: 30`
 
 ### 4. PWA — نصب دقیق
@@ -157,12 +168,12 @@ USE_FULL_SCREEN_INTENT
 - chunkSizeWarningLimit 600
 
 **`package.json`:**
-- version `3.4.0`
+- version `3.4.1`
 - اضافه: `@capacitor/app`, `@capacitor/status-bar`
 - description: "Final release optimized for mobile"
 
 **`constants.ts`:**
-- `APP_VERSION 3.4.0`, `BUILD_DATE`, `IS_FINAL_RELEASE`
+- `APP_VERSION 3.4.1`, `BUILD_DATE`, `IS_FINAL_RELEASE`
 
 ---
 
@@ -197,7 +208,7 @@ USE_FULL_SCREEN_INTENT
 
 ### Android APK/AAB
 1. GitHub Actions → Build MediReminder Android APK — Final Release → Run workflow
-2. دانلود `MediReminder-3.4.0-final.apk` (برای بازار/مایکت) و `aab` (برای Google Play)
+2. دانلود `MediReminder-3.4.1-final.apk` (برای بازار/مایکت) و `aab` (برای Google Play)
 3. نصب، مجوزها: اعلان، آلارم دقیق، باتری بدون محدودیت
 
 ---
