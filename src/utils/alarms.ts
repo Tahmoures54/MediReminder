@@ -15,8 +15,15 @@ const ACTION_TYPE_ID = 'MED_ALARM_ACTIONS';
  * once per 9 minutes per app while the device is in Doze.
  */
 export const NATIVE_FOLLOW_UP_MS = 9 * 60 * 1000;
-/** 36 slots ≈ 5.4h of follow-ups — keeps AlarmManager under OEM caps (e.g. Samsung ~500). */
+/**
+ * Android queue is intentionally bounded: 36 slots ≈ 5.4h per medication.
+ * The app refreshes pending-dose reminders while it is running and whenever
+ * it resumes. This is not an OS-level guarantee after force-stop/reboot:
+ * a fully closed app cannot replenish this JavaScript-managed queue by itself.
+ */
 export const NATIVE_FOLLOW_UP_SLOTS = 36;
+/** Refill the bounded native reminder queue before its 5.4h window expires. */
+export const NATIVE_PENDING_REFRESH_MS = 4 * 60 * 60 * 1000;
 /** Keep the same coverage for a future dose. */
 export const NATIVE_SCHEDULE_EXTRA_SLOTS = NATIVE_FOLLOW_UP_SLOTS;
 /** حداکثر تعداد اعلان‌های زمان‌بندی‌شده در هر دسته برای جلوگیری از مشکلات OEM */
