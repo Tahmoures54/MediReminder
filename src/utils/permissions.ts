@@ -3,7 +3,8 @@ import { Capacitor } from '@capacitor/core';
 import { LocalNotifications } from '@capacitor/local-notifications';
 
 export const NOTIFICATION_CHANNEL_ID = 'medication-alarms';
-export const ANDROID_APP_ID = 'com.tahmoures.medireminder';
+/** Must match capacitor.config.ts appId (Android applicationId). */
+export const ANDROID_APP_ID = 'com.tahmoures54.medireminder';
 
 export type AppNotificationPermission =
   | 'granted'

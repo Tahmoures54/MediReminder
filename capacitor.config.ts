@@ -1,7 +1,8 @@
 import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
-  appId: 'com.tahmoures.medireminder',
+  // Unique package for Cafe Bazaar / Play (previous id was already taken)
+  appId: 'com.tahmoures54.medireminder',
   appName: 'یادآور دارو',
   webDir: 'dist',
   // Ensure the WebView uses the same origin as PWA for SW compatibility (web only)
@@ -14,8 +15,6 @@ const config: CapacitorConfig = {
   android: {
     backgroundColor: '#0f172a',
     allowMixedContent: false,
-    // Keep WebView zoom disabled for native-like feel, but allow user scalability via CSS
-    // Override status bar handling via StatusBar plugin if installed
   },
   ios: {
     backgroundColor: '#0f172a',
@@ -35,7 +34,6 @@ const config: CapacitorConfig = {
       androidSplashResourceName: 'splash',
       androidScaleType: 'CENTER_CROP',
     },
-    // StatusBar plugin config is optional; we handle it in code if present
     StatusBar: {
       style: 'DARK',
       backgroundColor: '#0f172a',
