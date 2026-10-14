@@ -31,7 +31,6 @@ import {
 } from './utils/alarms';
 import { findMedication, normalize, patchMedications, sortMedications, toDue } from './utils/medication';
 import { toMedId } from './utils/ids';
-import { backupFilename, downloadJson, readJsonFile } from './utils/backup';
 import { useDoseActions } from './hooks/useDoseActions';
 import {
   APP_VERSION,
@@ -123,49 +122,6 @@ export default function App() {
     }
     return true;
   }, []);
-
-  const exportBackup = useCallback(async () => {
-    downloadJson(backupFilename(), await db.exportBackup());
-  }, []);
-
-  const importBackup = useCallback(
-    async (file: File) => {
-      try {
-        const payload = await readJsonFile(file);
-        await db.importBackup(payload as Awaited<ReturnType<typeof db.exportBackup>>);
-        await load();
-      } catch (error) {
-        console.error(error);
-        setConfirm({
-          title: 'ورود پشتیبان ناموفق بود',
-          message: 'فایل معتبر نیست یا خراب است.',
-          confirmLabel: 'متوجه شدم',
-          showCancel: false,
-          variant: 'info',
-          onConfirm: () => setConfirm(null),
-        });
-      }
-    },
-    [load]
-  );
-
-  const requestImport = useCallback(
-    (file: File) => {
-      setConfirm({
-        title: 'جایگزینی داده‌ها',
-        message:
-          'ورود پشتیبان همه داروهای فعلی این دستگاه را پاک می‌کند و با محتویات فایل جایگزین می‌کند. این کار برگشت‌پذیر نیست.',
-        variant: 'danger',
-        confirmLabel: 'جایگزین کن',
-        cancelLabel: 'انصراف',
-        onConfirm: () => {
-          setConfirm(null);
-          void importBackup(file);
-        },
-      });
-    },
-    [importBackup]
-  );
 
   const openAlert = useCallback((m: Medication, force = false) => {
     if (!force && alertId.current === m.id) return;
@@ -700,29 +656,6 @@ export default function App() {
               />
             ))
           )}
-        </div>
-
-        <div className="mt-6 grid grid-cols-2 gap-3">
-          <button
-            type="button"
-            onClick={() => void exportBackup()}
-            className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3.5 text-sm font-semibold text-slate-200"
-          >
-            خروجی پشتیبان
-          </button>
-          <label className="flex cursor-pointer items-center justify-center rounded-2xl border border-white/10 bg-white/5 px-4 py-3.5 text-sm font-semibold text-slate-200">
-            ورود پشتیبان
-            <input
-              type="file"
-              accept="application/json,.json"
-              className="sr-only"
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                e.target.value = '';
-                if (file) requestImport(file);
-              }}
-            />
-          </label>
         </div>
 
         <footer className="mt-8 text-center text-xs text-slate-500">
