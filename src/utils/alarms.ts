@@ -214,7 +214,7 @@ async function syncNative(medications: Medication[]): Promise<void> {
           smallIcon: 'ic_stat_icon_config_sample',
           iconColor: '#DC2626',
           actionTypeId: ACTION_TYPE_ID,
-          extra: { medicationId: m.id, kind: 'pending', slot },
+          extra: { medicationId: m.id, kind: 'pending', slot, scheduledAt: m.dueScheduledAt ?? m.nextDoseAt },
           autoCancel: false,
           ongoing: slot === 0,
         });
@@ -236,7 +236,7 @@ async function syncNative(medications: Medication[]): Promise<void> {
           smallIcon: 'ic_stat_icon_config_sample',
           iconColor: '#0891b2',
           actionTypeId: ACTION_TYPE_ID,
-          extra: { medicationId: m.id, kind: 'scheduled', slot },
+          extra: { medicationId: m.id, kind: 'scheduled', slot, scheduledAt: m.nextDoseAt },
           autoCancel: false,
           ongoing: false,
         });
@@ -260,7 +260,7 @@ async function syncNative(medications: Medication[]): Promise<void> {
           smallIcon: 'ic_stat_icon_config_sample',
           iconColor: '#DC2626',
           actionTypeId: ACTION_TYPE_ID,
-          extra: { medicationId: m.id, kind: 'overdue', slot },
+          extra: { medicationId: m.id, kind: 'overdue', slot, scheduledAt: m.nextDoseAt },
           autoCancel: false,
           ongoing: slot === 0,
         });
