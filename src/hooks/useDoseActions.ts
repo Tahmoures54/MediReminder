@@ -72,8 +72,17 @@ export function useDoseActions({
         remaining: m.interval,
         updatedAt: now,
       };
+      // Commit the dose record before changing the visible state. If IndexedDB
+      // fails, keep the reminder actionable and release the in-memory guard so
+      // the user can retry instead of silently losing the dose record.
+      try {
+        await persist(updated);
+      } catch (error) {
+        completedDoseActionsRef.current.delete(actionKey);
+        console.error('[DoseActions] failed to persist taken dose; action can be retried', error);
+        throw error;
+      }
       setMedications((v) => v.map((x) => (x.id === m.id ? updated : x)));
-      await persist(updated);
 
       if (m.id != null) {
         await cancelMedNotifications(m.id);
@@ -103,8 +112,16 @@ export function useDoseActions({
         remaining: secs,
         updatedAt: now,
       };
+      // Persist first so a storage failure does not hide the due reminder
+      // or leave the UI claiming that snooze succeeded when it did not.
+      try {
+        await persist(updated);
+      } catch (error) {
+        completedDoseActionsRef.current.delete(actionKey);
+        console.error('[DoseActions] failed to persist snooze; action can be retried', error);
+        throw error;
+      }
       setMedications((v) => v.map((x) => (x.id === m.id ? updated : x)));
-      await persist(updated);
 
       if (m.id != null) {
         await cancelMedNotifications(m.id);
@@ -130,8 +147,8 @@ export function useDoseActions({
         remaining: running ? Math.max(1, m.remaining || m.interval) : m.remaining,
         updatedAt: now,
       };
-      setMedications((v) => v.map((x) => (x.id === m.id ? updated : x)));
       await persist(updated);
+      setMedications((v) => v.map((x) => (x.id === m.id ? updated : x)));
       if (!running && m.id != null) {
         await cancelMedNotifications(m.id);
         dismissSwFollowUps(m.id);
@@ -164,8 +181,8 @@ export function useDoseActions({
         snoozeCount: 0,
         updatedAt: now,
       };
-      setMedications((v) => v.map((x) => (x.id === m.id ? updated : x)));
       await persist(updated);
+      setMedications((v) => v.map((x) => (x.id === m.id ? updated : x)));
       if (m.id != null) {
         await cancelMedNotifications(m.id);
         dismissSwFollowUps(m.id);
