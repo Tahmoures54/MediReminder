@@ -26,6 +26,8 @@ export const NATIVE_FOLLOW_UP_SLOTS = 36;
 export const NATIVE_PENDING_REFRESH_MS = 4 * 60 * 60 * 1000;
 /** Keep the same coverage for a future dose. */
 export const NATIVE_SCHEDULE_EXTRA_SLOTS = NATIVE_FOLLOW_UP_SLOTS;
+/** Keep the total queue below common Android/OEM pending-alarm pressure. */
+export const MAX_PENDING_NATIVE_NOTIFICATIONS = 450;
 /** حداکثر تعداد اعلان‌های زمان‌بندی‌شده در هر دسته برای جلوگیری از مشکلات OEM */
 const SCHEDULE_CHUNK_SIZE = 48;
 /** پراکندگی زمانی بین داروهای مختلف تا با محدودیت 9دقیقه‌ای Doze برخورد نکنند */
@@ -262,13 +264,37 @@ async function syncNative(medications: Medication[]): Promise<void> {
 
   toSchedule.sort((a, b) => a.schedule.at.getTime() - b.schedule.at.getTime());
 
-  console.info('[Alarms] scheduling native', toSchedule.length, 'notifications');
+  // The queue is shared across all medications. Reserve the first alert for
+  // every medication before distributing follow-ups round-robin by slot, so
+  // a large medication list cannot silently crowd out another medicine's
+  // initial reminder. Unselected slots are canceled below and will be rebuilt
+  // on the next sync/resume.
+  let selectedNotifications = toSchedule;
+  if (toSchedule.length > MAX_PENDING_NATIVE_NOTIFICATIONS) {
+    const primary = toSchedule.filter((notification) => Number(notification.extra.slot) === 0);
+    const followUps = toSchedule
+      .filter((notification) => Number(notification.extra.slot) !== 0)
+      .sort((a, b) =>
+        Number(a.extra.slot) - Number(b.extra.slot) ||
+        a.schedule.at.getTime() - b.schedule.at.getTime()
+      );
+    selectedNotifications = [...primary, ...followUps]
+      .slice(0, MAX_PENDING_NATIVE_NOTIFICATIONS)
+      .sort((a, b) => a.schedule.at.getTime() - b.schedule.at.getTime());
+    console.warn('[Alarms] native queue capped to protect initial reminders', {
+      requested: selectedNotifications.length,
+      scheduled: selectedNotifications.length,
+      limit: MAX_PENDING_NATIVE_NOTIFICATIONS,
+    });
+  }
 
-  const desiredIds = new Set(toSchedule.map((notification) => notification.id));
+  console.info('[Alarms] scheduling native', selectedNotifications.length, 'notifications');
+
+  const desiredIds = new Set(selectedNotifications.map((notification) => notification.id));
   let failedChunks = 0;
 
-  for (let i = 0; i < toSchedule.length; i += SCHEDULE_CHUNK_SIZE) {
-    const chunk = toSchedule.slice(i, i + SCHEDULE_CHUNK_SIZE);
+  for (let i = 0; i < selectedNotifications.length; i += SCHEDULE_CHUNK_SIZE) {
+    const chunk = selectedNotifications.slice(i, i + SCHEDULE_CHUNK_SIZE);
     try {
       await LocalNotifications.schedule({ notifications: chunk });
     } catch (e) {
