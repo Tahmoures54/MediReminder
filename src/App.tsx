@@ -939,7 +939,41 @@ export default function App() {
           )}
         </div>
 
-        <footer className="mt-8 space-y-1 pb-2 text-center text-[11px] text-slate-500">
+        <section
+          aria-labelledby="support-app-title"
+          className="mt-7 overflow-hidden rounded-3xl border border-amber-300/20 bg-gradient-to-br from-amber-400/[0.13] via-orange-400/[0.08] to-cyan-400/[0.08] p-4 shadow-lg shadow-black/10"
+        >
+          <div className="flex items-start gap-3">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-amber-200/15 bg-amber-300/10 text-2xl" aria-hidden>
+              💛
+            </div>
+            <div className="min-w-0 flex-1">
+              <h2 id="support-app-title" className="text-sm font-black text-amber-100">
+                حمایت شما، دلگرمی ادامه راه ماست
+              </h2>
+              <p className="mt-2 text-xs leading-6 text-slate-200">
+                برای طراحی و برنامه‌نویسی این برنامه، زمان، تلاش و هزینه زیادی صرف شده است.
+                اگر یادآور دارو برای شما یا عزیزانتان مفید است، با حمایت خود به ادامه توسعه،
+                نگهداری و بهتر شدن آن کمک کنید تا بتوانیم همراه سلامت شما بمانیم.
+              </p>
+              <button
+                type="button"
+                onClick={() => window.open(
+                  `https://wa.me/989160684552?text=${encodeURIComponent('سلام، می‌خواهم از توسعه و ادامه فعالیت برنامه یادآور هوشمند دارو حمایت کنم. لطفاً راهنمایی‌ام کنید.')}`,
+                  '_blank',
+                  'noopener,noreferrer'
+                )}
+                className="mt-3 inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-amber-200/20 bg-amber-300/10 px-4 py-2 text-xs font-bold text-amber-100 transition hover:bg-amber-300/15 active:scale-[0.98]"
+              >
+                <span aria-hidden>🤝</span>
+                راه‌های حمایت از برنامه
+                <span aria-hidden>←</span>
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <footer className="mt-5 space-y-1 pb-2 text-center text-[11px] text-slate-500">
           <p className="leading-relaxed">داده‌ها فقط روی همین دستگاه می‌مانند · جایگزین نظر پزشک نیست</p>
           <p className="text-slate-600">MediReminder v{APP_VERSION}</p>
         </footer>
