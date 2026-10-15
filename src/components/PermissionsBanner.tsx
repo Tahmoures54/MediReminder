@@ -6,6 +6,7 @@ export type PermissionState = AppNotificationPermission;
 interface Props {
   permission: PermissionState;
   exactAlarmGranted?: boolean;
+  batteryOptimizationIgnored?: boolean;
   onRequest: () => void;
   onRequestExactAlarm?: () => void;
   onOpenBatterySettings?: () => void;
@@ -16,12 +17,14 @@ interface Props {
 export function PermissionsBanner({
   permission,
   exactAlarmGranted = true,
+  batteryOptimizationIgnored = false,
   onRequest,
   onRequestExactAlarm,
   onOpenBatterySettings,
   onOpenAppSettings,
   onDismiss,
 }: Props) {
+  if (permission === 'granted' && exactAlarmGranted && batteryOptimizationIgnored) return null;
   if (permission === 'granted' && exactAlarmGranted && !onOpenBatterySettings) return null;
   if (permission === 'granted' && exactAlarmGranted) {
     return (
@@ -109,10 +112,12 @@ export function PermissionsBanner({
                     مجوز <strong>آلارم دقیق</strong> را در تنظیمات اندروید فعال کنید (برای دقت ثانیه‌ای)
                   </li>
                 )}
-                <li>
-                  باتری را روی <strong className="text-amber-100">بدون محدودیت</strong> بگذارید — تنظیمات → باتری → عدم
-                  بهینه‌سازی
-                </li>
+                {!batteryOptimizationIgnored && (
+                  <li>
+                    باتری را روی <strong className="text-amber-100">بدون محدودیت</strong> بگذارید — تنظیمات → باتری → عدم
+                    بهینه‌سازی
+                  </li>
+                )}
                 <li>صدا و ویبره کانال «هشدار مصرف دارو» را باز بگذارید</li>
                 <li className="text-[11px] text-amber-200/70">
                   در شیائومی/سامسونگ: قفل برنامه در Recent Apps + Autostart را فعال کنید
@@ -149,7 +154,7 @@ export function PermissionsBanner({
                 ⏰ فعال‌سازی آلارم دقیق
               </button>
             )}
-            {isAndroid && onOpenBatterySettings && (
+            {isAndroid && !batteryOptimizationIgnored && onOpenBatterySettings && (
               <button
                 type="button"
                 onClick={onOpenBatterySettings}
