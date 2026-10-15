@@ -39,6 +39,16 @@ describe('Bazaar purchase safety contracts', () => {
     expect(appSource).toContain('setShowPurchase(false);\n        setShowAdd(true);');
   });
 
+  it('recovers an owned Bazaar token and retries the requested consumable purchase once', () => {
+    expect(billingSource).toContain('function isAlreadyPurchasedError(error: unknown)');
+    expect(billingSource).toContain('await restorePendingMedicationCardPurchases();');
+    expect(billingSource).toContain('result = await purchase();');
+    expect(billingSource).toContain('if (isAlreadyPurchasedError(retryError))');
+    expect(billingSource).toContain('await CafebazaarPoolakey.consumeProduct({ token: purchaseToken });');
+    expect(billingSource).toContain('recoveredPreviousPurchase: boolean');
+    expect(appSource).toContain('هشدار: این بسته قبلاً خریداری شده بود.');
+  });
+
   it('supports recovery of interrupted consumable purchases', () => {
     expect(billingSource).toContain('export async function restorePendingMedicationCardPurchases(): Promise<number>');
   });
