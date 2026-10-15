@@ -15,6 +15,7 @@ import {
   NATIVE_FOLLOW_UP_MS,
   NATIVE_FOLLOW_UP_SLOTS,
   NATIVE_PENDING_REFRESH_MS,
+  MAX_PENDING_NATIVE_NOTIFICATIONS,
 } from './alarms';
 
 describe('native reminder queue safety margins', () => {
@@ -41,6 +42,16 @@ describe('native reminder queue safety margins', () => {
     const order = sourceContract.map((fragment) => alarmSource.indexOf(fragment));
     expect(order.every((position) => position >= 0)).toBe(true);
     expect(order).toEqual([...order].sort((a, b) => a - b));
+  });
+
+  it('caps the shared native queue and prioritizes one initial reminder per medication', () => {
+    expect(MAX_PENDING_NATIVE_NOTIFICATIONS).toBe(450);
+    const cap = alarmSource.indexOf('const primary = toSchedule.filter((notification) => Number(notification.extra.slot) === 0)');
+    const followUps = alarmSource.indexOf('const followUps = toSchedule', cap);
+    const selection = alarmSource.indexOf('.slice(0, MAX_PENDING_NATIVE_NOTIFICATIONS)', followUps);
+    expect(cap).toBeGreaterThanOrEqual(0);
+    expect(followUps).toBeGreaterThan(cap);
+    expect(selection).toBeGreaterThan(followUps);
   });
 
 });
