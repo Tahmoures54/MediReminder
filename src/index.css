@@ -164,6 +164,26 @@ a {
 }
 
 /* ==========================================================================
+   Main app scrolling — one vertical touch-scroll container for the full UI
+   ========================================================================== */
+.app-scroll-container {
+  height: 100vh;
+  height: 100dvh;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
+  scrollbar-gutter: stable;
+}
+
+/* Keep keyboard focus scrolling inside the page's single scroll container. */
+.app-scroll-container :is(input, textarea, select, button) {
+  scroll-margin-block: 1rem;
+}
+
+/* ==========================================================================
    Utility animations used by the app
    ========================================================================== */
 @keyframes slide-in-from-top {
