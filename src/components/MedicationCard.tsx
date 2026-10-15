@@ -130,7 +130,7 @@ export function MedicationCard({
           <MetaChip label="بازه" value={`هر ${intervalHours} ساعت`} />
           <MetaChip
             label="موجودی"
-            value={empty ? 'تمام' : `${quantity} عدد`}
+            value={empty ? 'تمام' : `${quantity} دوز`}
             tone={empty ? 'danger' : low ? 'warn' : 'default'}
           />
         </div>
