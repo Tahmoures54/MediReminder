@@ -97,8 +97,8 @@ class Database {
   ): Promise<T | void> {
     const db = await this.dbPromise;
     return new Promise((resolve, reject) => {
-      let request: IDBRequest | void;
       let requestResult: T | undefined;
+      let hasRequest = false;
       let settled = false;
       const fail = (error: unknown) => {
         if (settled) return;
@@ -109,21 +109,22 @@ class Database {
       try {
         const tx = db.transaction(storeName, mode);
         const store = tx.objectStore(storeName);
-        request = fn(store);
+        const request = fn(store);
+        hasRequest = Boolean(request);
 
         if (request) {
           request.onsuccess = () => {
             // A successful request does not mean the whole transaction committed.
             // Wait for tx.oncomplete before reporting writes as persisted.
-            requestResult = request!.result as T;
+            requestResult = request.result as T;
           };
-          request.onerror = () => fail(request!.error || new Error('IndexedDB request failed'));
+          request.onerror = () => fail(request.error || new Error('IndexedDB request failed'));
         }
 
         tx.oncomplete = () => {
           if (settled) return;
           settled = true;
-          resolve(request ? requestResult as T : undefined);
+          resolve(hasRequest ? requestResult as T : undefined);
         };
         tx.onerror = () => fail(tx.error || new Error('IndexedDB transaction failed'));
         tx.onabort = () => fail(tx.error || new Error('IndexedDB transaction aborted'));
