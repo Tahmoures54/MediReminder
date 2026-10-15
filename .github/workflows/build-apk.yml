@@ -38,7 +38,7 @@ jobs:
           java-version: '21'
 
       - name: Install dependencies
-        run: npm ci
+        run: npm install --no-audit --no-fund
 
       - name: Validate TypeScript
         run: npm run typecheck
@@ -50,6 +50,7 @@ jobs:
         run: npm run build
         env:
           NODE_ENV: production
+          VITE_BAZAAR_RSA_PUBLIC_KEY: ${{ secrets.BAZAAR_RSA_PUBLIC_KEY }}
 
       - name: Add Android platform if missing
         run: |
