@@ -434,9 +434,15 @@ export default function App() {
         return;
       }
       const act = e.actionId;
-      if (act === 'taken') takeDoseRef.current({ ...m, pendingDose: true, running: false, remaining: 0 });
-      else if (act === 'snooze') snoozeRef.current({ ...m, pendingDose: true, running: false, remaining: 0 }, 10);
-      else openAlert({ ...m, pendingDose: true, running: false, remaining: 0 }, true);
+      if (act === 'taken') {
+        takeDoseRef.current({ ...m, pendingDose: true, running: false, remaining: 0 });
+      } else if (act === 'snooze' || act === 'dismiss') {
+        // Both non-confirming actions must defer the reminder instead of
+        // opening the app alert immediately; neither action records a dose.
+        snoozeRef.current({ ...m, pendingDose: true, running: false, remaining: 0 }, 10);
+      } else {
+        openAlert({ ...m, pendingDose: true, running: false, remaining: 0 }, true);
+      }
     });
     return () => {
       received.then((l) => l.remove()).catch(() => {});
