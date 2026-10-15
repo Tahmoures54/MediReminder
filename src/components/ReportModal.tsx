@@ -24,10 +24,6 @@ function formatDateTime(timestamp: number): string {
   return isToday ? `امروز، ساعت ${time}` : `${date.toLocaleDateString('fa-IR')}، ${time}`;
 }
 
-function formatDate(timestamp: number): string {
-  return new Date(timestamp).toLocaleDateString('fa-IR');
-}
-
 function getStatusDisplay(status: HistoryRecord['status']) {
   switch (status) {
     case 'on-time': return { text: 'به‌موقع', color: '#16815d', bg: '#e8f7ef' };
