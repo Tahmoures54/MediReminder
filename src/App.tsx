@@ -597,7 +597,7 @@ export default function App() {
       setShowAdd(true);
       setEditing(null);
       if (purchaseResult.recoveredPreviousPurchase) {
-        window.alert('هشدار: این بسته قبلاً خریداری شده بود. اعتبار خرید قبلی بازیابی شد و خرید جدید هم انجام شد.');
+        window.alert('این بسته قبلاً با حساب کافه‌بازار شما خریداری شده بود؛ خرید قبلی بازیابی شد و ظرفیت داروها همگام‌سازی شد.');
       }
     } catch (error) {
       // Follow Smart Mechanic's reconciliation pattern: after an interrupted or
