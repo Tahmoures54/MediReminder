@@ -575,6 +575,10 @@ export default function App() {
     setPurchaseError('');
     try {
       const countBeforePurchase = await db.getPaidMedicationCardCount();
+
+      // Close the plan selector before opening Bazaar's external payment UI.
+      // Keep purchaseBusy active so the user cannot start a second purchase.
+      setShowPurchase(false);
       await purchaseMedicationCards(selectedProductId);
       let currentPaidCardCount = await db.getPaidMedicationCardCount();
 
@@ -593,9 +597,12 @@ export default function App() {
       setShowAdd(true);
       setEditing(null);
     } catch (error) {
+      // Re-open the selector only when the purchase failed, and keep the exact
+      // error visible so the user can retry or choose another package.
       setPurchaseError(error instanceof Error ? error.message : 'خرید انجام نشد. دوباره تلاش کنید.');
-      // Keep the latest persisted count visible even when the purchase flow
-      // reports an error after Bazaar has already completed the transaction.
+      setShowPurchase(true);
+      // Keep the latest persisted count visible even when Bazaar has already
+      // completed the transaction but the SDK reported an error afterwards.
       setPaidCardCount(await db.getPaidMedicationCardCount().catch(() => paidCardCount));
     } finally {
       setPurchaseBusy(false);
@@ -767,7 +774,6 @@ export default function App() {
     let active = true;
     setCardProducts([]);
     setPriceLoading(true);
-    setPurchaseError('');
     if (!isNative) {
       setPurchaseError('پرداخت درون‌برنامه‌ای فقط در نسخه اندروید نصب‌شده از کافه‌بازار فعال است.');
       setPriceLoading(false);
