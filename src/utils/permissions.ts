@@ -1,5 +1,5 @@
 // src/utils/permissions.ts — Robust mobile permission + reliability helpers
-import { Capacitor } from '@capacitor/core';
+import { Capacitor, registerPlugin } from '@capacitor/core';
 import { LocalNotifications } from '@capacitor/local-notifications';
 
 export const NOTIFICATION_CHANNEL_ID = 'medication-alarms';
@@ -126,20 +126,21 @@ export async function requestExactAlarmPermission(): Promise<boolean> {
   }
 }
 
-import { registerPlugin } from '@capacitor/core';
-
 interface SystemSettingsPlugin {
   openBatterySettings(): Promise<{ opened: boolean; screen?: string }>;
   openAppSettings(): Promise<{ opened: boolean }>;
 }
 
-const SystemSettings = registerPlugin<SystemSettingsPlugin>('SystemSettings');
+function getSystemSettings(): SystemSettingsPlugin {
+  // Register lazily so browser-only tests and non-Android builds do not need the native bridge.
+  return registerPlugin<SystemSettingsPlugin>('SystemSettings');
+}
 
 export async function openAndroidAppSettings(): Promise<void> {
   if (!Capacitor.isNativePlatform() || Capacitor.getPlatform() !== 'android') return;
 
   try {
-    const result = await SystemSettings.openAppSettings();
+    const result = await getSystemSettings().openAppSettings();
     if (!result.opened) throw new Error('Android settings activity did not open');
   } catch (error) {
     console.error('[Perm] native app settings failed:', error);
@@ -151,7 +152,7 @@ export async function openBatteryOptimizationSettings(): Promise<void> {
   if (!Capacitor.isNativePlatform() || Capacitor.getPlatform() !== 'android') return;
 
   try {
-    const result = await SystemSettings.openBatterySettings();
+    const result = await getSystemSettings().openBatterySettings();
     if (!result.opened) throw new Error('Android battery settings activity did not open');
     console.info('[Perm] native battery settings opened:', result.screen ?? 'unknown');
   } catch (error) {
