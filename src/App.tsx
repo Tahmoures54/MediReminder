@@ -135,7 +135,7 @@ export default function App() {
   const dueTransitionRef = useRef(new Set<string>());
   const debouncedSync = useRef(createDebouncedSync(400));
   const resumeSyncTimeout = useRef<number | null>(null);
-  const purchaseRecoveryRef = useRef(false);
+  const purchaseRecoveryRef = useRef<Promise<void> | null>(null);
 
   useEffect(() => {
     medsRef.current = medications;
@@ -247,9 +247,14 @@ export default function App() {
   // by purchase token, so this is safe after an immediate purchase as well.
   const recoverMedicationCards = useCallback(async () => {
     if (!Capacitor.isNativePlatform() || Capacitor.getPlatform() !== 'android') return;
-    if (purchaseRecoveryRef.current) return;
-    purchaseRecoveryRef.current = true;
-    try {
+    // Callers that arrive during recovery must wait for the same operation;
+    // returning early could make the purchase UI report failure while a grant
+    // is still being committed in IndexedDB.
+    if (purchaseRecoveryRef.current) {
+      await purchaseRecoveryRef.current;
+      return;
+    }
+    const recovery = (async () => {
       const previousCount = await db.getPaidMedicationCardCount();
       await restorePendingMedicationCardPurchases();
       const count = await db.getPaidMedicationCardCount();
@@ -262,8 +267,12 @@ export default function App() {
         setEditing(null);
         setShowAdd(true);
       }
+    })();
+    purchaseRecoveryRef.current = recovery;
+    try {
+      await recovery;
     } finally {
-      purchaseRecoveryRef.current = false;
+      if (purchaseRecoveryRef.current === recovery) purchaseRecoveryRef.current = null;
     }
   }, [showPurchase]);
 
