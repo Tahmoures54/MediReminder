@@ -584,7 +584,7 @@ export default function App() {
   if (!bootDone) return <BootScreen />;
 
   return (
-    <div className="relative min-h-dvh overflow-x-hidden bg-slate-950 text-slate-100">
+    <div className="app-scroll-container relative bg-slate-950 text-slate-100">
       <div className="pointer-events-none absolute inset-0 -z-10" aria-hidden>
         <div className="absolute -top-24 start-1/2 h-72 w-[36rem] -translate-x-1/2 rounded-full bg-cyan-500/15 blur-3xl" />
         <div className="absolute top-40 -end-16 h-56 w-56 rounded-full bg-teal-500/10 blur-3xl" />
