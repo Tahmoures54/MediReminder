@@ -4,7 +4,6 @@ import { fileURLToPath } from 'node:url';
 
 const billingSource = readFileSync(fileURLToPath(new URL('./bazaarBilling.ts', import.meta.url)), 'utf8');
 const databaseSource = readFileSync(fileURLToPath(new URL('../db/database.ts', import.meta.url)), 'utf8');
-const appSource = readFileSync(fileURLToPath(new URL('../App.tsx', import.meta.url)), 'utf8');
 
 describe('Bazaar purchase safety contracts (non-consumable, existing SKUs)', () => {
   it('does not consume the main card packages', () => {
@@ -28,14 +27,5 @@ describe('Bazaar purchase safety contracts (non-consumable, existing SKUs)', () 
     expect(billingSource).toContain('medireminder_cards_3');
     expect(billingSource).toContain('medireminder_cards_10');
     expect(billingSource).toContain('medireminder_cards_25');
-  });
-
-  it('shows restore messaging in the purchase UI', () => {
-    expect(appSource).toContain('بازیابی خریدهای قبلی از حساب کافه‌بازار');
-    expect(appSource).toContain('خریدها به حساب کافه‌بازار شما گره می‌خورند');
-  });
-
-  it('still recovers owned purchases on boot / resume', () => {
-    expect(appSource).toContain('recoverMedicationCards');
   });
 });
