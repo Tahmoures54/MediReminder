@@ -32,7 +32,7 @@ describe('native reminder queue safety margins', () => {
   });
   it('does not mark the next reminder for cancellation before replacement scheduling', () => {
     const sourceContract = [
-      'const desiredIds = new Set(toSchedule.map((notification) => notification.id));',
+      'const desiredIds = new Set(selectedNotifications.map((notification) => notification.id));',
       'await LocalNotifications.schedule({ notifications: chunk });',
       '// Only after attempting replacements, remove unused reserved slots.',
       'const obsoleteIds = reservedIds.filter(({ id }) => !desiredIds.has(id));',
