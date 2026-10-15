@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Capacitor } from '@capacitor/core';
+import { Share } from '@capacitor/share';
 import { getMedicationCardProducts, purchaseMedicationCards, restorePendingMedicationCardPurchases, type MedicationCardProduct } from './services/bazaarBilling';
 import { getMedicationLimit } from './utils/medicationAccess';
 import { LocalNotifications } from '@capacitor/local-notifications';
@@ -58,6 +59,33 @@ type ConfirmState = {
 
 function openSupportWhatsApp() {
   window.open(SUPPORT_WHATSAPP_URL, '_blank', 'noopener,noreferrer');
+}
+
+async function shareApp() {
+  const shareUrl = 'https://cafebazaar.ir/app/com.tahmoures54.medireminder';
+  const shareTitle = 'یادآور هوشمند دارو';
+  const shareText = 'یادآور هوشمند دارو؛ برای تنظیم زمان مصرف داروها و دریافت یادآوری روی گوشی.';
+
+  try {
+    if (Capacitor.isNativePlatform()) {
+      await Share.share({ title: shareTitle, text: shareText, url: shareUrl, dialogTitle: 'معرفی یادآور هوشمند دارو' });
+      return;
+    }
+    if (typeof navigator.share === 'function') {
+      await navigator.share({ title: shareTitle, text: shareText, url: shareUrl });
+      return;
+    }
+    await navigator.clipboard.writeText(`${shareText} ${shareUrl}`);
+    window.alert('پیوند معرفی برنامه کپی شد؛ می‌توانید آن را برای دوستانتان بفرستید.');
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') return;
+    try {
+      await navigator.clipboard.writeText(`${shareText} ${shareUrl}`);
+      window.alert('پیوند معرفی برنامه کپی شد؛ می‌توانید آن را برای دوستانتان بفرستید.');
+    } catch {
+      window.alert('برای معرفی برنامه، این پیوند را کپی کنید: ' + shareUrl);
+    }
+  }
 }
 
 async function getCapacitorApp() {
@@ -949,33 +977,41 @@ export default function App() {
             </div>
             <div className="min-w-0 flex-1">
               <h2 id="support-app-title" className="text-sm font-black text-amber-100">
-                حمایت شما، دلگرمی ادامه راه ماست
+                همراه سلامت باشید
               </h2>
               <p className="mt-2 text-xs leading-6 text-slate-200">
-                برای طراحی و برنامه‌نویسی این برنامه، زمان، تلاش و هزینه زیادی صرف شده است.
-                اگر یادآور دارو برای شما یا عزیزانتان مفید است، با حمایت خود به ادامه توسعه،
-                نگهداری و بهتر شدن آن کمک کنید تا بتوانیم همراه سلامت شما بمانیم.
+                با خرید بسته‌های کارت دارو از داخل برنامه، امکان ثبت داروهای بیشتری را فراهم کنید؛
+                یا با معرفی «یادآور هوشمند دارو» به دوستان و خانواده، به آشنایی افراد بیشتری با برنامه کمک کنید.
+                خرید اختیاری است و معرفی برنامه رایگان است.
               </p>
-              <button
-                type="button"
-                onClick={() => window.open(
-                  `https://wa.me/989160684552?text=${encodeURIComponent('سلام، می‌خواهم از توسعه و ادامه فعالیت برنامه یادآور هوشمند دارو حمایت کنم. لطفاً راهنمایی‌ام کنید.')}`,
-                  '_blank',
-                  'noopener,noreferrer'
-                )}
-                className="mt-3 inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-amber-200/20 bg-amber-300/10 px-4 py-2 text-xs font-bold text-amber-100 transition hover:bg-amber-300/15 active:scale-[0.98]"
-              >
-                <span aria-hidden>🤝</span>
-                راه‌های حمایت از برنامه
-                <span aria-hidden>←</span>
-              </button>
+              <div className="mt-3 flex flex-col gap-2 min-[380px]:flex-row">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPurchaseError('');
+                    setShowPurchase(true);
+                  }}
+                  className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-gradient-to-b from-amber-300 to-amber-500 px-3 py-2 text-xs font-black text-slate-950 transition hover:from-amber-200 hover:to-amber-400 active:scale-[0.98]"
+                >
+                  <span aria-hidden>🛍️</span>
+                  مشاهده کارت‌های دارو
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void shareApp()}
+                  className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl border border-cyan-200/20 bg-cyan-300/10 px-3 py-2 text-xs font-bold text-cyan-100 transition hover:bg-cyan-300/15 active:scale-[0.98]"
+                >
+                  <span aria-hidden>↗</span>
+                  معرفی به دیگران
+                </button>
+              </div>
             </div>
           </div>
         </section>
 
         <footer className="mt-5 space-y-1 pb-2 text-center text-[11px] text-slate-500">
           <p className="leading-relaxed">داده‌ها فقط روی همین دستگاه می‌مانند · جایگزین نظر پزشک نیست</p>
-          <p className="text-slate-600">MediReminder v{APP_VERSION}</p>
+          <p className="text-slate-600">یادآور هوشمند دارو · نسخه {APP_VERSION}</p>
         </footer>
       </div>
 
