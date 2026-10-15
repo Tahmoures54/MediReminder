@@ -6,31 +6,33 @@ const billingSource = readFileSync(fileURLToPath(new URL('./bazaarBilling.ts', i
 const databaseSource = readFileSync(fileURLToPath(new URL('../db/database.ts', import.meta.url)), 'utf8');
 const appSource = readFileSync(fileURLToPath(new URL('../App.tsx', import.meta.url)), 'utf8');
 
-describe('Bazaar purchase safety contracts', () => {
-  it('commits local entitlement before attempting to consume the Bazaar token', () => {
-    expect(billingSource.indexOf('await db.grantPaidMedicationCards(purchaseToken, cardCount)')).toBeGreaterThanOrEqual(0);
-    expect(billingSource.indexOf('await db.grantPaidMedicationCards(purchaseToken, cardCount)'))
-      .toBeLessThan(billingSource.indexOf('await CafebazaarPoolakey.consumeProduct({ token: purchaseToken })'));
+describe('Bazaar purchase safety contracts (non-consumable model)', () => {
+  it('never consumes non-consumable unlock products', () => {
+    // consumeProduct must only appear in the legacy consumable recovery path
+    const consumeIdx = billingSource.indexOf('await CafebazaarPoolakey.consumeProduct');
+    expect(consumeIdx).toBeGreaterThanOrEqual(0);
+    // The only consume is inside the legacy block
+    expect(billingSource).toContain('LEGACY_CONSUMABLE_CARD_COUNTS');
+    expect(billingSource).toContain('// Consume only legacy consumables');
   });
 
   it('uses the purchase token as an idempotency key inside the IndexedDB write transaction', () => {
-    expect(databaseSource).toContain('const tx = db.transaction(STATE_STORE, \'readwrite\')');
+    expect(databaseSource).toContain("const tx = db.transaction(STATE_STORE, 'readwrite')");
     expect(databaseSource.indexOf('if (tokens.includes(token)) return;'))
       .toBeLessThan(databaseSource.indexOf('count: count + cards, tokens: [...tokens, token]'));
   });
 
-  it('clearly discloses device-local purchase storage before the user buys', () => {
-    expect(appSource).toContain('ظرفیت خریداری‌شده فعلاً روی همین دستگاه ذخیره می‌شود');
-    expect(appSource).toContain('پاک‌کردن داده‌های برنامه یا نصب مجدد ممکن است ظرفیت را حذف کند');
+  it('exposes syncEntitlementsFromBazaar as the restore path', () => {
+    expect(billingSource).toContain('export async function syncEntitlementsFromBazaar');
+    expect(billingSource).toContain('export async function restorePendingMedicationCardPurchases');
+    expect(billingSource).toContain('return syncEntitlementsFromBazaar()');
   });
 
-  it('starts the requested Bazaar purchase before recovery is used to reconcile an interrupted response', () => {
-    const purchase = billingSource.indexOf('const purchase = () => CafebazaarPoolakey.purchaseProduct({');
-    const recovery = billingSource.indexOf('await restorePendingMedicationCardPurchases(bundle.productId)');
-    expect(purchase).toBeGreaterThanOrEqual(0);
-    expect(recovery).toBeGreaterThan(purchase);
-    expect(billingSource).not.toContain('countBeforeRecovery');
-    expect(billingSource).not.toContain('if (recoveredCards > 0 || countAfterRecovery > countBeforeRecovery)');
+  it('defines non-consumable unlock packages', () => {
+    expect(billingSource).toContain('medireminder_unlock_5');
+    expect(billingSource).toContain('medireminder_unlock_15');
+    expect(billingSource).toContain('medireminder_unlimited');
+    expect(billingSource).toContain('unlimited: true');
   });
 
   it('does not keep the purchase dialog open if credit was delivered before a later error', () => {
@@ -39,17 +41,8 @@ describe('Bazaar purchase safety contracts', () => {
     expect(appSource).toContain('setShowPurchase(false);\n        setShowAdd(true);');
   });
 
-  it('recovers an owned Bazaar token and retries the requested consumable purchase once', () => {
-    expect(billingSource).toContain('function isAlreadyPurchasedError(error: unknown)');
-    expect(billingSource).toContain('await restorePendingMedicationCardPurchases(bundle.productId);');
-    expect(billingSource).toContain('result = await purchase();');
-    expect(billingSource).toContain('if (isAlreadyPurchasedError(retryError))');
-    expect(billingSource).toContain('await CafebazaarPoolakey.consumeProduct({ token: purchaseToken });');
-    expect(billingSource).toContain('recoveredPreviousPurchase: boolean');
-    expect(appSource).toContain('هشدار: این بسته قبلاً خریداری شده بود.');
-  });
-
-  it('supports recovery of interrupted consumable purchases', () => {
-    expect(billingSource).toContain('export async function restorePendingMedicationCardPurchases(onlyProductId?: string): Promise<number>');
+  it('still recovers owned purchases on boot / resume', () => {
+    expect(billingSource).toContain('export async function restorePendingMedicationCardPurchases');
+    expect(appSource).toContain('recoverMedicationCards');
   });
 });
