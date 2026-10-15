@@ -1053,7 +1053,6 @@ export default function App() {
         </section>
 
         <footer className="mt-5 space-y-2 pb-2 text-center text-[11px] text-slate-500">
-          <p className="leading-relaxed">داده‌ها فقط روی همین دستگاه می‌مانند · جایگزین نظر پزشک نیست</p>
           <button type="button" onClick={() => setShowTerms(true)} className="rounded-md px-2 py-1 font-bold text-cyan-300 underline underline-offset-4">قوانین استفاده و سلب مسئولیت</button>
           <p className="text-slate-600">یادآور هوشمند دارو · نسخه {APP_VERSION}</p>
         </footer>
