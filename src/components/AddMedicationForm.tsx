@@ -215,8 +215,9 @@ export function AddMedicationForm({ initial, onSubmit, onCancel }: Props) {
 
           <div className="space-y-1.5">
             <label htmlFor="med-quantity" className="block text-sm font-medium text-slate-300">
-              تعداد <span className="text-rose-400">*</span>
+              تعداد دوزهای موجود <span className="text-rose-400">*</span>
             </label>
+            <p className="text-xs leading-relaxed text-slate-500">تعداد نوبت‌های مصرف باقی‌مانده را وارد کنید؛ با هر بار تأیید «مصرف کردم»، یک دوز کم می‌شود.</p>
             <input
               id="med-quantity"
               type="text"
@@ -230,7 +231,7 @@ export function AddMedicationForm({ initial, onSubmit, onCancel }: Props) {
               }}
               onFocus={handleFocus}
               className="w-full rounded-xl border border-slate-600 bg-slate-950 px-4 py-3.5 text-[16px] text-white placeholder:text-slate-500 focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/20"
-              placeholder="30"
+              placeholder="مثلاً ۳۰ نوبت"
               enterKeyHint="next"
             />
           </div>
