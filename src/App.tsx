@@ -672,8 +672,16 @@ export default function App() {
       nextDoseAt,
       updatedAt: now,
     };
+    // Keep the persisted record authoritative: a failed IndexedDB write must
+    // not make the editor close or show an edit that will disappear on reload.
+    try {
+      await persist(updated);
+    } catch (error) {
+      console.error('[App] failed to save medication edits', error);
+      window.alert('ذخیره تغییرات دارو انجام نشد. اطلاعات قبلی حفظ شده است؛ لطفاً دوباره تلاش کنید.');
+      return;
+    }
     setMedications((v) => sortMedications(v.map((x) => (x.id === editing.id ? updated : x))));
-    await persist(updated);
     setEditing(null);
     setShowAdd(false);
   };
@@ -1124,6 +1132,7 @@ export default function App() {
               {priceLoading && <p className="rounded-xl bg-white/[0.04] p-3 text-xs text-slate-400">در حال دریافت قیمت بسته‌ها از کافه‌بازار…</p>}
               {!priceLoading && cardProducts.length === 0 && !purchaseError && <p className="text-xs text-slate-400">بسته‌ای برای خرید در دسترس نیست.</p>}
               <p className="pt-1 text-[11px] leading-relaxed text-slate-500">قیمت‌ها مستقیماً از بازار دریافت می‌شوند. خرید موفق، ظرفیت خریداری‌شده را به تعداد کارت‌های فعلی اضافه می‌کند.</p>
+              <p className="rounded-xl border border-amber-400/25 bg-amber-500/10 p-3 text-[11px] leading-relaxed text-amber-100">مهم: ظرفیت خریداری‌شده فعلاً روی همین دستگاه ذخیره می‌شود. پاک‌کردن داده‌های برنامه یا نصب مجدد ممکن است ظرفیت را حذف کند؛ پیش از خرید از داده‌های برنامه محافظت کنید. بازیابی خرید به وضعیت تراکنش و نوع محصول در کافه‌بازار وابسته است.</p>
             </div>
             {purchaseError && <div role="alert" className="mb-4 rounded-xl border border-amber-400/25 bg-amber-500/10 p-3 text-xs leading-relaxed text-amber-100">{purchaseError}</div>}
             <div className="flex gap-3">
