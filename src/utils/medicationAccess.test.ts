@@ -8,11 +8,13 @@ describe('medication card access', () => {
     expect(canAddMedication(1, 0)).toBe(false);
   });
 
-  it('adds one slot for each paid card entitlement', () => {
+  it('adds the purchased bundle size to the free card capacity', () => {
     expect(getMedicationLimit(1)).toBe(2);
     expect(canAddMedication(1, 1)).toBe(true);
     expect(canAddMedication(2, 1)).toBe(false);
     expect(getMedicationLimit(3)).toBe(4);
+    expect(getMedicationLimit(10)).toBe(11);
+    expect(getMedicationLimit(25)).toBe(26);
   });
 
   it('does not turn invalid entitlement counts into extra slots', () => {
