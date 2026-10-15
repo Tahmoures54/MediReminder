@@ -32,6 +32,16 @@ describe('due medication persistence safety', () => {
     ordered(block, ['await persist(due);', 'setMedications((v)', 'openAlert(due, true);']);
   });
 
+
+  it('persists medication edits before updating visible state and keeps the editor open on failure', () => {
+    const start = appSource.indexOf('const saveEdit = async');
+    const end = appSource.indexOf('const remove = async', start);
+    const block = appSource.slice(start, end);
+    ordered(block, ['await persist(updated);', 'setMedications((v)', 'setEditing(null);']);
+    expect(block).toContain('failed to save medication edits');
+    expect(block).toContain('return;');
+  });
+
   it('does not silently ignore failed persistence of a due transition', () => {
     expect(appSource).not.toContain('persist(due).catch(() => {});');
   });
