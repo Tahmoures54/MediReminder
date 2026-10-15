@@ -88,17 +88,6 @@ export async function purchaseMedicationCards(productId: string): Promise<void> 
   const bundle = MEDICATION_CARD_PACKAGES.find((item) => item.productId === productId);
   if (!bundle) throw new Error('بسته انتخاب‌شده معتبر نیست.');
 
-  // First try to deliver any unfinished purchase and consume its token.
-  // Recovery must never replace the user's explicit new purchase request:
-  // a user may intentionally buy the same consumable package repeatedly.
-  try {
-    await restorePendingMedicationCardPurchases();
-  } catch (error) {
-    // A temporary recovery failure must not silently cancel the requested buy.
-    // Bazaar remains the authority and will report if the SKU is still owned.
-    console.warn('[BazaarBilling] pre-purchase recovery failed; continuing with requested purchase:', error);
-  }
-
   const result = await CafebazaarPoolakey.purchaseProduct({
     productId: bundle.productId,
     payload: `medireminder-extra-medication-cards:${bundle.cardCount}`,
