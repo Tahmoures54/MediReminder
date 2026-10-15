@@ -868,12 +868,6 @@ export default function App() {
             {paidCardCount > 0 ? <span className="text-cyan-100/70">· {paidCardCount} کارت اضافه خریداری‌شده</span> : null}
           </div>
 
-          <section aria-label="هشدار مهم و مسئولیت استفاده" className="mt-3 rounded-2xl border border-amber-400/30 bg-amber-500/10 p-3.5 text-xs leading-6 text-amber-100">
-            <p className="font-black text-amber-200">⚠️ مهم: مسئولیت استفاده با کاربر است</p>
-            <p className="mt-1">این برنامه فقط ابزار کمکی یادآوری است؛ تحویل اعلان، مصرف دارو یا صحت اطلاعات را تضمین نمی‌کند و جایگزین نظر پزشک یا داروساز نیست. تنظیم مجوزها، بررسی برنامه دارویی و نگهداری نسخه پشتیبان از اطلاعات بر عهده شماست.</p>
-            <button type="button" onClick={() => setShowTerms(true)} className="mt-2 min-h-9 rounded-lg border border-amber-300/30 bg-amber-300/10 px-3 py-1.5 font-bold text-amber-200 underline underline-offset-4">مطالعه قوانین و سلب مسئولیت</button>
-          </section>
-
           {medications.length > 0 && (
             <div className="mt-4 grid grid-cols-2 gap-2 min-[420px]:grid-cols-4">
               <div className="rounded-2xl border border-white/10 bg-white/[0.04] px-3 py-3 text-center backdrop-blur">
