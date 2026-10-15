@@ -71,7 +71,12 @@ class Database {
     return new Promise((resolve, reject) => {
       const request = indexedDB.open(DB_NAME, DB_VERSION);
       request.onerror = () => reject(request.error);
-      request.onsuccess = () => resolve(request.result);
+      request.onsuccess = () => {
+        const db = request.result;
+        // A closed connection can otherwise leave future operations failing silently.
+        db.onversionchange = () => db.close();
+        resolve(db);
+      };
       request.onupgradeneeded = () => {
         const db = request.result;
         if (!db.objectStoreNames.contains(STORE_NAME)) {
@@ -92,17 +97,39 @@ class Database {
   ): Promise<T | void> {
     const db = await this.dbPromise;
     return new Promise((resolve, reject) => {
-      const tx = db.transaction(storeName, mode);
-      const store = tx.objectStore(storeName);
-      const request = fn(store);
-      if (request) {
-        request.onsuccess = () => resolve(request.result as T);
-        request.onerror = () => reject(request.error);
-      }
-      tx.onerror = () => reject(tx.error);
-      tx.oncomplete = () => {
-        if (!request) resolve();
+      let request: IDBRequest | void;
+      let requestResult: T | undefined;
+      let settled = false;
+      const fail = (error: unknown) => {
+        if (settled) return;
+        settled = true;
+        reject(error instanceof Error ? error : new Error(String(error || 'IndexedDB transaction failed')));
       };
+
+      try {
+        const tx = db.transaction(storeName, mode);
+        const store = tx.objectStore(storeName);
+        request = fn(store);
+
+        if (request) {
+          request.onsuccess = () => {
+            // A successful request does not mean the whole transaction committed.
+            // Wait for tx.oncomplete before reporting writes as persisted.
+            requestResult = request!.result as T;
+          };
+          request.onerror = () => fail(request!.error || new Error('IndexedDB request failed'));
+        }
+
+        tx.oncomplete = () => {
+          if (settled) return;
+          settled = true;
+          resolve(request ? requestResult as T : undefined);
+        };
+        tx.onerror = () => fail(tx.error || new Error('IndexedDB transaction failed'));
+        tx.onabort = () => fail(tx.error || new Error('IndexedDB transaction aborted'));
+      } catch (error) {
+        fail(error);
+      }
     });
   }
 
