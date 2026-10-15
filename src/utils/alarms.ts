@@ -282,7 +282,7 @@ async function syncNative(medications: Medication[]): Promise<void> {
       .slice(0, MAX_PENDING_NATIVE_NOTIFICATIONS)
       .sort((a, b) => a.schedule.at.getTime() - b.schedule.at.getTime());
     console.warn('[Alarms] native queue capped to protect initial reminders', {
-      requested: selectedNotifications.length,
+      requested: toSchedule.length,
       scheduled: selectedNotifications.length,
       limit: MAX_PENDING_NATIVE_NOTIFICATIONS,
     });
