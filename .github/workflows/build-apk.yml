@@ -60,6 +60,27 @@ jobs:
           fi
           npx cap sync android
 
+      - name: Configure JitPack for Cafe Bazaar Poolakey
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          p = Path('android/settings.gradle')
+          s = p.read_text()
+          if 'https://jitpack.io' not in s:
+              start = s.find('dependencyResolutionManagement')
+              if start < 0:
+                  raise SystemExit('dependencyResolutionManagement block not found in android/settings.gradle')
+              repo_block = s.find('repositories {', start)
+              if repo_block < 0:
+                  raise SystemExit('dependency repositories block not found in android/settings.gradle')
+              insert_at = s.find('\\n', repo_block) + 1
+              s = s[:insert_at] + "        maven { url 'https://jitpack.io' }\\n" + s[insert_at:]
+              p.write_text(s)
+          print('JitPack repository configured for Poolakey dependencies')
+          PY
+
       - name: Setup Gradle with cache
         uses: gradle/actions/setup-gradle@v6
         with:
