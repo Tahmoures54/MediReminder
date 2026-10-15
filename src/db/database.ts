@@ -196,9 +196,10 @@ class Database {
     return Math.max(0, Math.floor(Number(value?.count) || 0));
   }
 
-  /** Grant one local slot per unique Bazaar purchase token. */
-  async grantPaidMedicationCard(purchaseToken: string): Promise<boolean> {
+  /** Grant the full bundle once per unique Bazaar purchase token. */
+  async grantPaidMedicationCards(purchaseToken: string, cardCount: number): Promise<boolean> {
     const token = purchaseToken.trim();
+    const cards = Math.max(1, Math.floor(Number(cardCount) || 1));
     if (!token) throw new Error('توکن خرید بازار خالی است.');
 
     const db = await this.dbPromise;
@@ -217,7 +218,7 @@ class Database {
           const count = Math.max(0, Math.floor(Number(current?.count) || 0));
           store.put({
             key: 'paidMedicationCards',
-            value: { count: count + 1, tokens: [...tokens, token] },
+            value: { count: count + cards, tokens: [...tokens, token] },
           });
           granted = true;
         } catch (error) {
@@ -250,6 +251,11 @@ class Database {
         reject(tx.error || new Error('ثبت خرید لغو شد.'));
       };
     });
+  }
+
+  /** Backward-compatible helper for any older local code paths. */
+  async grantPaidMedicationCard(purchaseToken: string): Promise<boolean> {
+    return this.grantPaidMedicationCards(purchaseToken, 1);
   }
 
   async getState<T>(key: string): Promise<T | null> {
