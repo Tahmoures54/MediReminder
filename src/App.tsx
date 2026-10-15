@@ -573,8 +573,9 @@ export default function App() {
     if (purchaseBusy || !selectedProductId) return;
     setPurchaseBusy(true);
     setPurchaseError('');
+    let countBeforePurchase = 0;
     try {
-      const countBeforePurchase = await db.getPaidMedicationCardCount();
+      countBeforePurchase = await db.getPaidMedicationCardCount();
 
       // Close the plan selector before opening Bazaar's external payment UI.
       // Keep purchaseBusy active so the user cannot start a second purchase.
@@ -582,28 +583,34 @@ export default function App() {
       await purchaseMedicationCards(selectedProductId);
       let currentPaidCardCount = await db.getPaidMedicationCardCount();
 
-      // A completed payment must result in a persisted entitlement before the
-      // purchase dialog is dismissed. Recover any purchase that completed while
-      // the Bazaar activity was in the foreground before reporting success.
+      // If the payment activity returned late, recover and re-read persisted credits.
       if (currentPaidCardCount <= countBeforePurchase) {
         await recoverMedicationCards();
         currentPaidCardCount = await db.getPaidMedicationCardCount();
       }
-      setPaidCardCount(currentPaidCardCount);
       if (currentPaidCardCount <= countBeforePurchase) {
-        throw new Error('پرداخت انجام شد، اما افزایش ظرفیت در حافظه برنامه تأیید نشد. پنجره را نبندید؛ یک‌بار بازیابی خرید را انجام دهید یا با پشتیبانی تماس بگیرید.');
+        throw new Error('خرید تأیید شد اما اعتبار جدید در حافظه برنامه ثبت نشد. لطفاً دوباره تلاش نکنید و با پشتیبانی تماس بگیرید.');
       }
+      setPaidCardCount(currentPaidCardCount);
+      setPurchaseError('');
       setShowPurchase(false);
       setShowAdd(true);
       setEditing(null);
     } catch (error) {
-      // Re-open the selector only when the purchase failed, and keep the exact
-      // error visible so the user can retry or choose another package.
-      setPurchaseError(error instanceof Error ? error.message : 'خرید انجام نشد. دوباره تلاش کنید.');
-      setShowPurchase(true);
-      // Keep the latest persisted count visible even when Bazaar has already
-      // completed the transaction but the SDK reported an error afterwards.
-      setPaidCardCount(await db.getPaidMedicationCardCount().catch(() => paidCardCount));
+      // A recovery can successfully deliver a paid bundle even if the SDK then
+      // reports a purchase error. Never leave the user trapped in the plans
+      // dialog when the persisted entitlement has increased.
+      const latestCount = await db.getPaidMedicationCardCount().catch(() => paidCardCount);
+      setPaidCardCount(latestCount);
+      if (latestCount > countBeforePurchase) {
+        setPurchaseError('');
+        setShowPurchase(false);
+        setShowAdd(true);
+        setEditing(null);
+      } else {
+        setPurchaseError(error instanceof Error ? error.message : 'خرید انجام نشد. دوباره تلاش کنید.');
+        setShowPurchase(true);
+      }
     } finally {
       setPurchaseBusy(false);
     }
