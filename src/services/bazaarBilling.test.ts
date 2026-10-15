@@ -25,8 +25,8 @@ describe('Bazaar purchase safety contracts', () => {
   });
 
   it('starts the requested Bazaar purchase before recovery is used to reconcile an interrupted response', () => {
-    const purchase = billingSource.indexOf('CafebazaarPoolakey.purchaseProduct({');
-    const recovery = billingSource.indexOf('export async function restorePendingMedicationCardPurchases()');
+    const purchase = billingSource.indexOf('const purchase = () => CafebazaarPoolakey.purchaseProduct({');
+    const recovery = billingSource.indexOf('await restorePendingMedicationCardPurchases(bundle.productId)');
     expect(purchase).toBeGreaterThanOrEqual(0);
     expect(recovery).toBeGreaterThan(purchase);
     expect(billingSource).not.toContain('countBeforeRecovery');
@@ -41,7 +41,7 @@ describe('Bazaar purchase safety contracts', () => {
 
   it('recovers an owned Bazaar token and retries the requested consumable purchase once', () => {
     expect(billingSource).toContain('function isAlreadyPurchasedError(error: unknown)');
-    expect(billingSource).toContain('await restorePendingMedicationCardPurchases();');
+    expect(billingSource).toContain('await restorePendingMedicationCardPurchases(bundle.productId);');
     expect(billingSource).toContain('result = await purchase();');
     expect(billingSource).toContain('if (isAlreadyPurchasedError(retryError))');
     expect(billingSource).toContain('await CafebazaarPoolakey.consumeProduct({ token: purchaseToken });');
@@ -50,6 +50,6 @@ describe('Bazaar purchase safety contracts', () => {
   });
 
   it('supports recovery of interrupted consumable purchases', () => {
-    expect(billingSource).toContain('export async function restorePendingMedicationCardPurchases(): Promise<number>');
+    expect(billingSource).toContain('export async function restorePendingMedicationCardPurchases(onlyProductId?: string): Promise<number>');
   });
 });
