@@ -15,6 +15,8 @@ describe('medication card access', () => {
     expect(getMedicationLimit(3)).toBe(4);
     expect(getMedicationLimit(10)).toBe(11);
     expect(getMedicationLimit(25)).toBe(26);
+    expect(getMedicationLimit(10)).toBe(11);
+    expect(getMedicationLimit(25)).toBe(26);
   });
 
   it('does not turn invalid entitlement counts into extra slots', () => {
