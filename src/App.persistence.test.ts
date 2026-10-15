@@ -42,6 +42,12 @@ describe('due medication persistence safety', () => {
     expect(block).toContain('return;');
   });
 
+  it('shares one in-flight Bazaar recovery operation instead of returning early', () => {
+    expect(appSource).toContain('useRef<Promise<void> | null>(null)');
+    expect(appSource).toContain('await purchaseRecoveryRef.current');
+    expect(appSource).toContain('purchaseRecoveryRef.current === recovery');
+  });
+
   it('does not silently ignore failed persistence of a due transition', () => {
     expect(appSource).not.toContain('persist(due).catch(() => {});');
   });
