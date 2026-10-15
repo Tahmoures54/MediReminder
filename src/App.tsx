@@ -17,6 +17,7 @@ import {
   checkNotificationPermission,
   requestNotificationPermission,
   checkExactAlarmPermission,
+  checkBatteryOptimizationExemption,
   requestExactAlarmPermission,
   setupAndroidChannel,
   openAndroidAppSettings,
@@ -78,6 +79,7 @@ export default function App() {
   const [permission, setPermission] = useState<PermissionState>('prompt');
   const [isNative, setIsNative] = useState(false);
   const [exactAlarmGranted, setExactAlarmGranted] = useState(true);
+  const [batteryOptimizationIgnored, setBatteryOptimizationIgnored] = useState(true);
   const [bootError, setBootError] = useState<string | null>(null);
   const [bootAttempt, setBootAttempt] = useState(0);
   const [permBannerHidden, setPermBannerHidden] = useState(() => {
@@ -184,6 +186,7 @@ export default function App() {
         const permCheck = await initAllPermissions();
         const status = permCheck.notification ? 'granted' : await checkNotificationPermission();
         const exactAlarm = await checkExactAlarmPermission();
+        const batteryIgnored = await checkBatteryOptimizationExemption();
         await registerNotificationActions();
         await load();
         const purchasedCards = await db.getPaidMedicationCardCount();
@@ -191,6 +194,7 @@ export default function App() {
         setPaidCardCount(purchasedCards);
         setIsNative(native);
         setExactAlarmGranted(exactAlarm);
+        setBatteryOptimizationIgnored(batteryIgnored);
         setPermission(status);
         setBootError(null);
         setBootDone(true);
@@ -214,8 +218,10 @@ export default function App() {
       try {
         const status = await checkNotificationPermission();
         const exactAlarm = await checkExactAlarmPermission();
+        const batteryIgnored = await checkBatteryOptimizationExemption();
         setPermission(status);
         setExactAlarmGranted(exactAlarm);
+        setBatteryOptimizationIgnored(batteryIgnored);
         const current = medsRef.current;
         if (current.some((m) => m.pendingDose || m.running)) await syncAllAlarms(current);
         const now = Date.now();
@@ -675,6 +681,7 @@ export default function App() {
       (isNative && !exactAlarmGranted) ||
       (isNative &&
         Capacitor.getPlatform() === 'android' &&
+        !batteryOptimizationIgnored &&
         medications.some((m) => m.running || m.pendingDose)));
 
   if (bootError) {
@@ -775,6 +782,7 @@ export default function App() {
               <PermissionsBanner
                 permission={permission}
                 exactAlarmGranted={exactAlarmGranted}
+                batteryOptimizationIgnored={batteryOptimizationIgnored}
                 onRequest={handleRequestPermission}
                 onRequestExactAlarm={handleRequestExactAlarm}
                 onOpenBatterySettings={isNative ? () => void handleOpenBatterySettings() : undefined}
