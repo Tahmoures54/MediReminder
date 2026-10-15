@@ -33,8 +33,8 @@ describe('native reminder queue safety margins', () => {
     const sourceContract = [
       'const desiredIds = new Set(toSchedule.map((notification) => notification.id));',
       'await LocalNotifications.schedule({ notifications: chunk });',
+      '// Only after attempting replacements, remove unused reserved slots.',
       'const obsoleteIds = reservedIds.filter(({ id }) => !desiredIds.has(id));',
-      'await LocalNotifications.cancel({ notifications: chunk });',
     ];
     // Guard the ordering that prevents a failed replacement from first deleting
     // all working reminders for the medication.
