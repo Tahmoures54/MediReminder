@@ -12,6 +12,7 @@ type FeedbackState = { type: 'success' | 'error' | 'info'; message: string } | n
 
 const RECENT_DOSES_LIMIT = 10;
 const BAZAAR_URL = 'https://cafebazaar.ir/app/com.tahmoures54.medireminder';
+const DOCTOR_NOTE = 'پزشک محترم؛ برای بررسی دقیق‌تر روند مصرف دارو، می‌توانید در صورت صلاحدید از بیمار بخواهید گزارش ثبت‌شده را در مراجعه بعدی همراه داشته باشد. اعتبار حرفه‌ای شما ارزشمند است و گفت‌وگوی درمانی دقیق با اطلاعات روشن‌تر آغاز می‌شود.';
 
 function formatDateTime(timestamp: number): string {
   const date = new Date(timestamp);
@@ -126,7 +127,7 @@ function buildReportText(medication: Medication, stats: ReportStats, recentHisto
     `درصد ثبت به‌موقع/زودتر از زمان: ${adherence}`,
     `آخرین سابقه: ${stats.lastDose}`,
     '',
-    'سوابق اخیر:',
+    DOCTOR_NOTE,\n    '',\n    'سوابق اخیر:',
     lines,
     '',
     'این گزارش از سوابق ثبت‌شده در برنامه تهیه شده و جایگزین ارزیابی پزشک نیست.',
@@ -162,6 +163,10 @@ function buildHtmlReport(medication: Medication, stats: ReportStats, recentHisto
 *{box-sizing:border-box}body{margin:0;padding:22px 12px;background:#f3f7f7;line-height:1.9}
 .page{max-width:760px;margin:0 auto;background:#fff;border:1px solid #e0e9e8;border-radius:22px;overflow:hidden;box-shadow:0 12px 36px #163c3b0c}
 .hero{padding:26px 24px 22px;background:linear-gradient(135deg,#e7f7f4,#f5fbfa);border-bottom:1px solid #dcece8}
+.doctor-note{margin:18px 24px 0;padding:17px 18px;border:2px solid #d7a83d;border-right:6px solid #d7a83d;border-radius:15px;background:linear-gradient(135deg,#fff9e8,#fffdf6);color:#594719}
+.doctor-note strong{display:block;font-size:14px;color:#805b0b;margin-bottom:5px}
+.doctor-note p{margin:0;font-size:13px;line-height:2}
+.doctor-note .trust{display:block;margin-top:8px;font-weight:800;color:#7c4a12}
 .brand{font-size:12px;color:#287d74;font-weight:700;letter-spacing:.2px}
 h1{font-size:23px;margin:8px 0 4px;color:#163f42} .subtitle{font-size:13px;color:#607779}
 .content{padding:22px 24px}.medicine{border:1px solid #e0eeeb;border-radius:16px;padding:16px;background:#fbfefd}
@@ -178,14 +183,14 @@ th,td{padding:11px 10px;border-bottom:1px solid #e9efee}tbody tr:last-child td{b
 .ad a{display:inline-block;background:#287f73;color:white;text-decoration:none;border-radius:10px;padding:8px 18px;font-weight:700;font-size:12px}
 footer{text-align:center;padding:0 18px 20px;font-size:11px;color:#8a9998}
 .actions{max-width:760px;margin:12px auto 0;display:flex;gap:8px;justify-content:center}.actions button{border:0;border-radius:10px;padding:10px 16px;background:#287f73;color:white;font-weight:700;font-size:13px}
-@media(max-width:440px){body{padding:10px 7px}.hero,.content{padding:18px 15px}.ad{margin:0 15px 18px}.stats{gap:6px}.stat{padding:10px 6px}.stat strong{font-size:18px}h1{font-size:20px}}
+@media(max-width:440px){body{padding:10px 7px}.hero,.content{padding:18px 15px}.doctor-note{margin:14px 15px 0;padding:14px}.ad{margin:0 15px 18px}.stats{gap:6px}.stat{padding:10px 6px}.stat strong{font-size:18px}h1{font-size:20px}}
 @media print{body{padding:0;background:#fff}.page{border:0;box-shadow:none;border-radius:0}.actions{display:none}.ad a{color:#205b55;background:transparent;border:1px solid #8cb7ae}.hero{-webkit-print-color-adjust:exact;print-color-adjust:exact}.ad,.stat,.medicine{break-inside:avoid}}
 </style>
 </head>
 <body>
 <main class="page">
 <header class="hero"><div class="brand">گزارش شخصی مصرف دارو</div><h1>خلاصه سوابق مصرف</h1><div class="subtitle">تهیه‌شده در ${escapeHtml(generatedAt)}</div></header>
-<section class="content">
+<aside class="doctor-note"><strong>پیام مهم برای پزشک محترم</strong><p>${escapeHtml(DOCTOR_NOTE)}</p><span class="trust">گزارش روشن‌تر، گفت‌وگوی درمانی دقیق‌تر.</span></aside>\n<section class="content">
 <div class="medicine"><div class="label">نام دارو</div><div class="medicine-name">${escapeHtml(medication.name)}</div><div class="meta">دوز ثبت‌شده: <strong>${escapeHtml(medication.dosage)}</strong></div>${medication.condition?.trim() ? `<div class="meta">بیماری مرتبط: ${escapeHtml(medication.condition.trim())}</div>` : ''}</div>
 <div class="stats">
 <div class="stat"><strong>${totalLabel}</strong><span>کل سوابق ثبت‌شده</span></div>
@@ -335,9 +340,15 @@ export function ReportModal({ medication, onClose }: ReportModalProps) {
           <div className="mb-5 flex items-start justify-between gap-3">
             <div className="min-w-0 flex-1">
               <h2 id="modal-title" className="flex items-center gap-2 text-xl font-bold text-white">📄 گزارش مصرف دارو</h2>
-              <p className="mt-1 text-xs leading-relaxed text-gray-400">گزارش HTML مرتب و قابل‌خواندن برای پزشک؛ بدون نام بیمار و بدون هش یا شناسه فنی.</p>
+              <p className="mt-1 text-sm leading-relaxed text-gray-300">گزارش مصرف دارو برای پزشک؛ بدون نام بیمار و بدون شناسه فنی.</p>
             </div>
             <button type="button" onClick={onClose} className="tap-target flex shrink-0 items-center justify-center rounded-xl bg-gray-700/50 p-2.5 text-gray-400 hover:bg-gray-700 hover:text-white" title="بستن" aria-label="بستن پنجره">✕</button>
+          </div>
+
+          <div className="mb-4 rounded-2xl border-2 border-amber-400/50 bg-gradient-to-l from-amber-500/15 to-orange-500/10 p-4 shadow-lg shadow-amber-950/10">
+            <div className="mb-2 flex items-center gap-2 text-base font-black text-amber-200"><span aria-hidden="true">🩺</span> پیام مهم برای پزشک محترم</div>
+            <p className="text-sm font-medium leading-7 text-slate-100">برای بررسی دقیق‌تر روند مصرف دارو، می‌توانید در صورت صلاحدید از بیمار بخواهید گزارش ثبت‌شده را در مراجعه بعدی همراه داشته باشد.</p>
+            <p className="mt-2 border-t border-amber-300/20 pt-2 text-xs font-bold leading-6 text-amber-200">اعتبار حرفه‌ای شما ارزشمند است؛ گفت‌وگوی درمانی دقیق با اطلاعات روشن‌تر آغاز می‌شود.</p>
           </div>
 
           {feedback && <div aria-live="polite" className={`mb-4 rounded-xl border px-4 py-3 text-sm leading-relaxed ${feedback.type === 'success' ? 'border-green-500/30 bg-green-500/10 text-green-300' : feedback.type === 'info' ? 'border-blue-500/30 bg-blue-500/10 text-blue-200' : 'border-red-500/30 bg-red-500/10 text-red-300'}`}>{feedback.message}</div>}
@@ -378,7 +389,7 @@ export function ReportModal({ medication, onClose }: ReportModalProps) {
             <span className="font-bold text-teal-200">حریم خصوصی:</span> نام بیمار و شناسه فنی در گزارش قرار نمی‌گیرد. گزارش شامل نام دارو و سوابق مصرف آن است؛ پیش از ارسال، گیرنده را بررسی کنید.
           </div>
 
-          <div className="mb-3 grid grid-cols-1 gap-2.5 sm:grid-cols-3">
+          <div className="mb-3 rounded-2xl border border-emerald-400/30 bg-emerald-500/[0.08] p-3"><p className="text-center text-sm font-bold text-emerald-200">📄 گزارش آماده ارائه به پزشک</p><p className="mt-1 text-center text-xs leading-relaxed text-slate-300">فایل HTML را دریافت کنید یا از گزینه اشتراک‌گذاری برای ارسال گزارش استفاده کنید.</p></div>\n          <div className="mb-3 grid grid-cols-1 gap-2.5 sm:grid-cols-3">
             <button type="button" onClick={() => void handleShareReport()} disabled={isSharing} className="tap-target rounded-xl bg-blue-600 px-4 py-3.5 text-sm font-bold text-white hover:bg-blue-500 disabled:opacity-60">{isSharing ? 'در حال آماده‌سازی…' : '📤 اشتراک‌گذاری'}</button>
             <button type="button" onClick={() => void handleCopyReport()} disabled={isCopying} className="tap-target rounded-xl bg-slate-700 px-4 py-3.5 text-sm font-bold text-white hover:bg-slate-600 disabled:opacity-60">{isCopying ? 'در حال کپی…' : '📋 کپی خلاصه'}</button>
             <button type="button" onClick={handleDownloadReport} disabled={isDownloading} className="tap-target rounded-xl bg-emerald-600 px-4 py-3.5 text-sm font-bold text-white hover:bg-emerald-500 disabled:opacity-60">{isDownloading ? 'در حال آماده‌سازی…' : '🌐 دریافت HTML'}</button>
