@@ -113,11 +113,7 @@ export async function syncEntitlementsFromBazaar(): Promise<number> {
   return Math.max(bestFromOwned, localCount);
 }
 
-export type MedicationCardPurchaseResult = {
-  recoveredPreviousPurchase: boolean;
-};
-
-export async function purchaseMedicationCards(productId: string): Promise<MedicationCardPurchaseResult> {
+export async function purchaseMedicationCards(productId: string): Promise<void> {
   await connectToBazaar();
   const bundle = MEDICATION_CARD_PACKAGES.find((item) => item.productId === productId);
   if (!bundle) throw new Error('بسته انتخاب‌شده معتبر نیست.');
@@ -160,7 +156,6 @@ export async function purchaseMedicationCards(productId: string): Promise<Medica
   }
   await syncEntitlementsFromBazaar();
 
-  return { recoveredPreviousPurchase: false };
 }
 
 /**
