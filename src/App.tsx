@@ -580,7 +580,7 @@ export default function App() {
       // Close the plan selector before opening Bazaar's external payment UI.
       // Keep purchaseBusy active so the user cannot start a second purchase.
       setShowPurchase(false);
-      await purchaseMedicationCards(selectedProductId);
+      const purchaseResult = await purchaseMedicationCards(selectedProductId);
       let currentPaidCardCount = await db.getPaidMedicationCardCount();
 
       // If the payment activity returned late, recover and re-read persisted credits.
@@ -596,6 +596,9 @@ export default function App() {
       setShowPurchase(false);
       setShowAdd(true);
       setEditing(null);
+      if (purchaseResult.recoveredPreviousPurchase) {
+        window.alert('هشدار: این بسته قبلاً خریداری شده بود. اعتبار خرید قبلی بازیابی شد و خرید جدید هم انجام شد.');
+      }
     } catch (error) {
       // Follow Smart Mechanic's reconciliation pattern: after an interrupted or
       // ambiguous Bazaar response, recover owned purchases and re-read the local

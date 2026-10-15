@@ -73,25 +73,59 @@ async function grantAndConsume(purchaseToken: string, cardCount: number): Promis
   // Persist the full bundle before consuming the Bazaar token. The token ledger
   // prevents a recovered purchase from granting cards twice.
   const granted = await db.grantPaidMedicationCards(purchaseToken, cardCount);
-  try {
-    await CafebazaarPoolakey.consumeProduct({ token: purchaseToken });
-  } catch (error) {
-    // Do not discard the entitlement: the local grant is already committed.
-    // A later recovery retries consumption so Bazaar will permit repurchase.
-    console.warn('[BazaarBilling] consume deferred; local cards were saved:', error);
-  }
+  // A purchase token must be consumed for Bazaar to allow this consumable SKU
+  // to be purchased again. The entitlement is committed first, so a consume
+  // error never loses the user's paid cards; it is surfaced so the caller can
+  // reconcile the pending purchase instead of silently pretending repurchase is ready.
+  await CafebazaarPoolakey.consumeProduct({ token: purchaseToken });
   return granted;
 }
 
-export async function purchaseMedicationCards(productId: string): Promise<void> {
+function isAlreadyPurchasedError(error: unknown): boolean {
+  const message = error instanceof Error
+    ? `${error.name} ${error.message}`
+    : `${String(error)} ${JSON.stringify(error)}`;
+  return /already[ _-]?(purchased|owned)|item_already_owned|product_already_owned|قبلاً\s*خریداری|قبلا\s*خریداری/i.test(message);
+}
+
+export type MedicationCardPurchaseResult = {
+  recoveredPreviousPurchase: boolean;
+};
+
+export async function purchaseMedicationCards(productId: string): Promise<MedicationCardPurchaseResult> {
   await connectToBazaar();
   const bundle = MEDICATION_CARD_PACKAGES.find((item) => item.productId === productId);
   if (!bundle) throw new Error('بسته انتخاب‌شده معتبر نیست.');
 
-  const result = await CafebazaarPoolakey.purchaseProduct({
+  const purchase = () => CafebazaarPoolakey.purchaseProduct({
     productId: bundle.productId,
     payload: `medireminder-extra-medication-cards:${bundle.cardCount}`,
   });
+
+  let result: Awaited<ReturnType<typeof CafebazaarPoolakey.purchaseProduct>>;
+  let recoveredPreviousPurchase = false;
+  try {
+    result = await purchase();
+  } catch (error) {
+    if (!isAlreadyPurchasedError(error)) throw error;
+
+    // Bazaar still owns an unconsumed token from the previous purchase.
+    // Deliver its credits idempotently, consume the token, then retry the user's
+    // explicit purchase exactly once. This is what makes a consumable SKU reusable.
+    // Even if the token was credited on an earlier interrupted attempt,
+    // restore still consumes any outstanding owned token. Retry exactly once;
+    // Bazaar itself will reject it again if the pending token could not be cleared.
+    await restorePendingMedicationCardPurchases(bundle.productId);
+    recoveredPreviousPurchase = true;
+    try {
+      result = await purchase();
+    } catch (retryError) {
+      if (isAlreadyPurchasedError(retryError)) {
+        throw new Error('این بسته قبلاً خریداری شده است. اعتبار خرید قبلی بررسی شد، اما بازار هنوز اجازه خرید مجدد نمی‌دهد. چند لحظه بعد دوباره تلاش کنید.');
+      }
+      throw retryError;
+    }
+  }
 
   if (result.state !== 'PURCHASED' || !result.purchase?.purchaseToken) {
     throw new Error(
@@ -105,10 +139,11 @@ export async function purchaseMedicationCards(productId: string): Promise<void> 
   }
 
   await grantAndConsume(result.purchase.purchaseToken, bundle.cardCount);
+  return { recoveredPreviousPurchase };
 }
 
 /** Recover interrupted purchases. Legacy one-card purchases remain supported. */
-export async function restorePendingMedicationCardPurchases(): Promise<number> {
+export async function restorePendingMedicationCardPurchases(onlyProductId?: string): Promise<number> {
   await connectToBazaar();
   const result = await CafebazaarPoolakey.getPurchaseInfo();
   let recoveredCards = 0;
@@ -118,6 +153,7 @@ export async function restorePendingMedicationCardPurchases(): Promise<number> {
   ]);
 
   for (const purchase of result.purchases) {
+    if (onlyProductId && purchase.productId !== onlyProductId) continue;
     const cardCount = cardCounts.get(purchase.productId);
     if (!cardCount || !purchase.purchaseToken?.trim()) continue;
     const granted = await grantAndConsume(purchase.purchaseToken, cardCount);
