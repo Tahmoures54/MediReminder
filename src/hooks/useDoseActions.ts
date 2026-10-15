@@ -47,6 +47,12 @@ export function useDoseActions({
 
   const takeDose = useCallback(
     async (m: Medication) => {
+      // Never record a dose when the locally tracked stock is empty. Keep the
+      // reminder pending so the user can replenish the stock and decide safely.
+      if (m.quantity <= 0) {
+        window.alert(`موجودی «${m.name}» تمام شده است؛ دوزی ثبت نشد. ابتدا موجودی دارو را به‌روزرسانی کنید.`);
+        return;
+      }
       const actionKey = doseActionKey(m);
       if (!rememberDoseAction(actionKey)) return;
 
