@@ -60,6 +60,56 @@ jobs:
           fi
           npx cap sync android
 
+      - name: Install native Android settings bridge
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          main_files = list(Path('android/app/src/main/java').rglob('MainActivity.java'))
+          if len(main_files) != 1:
+              raise SystemExit(f'Expected one MainActivity.java, found {len(main_files)}')
+          main = main_files[0]
+          source = main.read_text()
+          match = re.search(r'^package\\s+([\\w.]+);', source, re.M)
+          if not match:
+              raise SystemExit('Could not determine Android application package from MainActivity.java')
+          package_name = match.group(1)
+          plugin_dir = Path('android/app/src/main/java') / Path(*package_name.split('.'))
+          plugin_dir.mkdir(parents=True, exist_ok=True)
+          plugin_source = Path('native/android/SystemSettingsPlugin.java').read_text()
+          (plugin_dir / 'SystemSettingsPlugin.java').write_text(
+              plugin_source.replace('__APP_PACKAGE__', package_name)
+          )
+
+          if 'SystemSettingsPlugin.class' not in source:
+              if 'import android.os.Bundle;' not in source:
+                  source = source.replace(
+                      match.group(0), match.group(0) + '\\n\\nimport android.os.Bundle;', 1
+                  )
+              if 'public void onCreate(Bundle savedInstanceState)' in source:
+                  source = source.replace(
+                      'super.onCreate(savedInstanceState);',
+                      'registerPlugin(SystemSettingsPlugin.class);\\n        super.onCreate(savedInstanceState);',
+                      1,
+                  )
+              else:
+                  pos = source.rfind('}')
+                  if pos < 0:
+                      raise SystemExit('Could not find MainActivity class closing brace')
+                  method = '''
+              @Override
+              public void onCreate(Bundle savedInstanceState) {
+                  registerPlugin(SystemSettingsPlugin.class);
+                  super.onCreate(savedInstanceState);
+              }
+          '''
+                  source = source[:pos] + method + source[pos:]
+              main.write_text(source)
+          print(f'Native SystemSettings plugin registered for {package_name}')
+          PY
+
       - name: Configure JitPack for Cafe Bazaar Poolakey
         run: |
           set -euo pipefail
