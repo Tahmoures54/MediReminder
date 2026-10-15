@@ -24,12 +24,21 @@ describe('Bazaar purchase safety contracts', () => {
     expect(appSource).toContain('پاک‌کردن داده‌های برنامه یا نصب مجدد ممکن است ظرفیت را حذف کند');
   });
 
-  it('recovers owned pending purchases before attempting to buy the same SKU again', () => {
-    expect(billingSource.indexOf('const recoveredCards = await restorePendingMedicationCardPurchases()'))
-      .toBeGreaterThanOrEqual(0);
-    expect(billingSource.indexOf('const recoveredCards = await restorePendingMedicationCardPurchases()'))
-      .toBeLessThan(billingSource.indexOf('CafebazaarPoolakey.purchaseProduct({'));
-    expect(billingSource).toContain('if (recoveredCards > 0 || countAfterRecovery > countBeforeRecovery)');
+  it('attempts the explicitly requested purchase even when pending purchases are recovered', () => {
+    const recovery = billingSource.indexOf('await restorePendingMedicationCardPurchases();');
+    const purchase = billingSource.indexOf('CafebazaarPoolakey.purchaseProduct({');
+    expect(recovery).toBeGreaterThanOrEqual(0);
+    expect(recovery).toBeLessThan(purchase);
+    expect(billingSource).toContain('a user may intentionally buy the same consumable package repeatedly');
+    expect(billingSource).not.toContain('if (recoveredCards > 0 || countAfterRecovery > countBeforeRecovery)');
+  });
+
+  it('does not keep the purchase dialog open if credit was delivered before a later error', () => {
+    expect(appSource).toContain('if (latestCount > countBeforePurchase)');
+    expect(appSource).toContain('setShowPurchase(false);\n        setShowAdd(true);');
+  });
+
+  it('supports recovery of interrupted consumable purchases', () => {
     expect(billingSource).toContain('export async function restorePendingMedicationCardPurchases(): Promise<number>');
   });
 });
