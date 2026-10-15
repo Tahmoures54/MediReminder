@@ -111,12 +111,23 @@ export function AddMedicationForm({ initial, onSubmit, onCancel }: Props) {
     });
   };
 
-  // Scroll into view on mobile when focused
+  // Let the Android keyboard settle, then reveal the focused field only if needed.
+  // Avoid smooth-scroll animation here: it can fight the WebView's keyboard resize.
   const handleFocus = (e: React.FocusEvent<HTMLInputElement>) => {
-    // Delay to allow keyboard to appear
-    setTimeout(() => {
-      e.target.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    }, 300);
+    const target = e.currentTarget;
+    window.setTimeout(() => {
+      if (!target.isConnected || document.activeElement !== target) return;
+
+      const viewport = window.visualViewport;
+      const viewportTop = viewport?.offsetTop ?? 0;
+      const viewportBottom = viewportTop + (viewport?.height ?? window.innerHeight);
+      const rect = target.getBoundingClientRect();
+      const margin = 20;
+
+      if (rect.top < viewportTop + margin || rect.bottom > viewportBottom - margin) {
+        target.scrollIntoView({ behavior: 'auto', block: 'nearest', inline: 'nearest' });
+      }
+    }, 250);
   };
 
   return (
@@ -154,7 +165,6 @@ export function AddMedicationForm({ initial, onSubmit, onCancel }: Props) {
             onFocus={handleFocus}
             className="w-full rounded-xl border border-slate-600 bg-slate-950 px-4 py-3.5 text-[16px] text-white placeholder:text-slate-500 focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/20"
             placeholder="مثلاً Amoxicillin"
-            autoFocus
             autoComplete="off"
             autoCorrect="off"
             spellCheck={false}
