@@ -190,7 +190,8 @@ footer{text-align:center;padding:0 18px 20px;font-size:11px;color:#8a9998}
 <body>
 <main class="page">
 <header class="hero"><div class="brand">گزارش شخصی مصرف دارو</div><h1>خلاصه سوابق مصرف</h1><div class="subtitle">تهیه‌شده در ${escapeHtml(generatedAt)}</div></header>
-<aside class="doctor-note"><strong>پیام مهم برای پزشک محترم</strong><p>${escapeHtml(DOCTOR_NOTE)}</p><span class="trust">گزارش روشن‌تر، گفت‌وگوی درمانی دقیق‌تر.</span></aside>\n<section class="content">
+<aside class="doctor-note"><strong>پیام مهم برای پزشک محترم</strong><p>${escapeHtml(DOCTOR_NOTE)}</p><span class="trust">گزارش روشن‌تر، گفت‌وگوی درمانی دقیق‌تر.</span></aside>
+<section class="content">
 <div class="medicine"><div class="label">نام دارو</div><div class="medicine-name">${escapeHtml(medication.name)}</div><div class="meta">دوز ثبت‌شده: <strong>${escapeHtml(medication.dosage)}</strong></div>${medication.condition?.trim() ? `<div class="meta">بیماری مرتبط: ${escapeHtml(medication.condition.trim())}</div>` : ''}</div>
 <div class="stats">
 <div class="stat"><strong>${totalLabel}</strong><span>کل سوابق ثبت‌شده</span></div>
@@ -389,7 +390,8 @@ export function ReportModal({ medication, onClose }: ReportModalProps) {
             <span className="font-bold text-teal-200">حریم خصوصی:</span> نام بیمار و شناسه فنی در گزارش قرار نمی‌گیرد. گزارش شامل نام دارو و سوابق مصرف آن است؛ پیش از ارسال، گیرنده را بررسی کنید.
           </div>
 
-          <div className="mb-3 rounded-2xl border border-emerald-400/30 bg-emerald-500/[0.08] p-3"><p className="text-center text-sm font-bold text-emerald-200">📄 گزارش آماده ارائه به پزشک</p><p className="mt-1 text-center text-xs leading-relaxed text-slate-300">فایل HTML را دریافت کنید یا از گزینه اشتراک‌گذاری برای ارسال گزارش استفاده کنید.</p></div>\n          <div className="mb-3 grid grid-cols-1 gap-2.5 sm:grid-cols-3">
+          <div className="mb-3 rounded-2xl border border-emerald-400/30 bg-emerald-500/[0.08] p-3"><p className="text-center text-sm font-bold text-emerald-200">📄 گزارش آماده ارائه به پزشک</p><p className="mt-1 text-center text-xs leading-relaxed text-slate-300">فایل HTML را دریافت کنید یا از گزینه اشتراک‌گذاری برای ارسال گزارش استفاده کنید.</p></div>
+          <div className="mb-3 grid grid-cols-1 gap-2.5 sm:grid-cols-3">
             <button type="button" onClick={() => void handleShareReport()} disabled={isSharing} className="tap-target rounded-xl bg-blue-600 px-4 py-3.5 text-sm font-bold text-white hover:bg-blue-500 disabled:opacity-60">{isSharing ? 'در حال آماده‌سازی…' : '📤 اشتراک‌گذاری'}</button>
             <button type="button" onClick={() => void handleCopyReport()} disabled={isCopying} className="tap-target rounded-xl bg-slate-700 px-4 py-3.5 text-sm font-bold text-white hover:bg-slate-600 disabled:opacity-60">{isCopying ? 'در حال کپی…' : '📋 کپی خلاصه'}</button>
             <button type="button" onClick={handleDownloadReport} disabled={isDownloading} className="tap-target rounded-xl bg-emerald-600 px-4 py-3.5 text-sm font-bold text-white hover:bg-emerald-500 disabled:opacity-60">{isDownloading ? 'در حال آماده‌سازی…' : '🌐 دریافت HTML'}</button>
