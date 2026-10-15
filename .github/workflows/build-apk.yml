@@ -66,19 +66,39 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
 
-          p = Path('android/settings.gradle')
-          s = p.read_text()
-          if 'https://jitpack.io' not in s:
-              start = s.find('dependencyResolutionManagement')
-              if start < 0:
-                  raise SystemExit('dependencyResolutionManagement block not found in android/settings.gradle')
-              repo_block = s.find('repositories {', start)
+          jitpack = "maven { url 'https://jitpack.io' }"
+          settings = Path('android/settings.gradle')
+          settings_text = settings.read_text() if settings.exists() else ''
+
+          # Capacitor templates differ by version. Prefer settings-level dependency
+          # repositories when that block exists; otherwise use the root Gradle file.
+          if 'https://jitpack.io' in settings_text:
+              print('JitPack repository already configured in settings.gradle')
+          elif 'dependencyResolutionManagement' in settings_text:
+              start = settings_text.find('dependencyResolutionManagement')
+              repo_block = settings_text.find('repositories {', start)
               if repo_block < 0:
-                  raise SystemExit('dependency repositories block not found in android/settings.gradle')
-              insert_at = s.find('\n', repo_block) + 1
-              s = s[:insert_at] + "        maven { url 'https://jitpack.io' }\n" + s[insert_at:]
-              p.write_text(s)
-          print('JitPack repository configured for Poolakey dependencies')
+                  raise SystemExit('dependencyResolutionManagement exists but has no repositories block')
+              insert_at = settings_text.find('\n', repo_block) + 1
+              settings_text = settings_text[:insert_at] + '        ' + jitpack + '\n' + settings_text[insert_at:]
+              settings.write_text(settings_text)
+              print('JitPack repository configured in settings.gradle')
+          else:
+              root = Path('android/build.gradle')
+              if not root.exists():
+                  raise SystemExit('Neither dependencyResolutionManagement nor android/build.gradle was found')
+              root_text = root.read_text()
+              if 'https://jitpack.io' in root_text:
+                  print('JitPack repository already configured in android/build.gradle')
+              else:
+                  allprojects = root_text.find('allprojects')
+                  repo_block = root_text.find('repositories {', allprojects) if allprojects >= 0 else -1
+                  if repo_block < 0:
+                      raise SystemExit('Could not find allprojects repositories block in android/build.gradle')
+                  insert_at = root_text.find('\n', repo_block) + 1
+                  root_text = root_text[:insert_at] + '        ' + jitpack + '\n' + root_text[insert_at:]
+                  root.write_text(root_text)
+                  print('JitPack repository configured in android/build.gradle')
           PY
 
       - name: Setup Gradle with cache
