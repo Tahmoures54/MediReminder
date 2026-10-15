@@ -1109,16 +1109,22 @@ export default function App() {
       )}
 
       {showPurchase && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm" role="presentation">
-          <section role="dialog" aria-modal="true" aria-labelledby="card-purchase-title" className="w-full max-w-md rounded-3xl border border-cyan-300/20 bg-slate-900 p-5 shadow-2xl shadow-black/50">
-            <div className="mb-4 flex items-start gap-3">
-              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-cyan-400/10 text-2xl">💊</div>
-              <div className="min-w-0 flex-1">
-                <h2 id="card-purchase-title" className="text-lg font-black text-white">افزودن کارت داروی جدید</h2>
-                <p className="mt-1 text-sm leading-relaxed text-slate-300">کارت اول رایگان است. بسته دلخواه را انتخاب کنید تا ظرفیت ثبت همان تعداد داروی اضافه شود.</p>
+        <div
+          className="fixed inset-0 z-[100] flex items-start justify-center overflow-y-auto overscroll-contain bg-black/75 p-3 pt-[max(0.75rem,env(safe-area-inset-top))] pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur-sm sm:items-center sm:p-4"
+          role="presentation"
+        >
+          <section role="dialog" aria-modal="true" aria-labelledby="card-purchase-title" className="my-auto flex max-h-[calc(100dvh-1.5rem-env(safe-area-inset-top)-env(safe-area-inset-bottom))] w-full max-w-md flex-col overflow-hidden rounded-3xl border border-cyan-300/20 bg-slate-900 shadow-2xl shadow-black/50 sm:max-h-[min(90dvh,44rem)]">
+            <div className="shrink-0 border-b border-white/10 px-4 py-3 sm:p-5">
+              <div className="flex items-start gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-cyan-400/10 text-xl sm:h-12 sm:w-12 sm:rounded-2xl sm:text-2xl">💊</div>
+                <div className="min-w-0 flex-1">
+                  <h2 id="card-purchase-title" className="text-base font-black text-white sm:text-lg">افزودن کارت داروی جدید</h2>
+                  <p className="mt-1 text-xs leading-relaxed text-slate-300 sm:text-sm">کارت اول رایگان است. بسته دلخواه را انتخاب کنید تا ظرفیت ثبت همان تعداد داروی اضافه شود.</p>
+                </div>
               </div>
             </div>
-            <div className="mb-4 space-y-2">
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-3 sm:p-5">
+            <div className="mb-3 space-y-2 sm:mb-4">
               <div className="mb-2 text-xs font-bold text-slate-400">انتخاب بسته</div>
               {cardProducts.map((product) => (
                 <button
@@ -1143,10 +1149,11 @@ export default function App() {
               <p className="pt-1 text-[11px] leading-relaxed text-slate-500">قیمت‌ها مستقیماً از بازار دریافت می‌شوند. خرید موفق، ظرفیت خریداری‌شده را به تعداد کارت‌های فعلی اضافه می‌کند.</p>
               <p className="rounded-xl border border-amber-400/25 bg-amber-500/10 p-3 text-[11px] leading-relaxed text-amber-100">مهم: ظرفیت خریداری‌شده فعلاً روی همین دستگاه ذخیره می‌شود. پاک‌کردن داده‌های برنامه یا نصب مجدد ممکن است ظرفیت را حذف کند؛ پیش از خرید از داده‌های برنامه محافظت کنید. بازیابی خرید به وضعیت تراکنش و نوع محصول در کافه‌بازار وابسته است.</p>
             </div>
-            {purchaseError && <div role="alert" className="mb-4 rounded-xl border border-amber-400/25 bg-amber-500/10 p-3 text-xs leading-relaxed text-amber-100">{purchaseError}</div>}
-            <div className="flex gap-3">
-              <button type="button" disabled={purchaseBusy} onClick={() => setShowPurchase(false)} className="flex-1 rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-bold text-slate-200 disabled:opacity-50">انصراف</button>
-              <button type="button" disabled={!isNative || !cardProducts.some((product) => product.productId === selectedProductId) || priceLoading || purchaseBusy} onClick={() => void handlePurchaseMedicationCard()} className="flex-[1.4] rounded-xl bg-gradient-to-b from-cyan-400 to-cyan-600 px-4 py-3 text-sm font-black text-slate-950 disabled:cursor-not-allowed disabled:opacity-50">{purchaseBusy ? 'در حال پرداخت…' : 'خرید بسته انتخاب‌شده'}</button>
+            {purchaseError && <div role="alert" className="mt-3 rounded-xl border border-amber-400/25 bg-amber-500/10 p-3 text-xs leading-relaxed text-amber-100">{purchaseError}</div>}
+            </div>
+            <div className="flex shrink-0 gap-3 border-t border-white/10 bg-slate-900 px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:p-4">
+              <button type="button" disabled={purchaseBusy} onClick={() => setShowPurchase(false)} className="flex-1 rounded-xl border border-white/10 bg-white/5 px-3 py-3 text-sm font-bold text-slate-200 disabled:opacity-50">انصراف</button>
+              <button type="button" disabled={!isNative || !cardProducts.some((product) => product.productId === selectedProductId) || priceLoading || purchaseBusy} onClick={() => void handlePurchaseMedicationCard()} className="flex-[1.4] rounded-xl bg-gradient-to-b from-cyan-400 to-cyan-600 px-3 py-3 text-sm font-black text-slate-950 disabled:cursor-not-allowed disabled:opacity-50">{purchaseBusy ? 'در حال پرداخت…' : 'خرید بسته انتخاب‌شده'}</button>
             </div>
           </section>
         </div>
