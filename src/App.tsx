@@ -304,6 +304,9 @@ export default function App() {
       await openBatteryOptimizationSettings();
     } catch (e) {
       console.warn('[App] battery settings failed', e);
+      window.alert(
+        'باز کردن تنظیمات باتری خودکار انجام نشد. لطفاً از مسیر تنظیمات گوشی ← برنامه‌ها ← یادآور دارو ← باتری، گزینه «بدون محدودیت» یا «اجازه فعالیت در پس‌زمینه» را انتخاب کنید.'
+      );
     }
   };
 
