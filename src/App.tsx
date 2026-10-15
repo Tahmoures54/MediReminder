@@ -597,9 +597,12 @@ export default function App() {
       setShowAdd(true);
       setEditing(null);
     } catch (error) {
-      // A recovery can successfully deliver a paid bundle even if the SDK then
-      // reports a purchase error. Never leave the user trapped in the plans
-      // dialog when the persisted entitlement has increased.
+      // Follow Smart Mechanic's reconciliation pattern: after an interrupted or
+      // ambiguous Bazaar response, recover owned purchases and re-read the local
+      // ledger before showing failure. Never ask the user to pay again blindly.
+      await recoverMedicationCards().catch((recoveryError: unknown) => {
+        console.warn('[BazaarBilling] purchase-failure recovery skipped:', recoveryError);
+      });
       const latestCount = await db.getPaidMedicationCardCount().catch(() => paidCardCount);
       setPaidCardCount(latestCount);
       if (latestCount > countBeforePurchase) {
