@@ -120,6 +120,7 @@ export default function App() {
   const [bootDone, setBootDone] = useState(false);
   const [paidCardCount, setPaidCardCount] = useState(0);
   const [showPurchase, setShowPurchase] = useState(false);
+  const [showTerms, setShowTerms] = useState(false);
   const [cardProducts, setCardProducts] = useState<MedicationCardProduct[]>([]);
   const [selectedProductId, setSelectedProductId] = useState('medireminder_cards_3');
   const [priceLoading, setPriceLoading] = useState(false);
@@ -828,6 +829,12 @@ export default function App() {
             {paidCardCount > 0 ? <span className="text-cyan-100/70">· {paidCardCount} کارت اضافه خریداری‌شده</span> : null}
           </div>
 
+          <section aria-label="هشدار مهم و مسئولیت استفاده" className="mt-3 rounded-2xl border border-amber-400/30 bg-amber-500/10 p-3.5 text-xs leading-6 text-amber-100">
+            <p className="font-black text-amber-200">⚠️ مهم: مسئولیت استفاده با کاربر است</p>
+            <p className="mt-1">این برنامه فقط ابزار کمکی یادآوری است؛ تحویل اعلان، مصرف دارو یا صحت اطلاعات را تضمین نمی‌کند و جایگزین نظر پزشک یا داروساز نیست. تنظیم مجوزها، بررسی برنامه دارویی و نگهداری نسخه پشتیبان از اطلاعات بر عهده شماست.</p>
+            <button type="button" onClick={() => setShowTerms(true)} className="mt-2 min-h-9 rounded-lg border border-amber-300/30 bg-amber-300/10 px-3 py-1.5 font-bold text-amber-200 underline underline-offset-4">مطالعه قوانین و سلب مسئولیت</button>
+          </section>
+
           {medications.length > 0 && (
             <div className="mt-4 grid grid-cols-2 gap-2 min-[420px]:grid-cols-4">
               <div className="rounded-2xl border border-white/10 bg-white/[0.04] px-3 py-3 text-center backdrop-blur">
@@ -1009,11 +1016,58 @@ export default function App() {
           </div>
         </section>
 
-        <footer className="mt-5 space-y-1 pb-2 text-center text-[11px] text-slate-500">
+        <footer className="mt-5 space-y-2 pb-2 text-center text-[11px] text-slate-500">
           <p className="leading-relaxed">داده‌ها فقط روی همین دستگاه می‌مانند · جایگزین نظر پزشک نیست</p>
+          <button type="button" onClick={() => setShowTerms(true)} className="rounded-md px-2 py-1 font-bold text-cyan-300 underline underline-offset-4">قوانین استفاده و سلب مسئولیت</button>
           <p className="text-slate-600">یادآور هوشمند دارو · نسخه {APP_VERSION}</p>
         </footer>
       </div>
+
+      {showTerms && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm" role="presentation" onClick={(event) => { if (event.target === event.currentTarget) setShowTerms(false); }}>
+          <section role="dialog" aria-modal="true" aria-labelledby="terms-title" className="flex max-h-[85dvh] w-full max-w-lg flex-col overflow-hidden rounded-3xl border border-amber-300/25 bg-slate-900 shadow-2xl shadow-black/50">
+            <header className="flex items-start gap-3 border-b border-white/10 p-5">
+              <span className="text-2xl" aria-hidden>⚖️</span>
+              <div className="min-w-0 flex-1">
+                <h2 id="terms-title" className="text-lg font-black text-white">قوانین استفاده و سلب مسئولیت</h2>
+                <p className="mt-1 text-xs text-slate-400">لطفاً پیش از استفاده، این موارد را بخوانید.</p>
+              </div>
+              <button type="button" onClick={() => setShowTerms(false)} aria-label="بستن قوانین" className="rounded-xl border border-white/10 px-3 py-2 text-slate-300">✕</button>
+            </header>
+            <div className="space-y-4 overflow-y-auto p-5 text-sm leading-7 text-slate-300">
+              <p className="rounded-xl border border-amber-400/25 bg-amber-500/10 p-3 font-bold text-amber-100">یادآور هوشمند دارو صرفاً ابزار کمکی است. استفاده از برنامه به معنی پذیرش مسئولیت شخصی کاربر در بررسی و مدیریت داروهای خود است.</p>
+              <section>
+                <h3 className="mb-1 font-black text-white">۱. جایگزین خدمات پزشکی نیست</h3>
+                <p>این برنامه تشخیص، تجویز یا توصیه پزشکی ارائه نمی‌کند. نام دارو، مقدار، زمان مصرف و هرگونه تغییر در درمان را با نسخه پزشک یا راهنمای داروساز تطبیق دهید. در صورت تردید، از پزشک یا داروساز سؤال کنید و تنها بر اساس اعلان برنامه تصمیم پزشکی نگیرید.</p>
+              </section>
+              <section>
+                <h3 className="mb-1 font-black text-white">۲. اعلان‌ها تضمین‌شده نیستند</h3>
+                <p>اعلان ممکن است به علت تنظیمات یا محدودیت‌های گوشی، مجوزهای غیرفعال، حالت ذخیره باتری، توقف اجباری برنامه، خاموش بودن دستگاه، راه‌اندازی مجدد یا عوامل خارج از کنترل برنامه با تأخیر نمایش داده نشود یا اصلاً نمایش داده نشود. کاربر مسئول بررسی مجوزها و پیگیری مستقل زمان مصرف دارو است.</p>
+              </section>
+              <section>
+                <h3 className="mb-1 font-black text-white">۳. اطلاعات و نسخه پشتیبان</h3>
+                <p>اطلاعات داروها در حافظه همین دستگاه ذخیره می‌شود و ممکن است با حذف برنامه، پاک‌کردن داده‌ها، خرابی یا تعویض گوشی و مشکلات نرم‌افزاری از بین برود. تهیه و نگهداری نسخه پشتیبان و ثبت اطلاعات مهم در محل امن بر عهده کاربر است. بازیابی اطلاعات یا ظرفیت خرید پس از حذف داده‌ها تضمین نمی‌شود، مگر آنکه روش بازیابی معتبر جداگانه‌ای ارائه شده باشد.</p>
+              </section>
+              <section>
+                <h3 className="mb-1 font-black text-white">۴. مسئولیت کاربر</h3>
+                <p>کاربر مسئول صحت اطلاعات واردشده، تنظیم درست زمان‌ها، بررسی اعلان‌ها و تصمیم‌گیری درباره مصرف دارو مطابق دستور متخصص درمان است. برنامه را تنها به‌عنوان ابزار یادآوری کمکی به کار ببرید و برای موارد حساس، روش یادآوری پشتیبان داشته باشید.</p>
+              </section>
+              <section>
+                <h3 className="mb-1 font-black text-white">۵. حدود مسئولیت ارائه‌دهنده</h3>
+                <p>تا حدی که قوانین لازم‌الاجرا اجازه می‌دهد، ارائه‌دهنده برنامه مسئول خسارت‌های ناشی از اتکای انحصاری به اعلان‌ها، ورود اطلاعات نادرست، تنظیمات یا محدودیت‌های دستگاه، از دست رفتن داده‌ها یا استفاده برخلاف این شرایط نیست. هیچ‌یک از این بندها حقوقی را که طبق قانون قابل اسقاط نیستند، محدود نمی‌کند.</p>
+              </section>
+              <section>
+                <h3 className="mb-1 font-black text-white">۶. پذیرش شرایط</h3>
+                <p>با استفاده از برنامه، تأیید می‌کنید که محدودیت‌های یادشده را خوانده‌اید و می‌پذیرید که مسئولیت بررسی مستقل برنامه دارویی و نگهداری اطلاعات بر عهده شماست.</p>
+              </section>
+              <p className="text-xs text-slate-500">این متن اطلاع‌رسانی عمومی است و جایگزین مشاوره حقوقی متناسب با قوانین محل عرضه برنامه نیست.</p>
+            </div>
+            <div className="border-t border-white/10 p-4">
+              <button type="button" onClick={() => setShowTerms(false)} className="min-h-12 w-full rounded-xl bg-gradient-to-b from-cyan-400 to-cyan-600 px-4 py-3 text-sm font-black text-slate-950">متوجه شدم</button>
+            </div>
+          </section>
+        </div>
+      )}
 
       {showPurchase && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm" role="presentation">
