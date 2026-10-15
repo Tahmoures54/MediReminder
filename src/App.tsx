@@ -221,20 +221,31 @@ export default function App() {
     if (purchaseRecoveryRef.current) return;
     purchaseRecoveryRef.current = true;
     try {
+      const previousCount = await db.getPaidMedicationCardCount();
       await restorePendingMedicationCardPurchases();
       const count = await db.getPaidMedicationCardCount();
       setPaidCardCount(count);
+      // If a purchase completed while Bazaar was foregrounded, return the user
+      // directly to adding the medication instead of leaving the purchase dialog open.
+      if (count > previousCount && showPurchase) {
+        setShowPurchase(false);
+        setPurchaseError('');
+        setEditing(null);
+        setShowAdd(true);
+      }
     } finally {
       purchaseRecoveryRef.current = false;
     }
-  }, []);
+  }, [showPurchase]);
 
   useEffect(() => {
     const handleVisible = async () => {
       if (document.visibilityState !== 'visible') return;
       try {
         // Recover a purchase that completed while Bazaar was in the foreground.
-        await recoverMedicationCards();
+        await recoverMedicationCards().catch((error: unknown) => {
+          console.warn('[BazaarBilling] resume recovery skipped:', error);
+        });
         const status = await checkNotificationPermission();
         const exactAlarm = await checkExactAlarmPermission();
         const batteryIgnored = await checkBatteryOptimizationExemption();
