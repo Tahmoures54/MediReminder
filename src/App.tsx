@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Capacitor } from '@capacitor/core';
+import { getMedicationCardPrice, purchaseMedicationCard, restorePendingMedicationCardPurchases } from './services/bazaarBilling';
+import { getMedicationLimit } from './utils/medicationAccess';
 import { LocalNotifications } from '@capacitor/local-notifications';
 import { MedicationCard } from './components/MedicationCard';
 import { AddMedicationForm } from './components/AddMedicationForm';
@@ -86,6 +88,12 @@ export default function App() {
     }
   });
   const [bootDone, setBootDone] = useState(false);
+  const [paidCardCount, setPaidCardCount] = useState(0);
+  const [showPurchase, setShowPurchase] = useState(false);
+  const [cardPrice, setCardPrice] = useState<string | null>(null);
+  const [priceLoading, setPriceLoading] = useState(false);
+  const [purchaseBusy, setPurchaseBusy] = useState(false);
+  const [purchaseError, setPurchaseError] = useState('');
 
   const medsRef = useRef<Medication[]>([]);
   const alertId = useRef<number | null>(null);
@@ -177,7 +185,9 @@ export default function App() {
         const exactAlarm = await checkExactAlarmPermission();
         await registerNotificationActions();
         await load();
+        const purchasedCards = await db.getPaidMedicationCardCount();
         if (!active) return;
+        setPaidCardCount(purchasedCards);
         setIsNative(native);
         setExactAlarmGranted(exactAlarm);
         setPermission(status);
@@ -434,6 +444,38 @@ export default function App() {
     };
   }, [isNative, openAlert, persist, takeDoseRef, snoozeRef, claimDueTransition]);
 
+  const openAddMedication = () => {
+    if (formVisible) {
+      setShowAdd(false);
+      setEditing(null);
+      return;
+    }
+    if (medications.length >= getMedicationLimit(paidCardCount)) {
+      setPurchaseError('');
+      setShowPurchase(true);
+      return;
+    }
+    setEditing(null);
+    setShowAdd(true);
+  };
+
+  const handlePurchaseMedicationCard = async () => {
+    if (purchaseBusy) return;
+    setPurchaseBusy(true);
+    setPurchaseError('');
+    try {
+      await purchaseMedicationCard();
+      setPaidCardCount(await db.getPaidMedicationCardCount());
+      setShowPurchase(false);
+      setShowAdd(true);
+      setEditing(null);
+    } catch (error) {
+      setPurchaseError(error instanceof Error ? error.message : 'خرید انجام نشد. دوباره تلاش کنید.');
+    } finally {
+      setPurchaseBusy(false);
+    }
+  };
+
   const add = async (d: {
     name: string;
     condition: string;
@@ -442,6 +484,11 @@ export default function App() {
     quantity: number;
     startImmediately: boolean;
   }) => {
+    if (medications.length >= getMedicationLimit(paidCardCount)) {
+      setShowAdd(false);
+      setShowPurchase(true);
+      return;
+    }
     const now = Date.now();
     const interval = d.intervalHours * 3600;
     const m: Medication = {
@@ -563,6 +610,33 @@ export default function App() {
     [medications]
   );
 
+  useEffect(() => {
+    if (!showPurchase) return;
+    let active = true;
+    setCardPrice(null);
+    setPriceLoading(true);
+    setPurchaseError('');
+    if (!isNative) {
+      setPurchaseError('پرداخت درون‌برنامه‌ای فقط در نسخه اندروید نصب‌شده از کافه‌بازار فعال است.');
+      setPriceLoading(false);
+      return;
+    }
+    getMedicationCardPrice()
+      .then((price) => { if (active) setCardPrice(price); })
+      .catch((error: unknown) => {
+        if (active) setPurchaseError(error instanceof Error ? error.message : 'دریافت قیمت از بازار ناموفق بود.');
+      })
+      .finally(() => { if (active) setPriceLoading(false); });
+    return () => { active = false; };
+  }, [showPurchase, isNative]);
+
+  useEffect(() => {
+    if (!bootDone || !isNative) return;
+    restorePendingMedicationCardPurchases()
+      .then(async () => setPaidCardCount(await db.getPaidMedicationCardCount()))
+      .catch((error: unknown) => console.warn('[BazaarBilling] pending purchase recovery skipped:', error));
+  }, [bootDone, isNative]);
+
   const showPermBanner =
     !permBannerHidden &&
     (permission !== 'granted' ||
@@ -613,15 +687,18 @@ export default function App() {
               </button>
               <button
                 type="button"
-                onClick={() => {
-                  setEditing(null);
-                  setShowAdd((v) => !v);
-                }}
+                onClick={openAddMedication}
                 className="rounded-2xl bg-gradient-to-b from-cyan-400 to-cyan-600 px-3.5 py-2.5 text-xs font-bold text-slate-950 shadow-md shadow-cyan-950/40 transition active:scale-[0.97] hover:from-cyan-300 hover:to-cyan-500"
               >
-                {formVisible ? 'بستن' : '+ دارو'}
+                {formVisible ? 'بستن' : medications.length >= getMedicationLimit(paidCardCount) ? '+ خرید کارت' : '+ دارو'}
               </button>
             </div>
+          </div>
+
+          <div className="mt-3 rounded-xl border border-cyan-400/15 bg-cyan-500/[0.06] px-3 py-2 text-[11px] leading-relaxed text-slate-400">
+            ظرفیت ثبت دارو: <span className="font-bold text-cyan-200">{getMedicationLimit(paidCardCount)} کارت</span>
+            <span className="mx-1 text-slate-600">·</span> کارت اول رایگان
+            {paidCardCount > 0 ? <span> · {paidCardCount} کارت اضافه خریداری‌شده</span> : null}
           </div>
 
           {medications.length > 0 && (
@@ -758,6 +835,30 @@ export default function App() {
           <p className="text-slate-600">MediReminder v{APP_VERSION}</p>
         </footer>
       </div>
+
+      {showPurchase && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm" role="presentation">
+          <section role="dialog" aria-modal="true" aria-labelledby="card-purchase-title" className="w-full max-w-md rounded-3xl border border-cyan-300/20 bg-slate-900 p-5 shadow-2xl shadow-black/50">
+            <div className="mb-4 flex items-start gap-3">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-cyan-400/10 text-2xl">💊</div>
+              <div className="min-w-0 flex-1">
+                <h2 id="card-purchase-title" className="text-lg font-black text-white">افزودن کارت داروی جدید</h2>
+                <p className="mt-1 text-sm leading-relaxed text-slate-300">کارت اول رایگان است. با یک پرداخت در بازار، ظرفیت ثبت یک داروی دیگر برای این دستگاه اضافه می‌شود.</p>
+              </div>
+            </div>
+            <div className="mb-4 rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+              <div className="text-xs text-slate-400">قیمت یک کارت اضافه</div>
+              <div className="mt-1 text-xl font-black text-cyan-200">{priceLoading ? 'در حال دریافت قیمت از بازار…' : cardPrice ?? 'قیمت در بازار قابل دریافت نیست'}</div>
+              <p className="mt-2 text-[11px] leading-relaxed text-slate-500">پرداخت از مسیر رسمی کافه‌بازار انجام می‌شود؛ مبلغ نهایی همان قیمت نمایش‌داده‌شده در بازار است.</p>
+            </div>
+            {purchaseError && <div role="alert" className="mb-4 rounded-xl border border-amber-400/25 bg-amber-500/10 p-3 text-xs leading-relaxed text-amber-100">{purchaseError}</div>}
+            <div className="flex gap-3">
+              <button type="button" disabled={purchaseBusy} onClick={() => setShowPurchase(false)} className="flex-1 rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-bold text-slate-200 disabled:opacity-50">انصراف</button>
+              <button type="button" disabled={!isNative || !cardPrice || priceLoading || purchaseBusy} onClick={() => void handlePurchaseMedicationCard()} className="flex-[1.4] rounded-xl bg-gradient-to-b from-cyan-400 to-cyan-600 px-4 py-3 text-sm font-black text-slate-950 disabled:cursor-not-allowed disabled:opacity-50">{purchaseBusy ? 'در حال پرداخت…' : 'خرید یک کارت'}</button>
+            </div>
+          </section>
+        </div>
+      )}
 
       {alert && (
         <NotificationPopup
