@@ -126,85 +126,37 @@ export async function requestExactAlarmPermission(): Promise<boolean> {
   }
 }
 
-async function openExternalUrl(url: string): Promise<boolean> {
-  // Android intent:/package: — WebView hands these to the system activity resolver
-  if (url.startsWith('intent:') || url.startsWith('package:')) {
-    try {
-      window.location.assign(url);
-      return true;
-    } catch {
-      /* try anchor fallback */
-    }
-    try {
-      const a = document.createElement('a');
-      a.href = url;
-      a.style.display = 'none';
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      return true;
-    } catch {
-      /* fall through */
-    }
-  }
+import { registerPlugin } from '@capacitor/core';
 
-  // Legacy App.openUrl (removed from typings in Capacitor 8, may exist at runtime)
-  try {
-    const { App } = await import('@capacitor/app');
-    const maybe = App as unknown as { openUrl?: (o: { url: string }) => Promise<void> };
-    if (typeof maybe.openUrl === 'function') {
-      await maybe.openUrl({ url });
-      return true;
-    }
-  } catch {
-    /* ignore */
-  }
-
-  try {
-    window.open(url, '_blank', 'noopener,noreferrer');
-    return true;
-  } catch (e) {
-    console.warn('[Perm] openExternalUrl failed', e);
-    return false;
-  }
+interface SystemSettingsPlugin {
+  openBatterySettings(): Promise<{ opened: boolean; screen?: string }>;
+  openAppSettings(): Promise<{ opened: boolean }>;
 }
+
+const SystemSettings = registerPlugin<SystemSettingsPlugin>('SystemSettings');
 
 export async function openAndroidAppSettings(): Promise<void> {
   if (!Capacitor.isNativePlatform() || Capacitor.getPlatform() !== 'android') return;
 
-  // App info is the most reliable OEM-agnostic screen (battery / notifications live here).
-  const candidates = [
-    `intent:#Intent;action=android.settings.APPLICATION_DETAILS_SETTINGS;data=package:${ANDROID_APP_ID};end`,
-    `package:${ANDROID_APP_ID}`,
-    `intent:#Intent;action=android.settings.APPLICATION_DETAILS_SETTINGS;scheme=package;S.android.intent.extra.PACKAGE_NAME=${ANDROID_APP_ID};end`,
-  ];
-
-  for (const url of candidates) {
-    if (await openExternalUrl(url)) {
-      console.info('[Perm] opened app settings via', url.slice(0, 72));
-      return;
-    }
+  try {
+    const result = await SystemSettings.openAppSettings();
+    if (!result.opened) throw new Error('Android settings activity did not open');
+  } catch (error) {
+    console.error('[Perm] native app settings failed:', error);
+    throw error;
   }
 }
 
 export async function openBatteryOptimizationSettings(): Promise<void> {
   if (!Capacitor.isNativePlatform() || Capacitor.getPlatform() !== 'android') return;
 
-  const urls = [
-    // Direct exemption dialog (AOSP / many stock ROMs)
-    `intent:#Intent;action=android.settings.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS;data=package:${ANDROID_APP_ID};end`,
-    // Full system list of battery-optimized apps
-    `intent:#Intent;action=android.settings.IGNORE_BATTERY_OPTIMIZATION_SETTINGS;end`,
-    // Always-available fallback: App info → Battery
-    `intent:#Intent;action=android.settings.APPLICATION_DETAILS_SETTINGS;data=package:${ANDROID_APP_ID};end`,
-    `package:${ANDROID_APP_ID}`,
-  ];
-
-  for (const url of urls) {
-    if (await openExternalUrl(url)) {
-      console.info('[Perm] battery settings intent dispatched');
-      return;
-    }
+  try {
+    const result = await SystemSettings.openBatterySettings();
+    if (!result.opened) throw new Error('Android battery settings activity did not open');
+    console.info('[Perm] native battery settings opened:', result.screen ?? 'unknown');
+  } catch (error) {
+    console.error('[Perm] native battery settings failed:', error);
+    throw error;
   }
 }
 
