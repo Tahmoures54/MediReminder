@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Capacitor } from '@capacitor/core';
-import { getMedicationCardPrice, purchaseMedicationCard, restorePendingMedicationCardPurchases } from './services/bazaarBilling';
+import { getMedicationCardProducts, purchaseMedicationCards, restorePendingMedicationCardPurchases, type MedicationCardProduct } from './services/bazaarBilling';
 import { getMedicationLimit } from './utils/medicationAccess';
 import { LocalNotifications } from '@capacitor/local-notifications';
 import { MedicationCard } from './components/MedicationCard';
@@ -90,7 +90,8 @@ export default function App() {
   const [bootDone, setBootDone] = useState(false);
   const [paidCardCount, setPaidCardCount] = useState(0);
   const [showPurchase, setShowPurchase] = useState(false);
-  const [cardPrice, setCardPrice] = useState<string | null>(null);
+  const [cardProducts, setCardProducts] = useState<MedicationCardProduct[]>([]);
+  const [selectedProductId, setSelectedProductId] = useState('medireminder_cards_3');
   const [priceLoading, setPriceLoading] = useState(false);
   const [purchaseBusy, setPurchaseBusy] = useState(false);
   const [purchaseError, setPurchaseError] = useState('');
@@ -469,11 +470,11 @@ export default function App() {
   };
 
   const handlePurchaseMedicationCard = async () => {
-    if (purchaseBusy) return;
+    if (purchaseBusy || !selectedProductId) return;
     setPurchaseBusy(true);
     setPurchaseError('');
     try {
-      await purchaseMedicationCard();
+      await purchaseMedicationCards(selectedProductId);
       setPaidCardCount(await db.getPaidMedicationCardCount());
       setShowPurchase(false);
       setShowAdd(true);
@@ -636,7 +637,7 @@ export default function App() {
   useEffect(() => {
     if (!showPurchase) return;
     let active = true;
-    setCardPrice(null);
+    setCardProducts([]);
     setPriceLoading(true);
     setPurchaseError('');
     if (!isNative) {
@@ -644,10 +645,16 @@ export default function App() {
       setPriceLoading(false);
       return;
     }
-    getMedicationCardPrice()
-      .then((price) => { if (active) setCardPrice(price); })
+    getMedicationCardProducts()
+      .then((products) => {
+        if (!active) return;
+        setCardProducts(products);
+        setSelectedProductId((current) =>
+          products.some((product) => product.productId === current) ? current : products[0]?.productId ?? '',
+        );
+      })
       .catch((error: unknown) => {
-        if (active) setPurchaseError(error instanceof Error ? error.message : 'دریافت قیمت از بازار ناموفق بود.');
+        if (active) setPurchaseError(error instanceof Error ? error.message : 'دریافت بسته‌ها از بازار ناموفق بود.');
       })
       .finally(() => { if (active) setPriceLoading(false); });
     return () => { active = false; };
@@ -699,7 +706,7 @@ export default function App() {
               💊
             </div>
             <div className="min-w-0 flex-1">
-              <h1 className="text-xl font-black tracking-tight text-white min-[380px]:text-2xl">یادآور دارو</h1>
+              <h1 className="text-xl font-black tracking-tight text-white min-[380px]:text-2xl">یادآور هوشمند دارو</h1>
               <p className="mt-1 text-xs text-slate-400">یادآوری ساده‌تر، خیال آسوده‌تر</p>
               <p className="mt-0.5 text-[10px] text-slate-500">آفلاین · نسخه {APP_VERSION}</p>
             </div>
@@ -883,18 +890,37 @@ export default function App() {
               <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-cyan-400/10 text-2xl">💊</div>
               <div className="min-w-0 flex-1">
                 <h2 id="card-purchase-title" className="text-lg font-black text-white">افزودن کارت داروی جدید</h2>
-                <p className="mt-1 text-sm leading-relaxed text-slate-300">کارت اول رایگان است. با یک پرداخت در بازار، ظرفیت ثبت یک داروی دیگر برای این دستگاه اضافه می‌شود.</p>
+                <p className="mt-1 text-sm leading-relaxed text-slate-300">کارت اول رایگان است. بسته دلخواه را انتخاب کنید تا ظرفیت ثبت همان تعداد داروی اضافه شود.</p>
               </div>
             </div>
-            <div className="mb-4 rounded-2xl border border-white/10 bg-white/[0.04] p-4">
-              <div className="text-xs text-slate-400">قیمت یک کارت اضافه</div>
-              <div className="mt-1 text-xl font-black text-cyan-200">{priceLoading ? 'در حال دریافت قیمت از بازار…' : cardPrice ?? 'قیمت در بازار قابل دریافت نیست'}</div>
-              <p className="mt-2 text-[11px] leading-relaxed text-slate-500">پرداخت از مسیر رسمی کافه‌بازار انجام می‌شود؛ مبلغ نهایی همان قیمت نمایش‌داده‌شده در بازار است.</p>
+            <div className="mb-4 space-y-2">
+              <div className="mb-2 text-xs font-bold text-slate-400">انتخاب بسته</div>
+              {cardProducts.map((product) => (
+                <button
+                  key={product.productId}
+                  type="button"
+                  aria-pressed={selectedProductId === product.productId}
+                  disabled={priceLoading || purchaseBusy}
+                  onClick={() => setSelectedProductId(product.productId)}
+                  className={selectedProductId === product.productId
+                    ? 'flex w-full items-center justify-between gap-3 rounded-2xl border border-cyan-300/50 bg-cyan-400/10 p-3 text-right'
+                    : 'flex w-full items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/[0.03] p-3 text-right hover:bg-white/[0.06]'}
+                >
+                  <span className="min-w-0">
+                    <span className="block text-sm font-bold text-white">{product.title}</span>
+                    <span className="mt-1 block text-xs text-slate-400">{product.cardCount} کارت اضافه</span>
+                  </span>
+                  <span className="shrink-0 text-sm font-black text-cyan-200">{product.price}</span>
+                </button>
+              ))}
+              {priceLoading && <p className="rounded-xl bg-white/[0.04] p-3 text-xs text-slate-400">در حال دریافت قیمت بسته‌ها از کافه‌بازار…</p>}
+              {!priceLoading && cardProducts.length === 0 && !purchaseError && <p className="text-xs text-slate-400">بسته‌ای برای خرید در دسترس نیست.</p>}
+              <p className="pt-1 text-[11px] leading-relaxed text-slate-500">قیمت‌ها مستقیماً از بازار دریافت می‌شوند. خرید موفق، ظرفیت خریداری‌شده را به تعداد کارت‌های فعلی اضافه می‌کند.</p>
             </div>
             {purchaseError && <div role="alert" className="mb-4 rounded-xl border border-amber-400/25 bg-amber-500/10 p-3 text-xs leading-relaxed text-amber-100">{purchaseError}</div>}
             <div className="flex gap-3">
               <button type="button" disabled={purchaseBusy} onClick={() => setShowPurchase(false)} className="flex-1 rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-bold text-slate-200 disabled:opacity-50">انصراف</button>
-              <button type="button" disabled={!isNative || !cardPrice || priceLoading || purchaseBusy} onClick={() => void handlePurchaseMedicationCard()} className="flex-[1.4] rounded-xl bg-gradient-to-b from-cyan-400 to-cyan-600 px-4 py-3 text-sm font-black text-slate-950 disabled:cursor-not-allowed disabled:opacity-50">{purchaseBusy ? 'در حال پرداخت…' : 'خرید یک کارت'}</button>
+              <button type="button" disabled={!isNative || !cardProducts.some((product) => product.productId === selectedProductId) || priceLoading || purchaseBusy} onClick={() => void handlePurchaseMedicationCard()} className="flex-[1.4] rounded-xl bg-gradient-to-b from-cyan-400 to-cyan-600 px-4 py-3 text-sm font-black text-slate-950 disabled:cursor-not-allowed disabled:opacity-50">{purchaseBusy ? 'در حال پرداخت…' : 'خرید بسته انتخاب‌شده'}</button>
             </div>
           </section>
         </div>
