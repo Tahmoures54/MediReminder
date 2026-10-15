@@ -490,13 +490,17 @@ export default function App() {
     };
   }, [isNative, openAlert, persist, takeDoseRef, snoozeRef, claimDueTransition]);
 
-  const openAddMedication = () => {
+  const openAddMedication = async () => {
     if (formVisible) {
       setShowAdd(false);
       setEditing(null);
       return;
     }
-    if (medications.length >= getMedicationLimit(paidCardCount)) {
+    // Read the persisted entitlement instead of relying only on React state,
+    // which may be stale after returning from the external Bazaar payment UI.
+    const currentPaidCardCount = await db.getPaidMedicationCardCount();
+    setPaidCardCount(currentPaidCardCount);
+    if (medications.length >= getMedicationLimit(currentPaidCardCount)) {
       setPurchaseError('');
       setShowPurchase(true);
       return;
@@ -510,13 +514,29 @@ export default function App() {
     setPurchaseBusy(true);
     setPurchaseError('');
     try {
+      const countBeforePurchase = await db.getPaidMedicationCardCount();
       await purchaseMedicationCards(selectedProductId);
-      setPaidCardCount(await db.getPaidMedicationCardCount());
+      let currentPaidCardCount = await db.getPaidMedicationCardCount();
+
+      // A completed payment must result in a persisted entitlement before the
+      // purchase dialog is dismissed. Recover any purchase that completed while
+      // the Bazaar activity was in the foreground before reporting success.
+      if (currentPaidCardCount <= countBeforePurchase) {
+        await recoverMedicationCards();
+        currentPaidCardCount = await db.getPaidMedicationCardCount();
+      }
+      setPaidCardCount(currentPaidCardCount);
+      if (currentPaidCardCount <= countBeforePurchase) {
+        throw new Error('پرداخت انجام شد، اما افزایش ظرفیت در حافظه برنامه تأیید نشد. پنجره را نبندید؛ یک‌بار بازیابی خرید را انجام دهید یا با پشتیبانی تماس بگیرید.');
+      }
       setShowPurchase(false);
       setShowAdd(true);
       setEditing(null);
     } catch (error) {
       setPurchaseError(error instanceof Error ? error.message : 'خرید انجام نشد. دوباره تلاش کنید.');
+      // Keep the latest persisted count visible even when the purchase flow
+      // reports an error after Bazaar has already completed the transaction.
+      setPaidCardCount(await db.getPaidMedicationCardCount().catch(() => paidCardCount));
     } finally {
       setPurchaseBusy(false);
     }
@@ -530,7 +550,11 @@ export default function App() {
     quantity: number;
     startImmediately: boolean;
   }) => {
-    if (medications.length >= getMedicationLimit(paidCardCount)) {
+    // Re-read entitlement at submit time. This is the authoritative local value;
+    // UI state can lag behind an Android activity round-trip.
+    const currentPaidCardCount = await db.getPaidMedicationCardCount();
+    setPaidCardCount(currentPaidCardCount);
+    if (medications.length >= getMedicationLimit(currentPaidCardCount)) {
       setShowAdd(false);
       setShowPurchase(true);
       return;
