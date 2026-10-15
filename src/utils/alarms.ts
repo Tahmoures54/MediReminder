@@ -162,19 +162,11 @@ function syncWeb(medications: Medication[]): void {
 async function syncNative(medications: Medication[]): Promise<void> {
   const now = Date.now();
 
-  try {
-    const allIds = medications
-      .filter((m) => m.id != null)
-      .flatMap((m) => notifIdsFor(m.id!).map((id) => ({ id })));
-    if (allIds.length) {
-      for (let i = 0; i < allIds.length; i += SCHEDULE_CHUNK_SIZE) {
-        const chunk = allIds.slice(i, i + SCHEDULE_CHUNK_SIZE);
-        await LocalNotifications.cancel({ notifications: chunk });
-      }
-    }
-  } catch (e) {
-    console.warn('[Alarms] native cancel all', e);
-  }
+  // Do not cancel the currently working reminders before replacements are scheduled.
+  // If Android rejects a new schedule request, the previous reminder must remain.
+  const reservedIds = medications
+    .filter((m) => m.id != null)
+    .flatMap((m) => notifIdsFor(m.id!).map((id) => ({ id })));
 
   interface SchedNotification {
     id: number;
@@ -272,13 +264,46 @@ async function syncNative(medications: Medication[]): Promise<void> {
 
   console.info('[Alarms] scheduling native', toSchedule.length, 'notifications');
 
+  const desiredIds = new Set(toSchedule.map((notification) => notification.id));
+  let failedChunks = 0;
+
   for (let i = 0; i < toSchedule.length; i += SCHEDULE_CHUNK_SIZE) {
     const chunk = toSchedule.slice(i, i + SCHEDULE_CHUNK_SIZE);
     try {
       await LocalNotifications.schedule({ notifications: chunk });
     } catch (e) {
-      console.warn('[Alarms] native schedule chunk failed', i, e);
+      failedChunks += 1;
+      // Keep old notifications for these IDs: scheduling the same ID replaces
+      // the old notification only when the new schedule succeeds.
+      console.error('[Alarms] native schedule chunk failed; preserving existing reminders where possible', {
+        offset: i,
+        count: chunk.length,
+        error: e,
+      });
     }
+  }
+
+  // Only after attempting replacements, remove unused reserved slots. Desired IDs
+  // are never cancelled here, including IDs in a chunk that failed to schedule.
+  const obsoleteIds = reservedIds.filter(({ id }) => !desiredIds.has(id));
+  for (let i = 0; i < obsoleteIds.length; i += SCHEDULE_CHUNK_SIZE) {
+    const chunk = obsoleteIds.slice(i, i + SCHEDULE_CHUNK_SIZE);
+    try {
+      await LocalNotifications.cancel({ notifications: chunk });
+    } catch (e) {
+      console.warn('[Alarms] failed to cancel obsolete native reminder slots', {
+        offset: i,
+        count: chunk.length,
+        error: e,
+      });
+    }
+  }
+
+  if (failedChunks > 0) {
+    console.error('[Alarms] reminder sync incomplete; previous notifications were preserved where possible', {
+      failedChunks,
+      requested: toSchedule.length,
+    });
   }
 }
 
