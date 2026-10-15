@@ -7,12 +7,13 @@ MediReminder schedules alarms with Android's native local-notification API; the 
 - Exact-alarm and notification permissions are checked and exposed in the app's permission UI.
 - The build manifest requests notification, exact-alarm, and boot-completed permissions.
 - Future doses and pending-dose follow-ups are pre-scheduled natively.
-- Follow-ups are spaced 15 minutes apart, with up to 36 notifications per medication (about 9 hours of pre-scheduled follow-up coverage).
+- Follow-ups are spaced 15 minutes apart, with up to 36 slots per medication (about 9 hours of coverage when the queue is not capped).
+- The shared native queue is capped at 450 pending notifications. The first reminder for each medication is prioritized before follow-ups; with many medications, some follow-ups may be omitted until the next successful sync.
 - The app resynchronizes schedules on startup/resume and attempts a queue refresh while the process is alive.
 
 ## Important limits
 
-Android vendors can restrict background activity, and users can disable notifications, alarm access, or sound. A force-stop can prevent app components from running until the app is opened again. The bounded queue also cannot guarantee indefinite repeat alerts if a dose remains unconfirmed for longer than its pre-scheduled window and the app never resumes.
+Android vendors can restrict background activity, and users can disable notifications, alarm access, or sound. A force-stop can prevent app components from running until the app is opened again. The bounded queue also cannot guarantee indefinite repeat alerts if a dose remains unconfirmed for longer than its pre-scheduled window and the app never resumes. If the queue is capped, follow-up coverage can be shorter than nine hours.
 
 ## Release-device test checklist
 
