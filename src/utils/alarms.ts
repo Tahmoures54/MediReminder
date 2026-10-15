@@ -10,13 +10,13 @@ import { NOTIFICATION_CHANNEL_ID } from './permissions';
 const ACTION_TYPE_ID = 'MED_ALARM_ACTIONS';
 
 /**
- * Native follow-up cadence is deliberately aligned with Android Doze limits.
- * Capacitor documents that allowWhileIdle notifications can fire at most
- * once per 9 minutes per app while the device is in Doze.
+ * Native follow-ups are spaced 15 minutes apart. This stays beyond Android's
+ * documented 9-minute Doze allowance and extends the pre-scheduled coverage
+ * without increasing the number of pending notifications per medication.
  */
-export const NATIVE_FOLLOW_UP_MS = 9 * 60 * 1000;
+export const NATIVE_FOLLOW_UP_MS = 15 * 60 * 1000;
 /**
- * Android queue is intentionally bounded: 36 slots ≈ 5.4h per medication.
+ * Android queue is intentionally bounded: 36 slots ≈ 9h per medication.
  * The app refreshes pending-dose reminders while it is running and whenever
  * it resumes. This is not an OS-level guarantee after force-stop/reboot:
  * a fully closed app cannot replenish this JavaScript-managed queue by itself.

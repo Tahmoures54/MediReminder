@@ -366,7 +366,7 @@ export default function App() {
     debouncedSync.current.schedule(medications);
   }, [medications, bootDone]);
 
-  // Native Android notifications are queued in a bounded ~5.4h window to
+  // Native Android notifications are queued in a bounded ~9h window to
   // avoid flooding AlarmManager/OEM limits. Refill that queue every 4h while
   // the app process is alive; resume/visibility handlers also resync on return.
   // Android may suspend JS timers in the background, so this is a mitigation,
