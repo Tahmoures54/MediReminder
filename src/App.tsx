@@ -106,6 +106,7 @@ export default function App() {
   const dueTransitionRef = useRef(new Set<string>());
   const debouncedSync = useRef(createDebouncedSync(400));
   const resumeSyncTimeout = useRef<number | null>(null);
+  const purchaseRecoveryRef = useRef(false);
 
   useEffect(() => {
     medsRef.current = medications;
@@ -212,10 +213,28 @@ export default function App() {
     };
   }, [load, bootAttempt]);
 
+  // Bazaar can temporarily take the app to the payment UI and return later.
+  // Re-check owned purchases whenever the app resumes; grant logic is idempotent
+  // by purchase token, so this is safe after an immediate purchase as well.
+  const recoverMedicationCards = useCallback(async () => {
+    if (!Capacitor.isNativePlatform() || Capacitor.getPlatform() !== 'android') return;
+    if (purchaseRecoveryRef.current) return;
+    purchaseRecoveryRef.current = true;
+    try {
+      await restorePendingMedicationCardPurchases();
+      const count = await db.getPaidMedicationCardCount();
+      setPaidCardCount(count);
+    } finally {
+      purchaseRecoveryRef.current = false;
+    }
+  }, []);
+
   useEffect(() => {
     const handleVisible = async () => {
       if (document.visibilityState !== 'visible') return;
       try {
+        // Recover a purchase that completed while Bazaar was in the foreground.
+        await recoverMedicationCards();
         const status = await checkNotificationPermission();
         const exactAlarm = await checkExactAlarmPermission();
         const batteryIgnored = await checkBatteryOptimizationExemption();
@@ -273,7 +292,7 @@ export default function App() {
       document.removeEventListener('visibilitychange', handleVisible);
       appListeners.forEach((l) => l.remove().catch(() => {}));
     };
-  }, [alert, confirm, report, editing, showAdd, closeAlertUi, openAlert, persist, claimDueTransition]);
+  }, [alert, confirm, report, editing, showAdd, closeAlertUi, openAlert, persist, claimDueTransition, recoverMedicationCards]);
 
   const handleRequestPermission = async () => {
     try {
@@ -668,10 +687,10 @@ export default function App() {
 
   useEffect(() => {
     if (!bootDone || !isNative) return;
-    restorePendingMedicationCardPurchases()
-      .then(async () => setPaidCardCount(await db.getPaidMedicationCardCount()))
-      .catch((error: unknown) => console.warn('[BazaarBilling] pending purchase recovery skipped:', error));
-  }, [bootDone, isNative]);
+    recoverMedicationCards().catch((error: unknown) =>
+      console.warn('[BazaarBilling] pending purchase recovery skipped:', error),
+    );
+  }, [bootDone, isNative, recoverMedicationCards]);
 
   // Do not front-load battery optimization advice before the user has added a medicine.
   // Permission blockers stay visible immediately; battery guidance appears when reminders are active.
