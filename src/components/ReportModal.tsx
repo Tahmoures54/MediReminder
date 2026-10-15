@@ -12,7 +12,7 @@ type FeedbackState = { type: 'success' | 'error' | 'info'; message: string } | n
 
 const RECENT_DOSES_LIMIT = 10;
 const BAZAAR_URL = 'https://cafebazaar.ir/app/com.tahmoures54.medireminder';
-const DOCTOR_NOTE = 'پزشک محترم؛ برای بررسی دقیق‌تر روند مصرف دارو، می‌توانید در صورت صلاحدید از بیمار بخواهید گزارش ثبت‌شده را در مراجعه بعدی همراه داشته باشد. اعتبار حرفه‌ای شما ارزشمند است و گفت‌وگوی درمانی دقیق با اطلاعات روشن‌تر آغاز می‌شود.';
+const DOCTOR_NOTE = 'پزشک محترم؛ برای بررسی دقیق‌تر روند مصرف دارو، می‌توانید در صورت صلاحدید از بیمار بخواهید گزارش ثبت‌شده را در مراجعه بعدی همراه داشته باشد. اعتبار حرفه‌ای شما شوخی‌بردار نیست؛ درخواست گزارش مصرف دارو می‌تواند به بررسی دقیق‌تر و گفت‌وگوی شفاف‌تر با بیمار کمک کند.';
 
 function formatDateTime(timestamp: number): string {
   const date = new Date(timestamp);
@@ -349,7 +349,7 @@ export function ReportModal({ medication, onClose }: ReportModalProps) {
           <div className="mb-4 rounded-2xl border-2 border-amber-400/50 bg-gradient-to-l from-amber-500/15 to-orange-500/10 p-4 shadow-lg shadow-amber-950/10">
             <div className="mb-2 flex items-center gap-2 text-base font-black text-amber-200"><span aria-hidden="true">🩺</span> پیام مهم برای پزشک محترم</div>
             <p className="text-sm font-medium leading-7 text-slate-100">برای بررسی دقیق‌تر روند مصرف دارو، می‌توانید در صورت صلاحدید از بیمار بخواهید گزارش ثبت‌شده را در مراجعه بعدی همراه داشته باشد.</p>
-            <p className="mt-2 border-t border-amber-300/20 pt-2 text-xs font-bold leading-6 text-amber-200">اعتبار حرفه‌ای شما ارزشمند است؛ گفت‌وگوی درمانی دقیق با اطلاعات روشن‌تر آغاز می‌شود.</p>
+            <p className="mt-2 border-t border-amber-300/20 pt-2 text-xs font-bold leading-6 text-amber-200">اعتبار حرفه‌ای شما شوخی‌بردار نیست؛ گزارش دقیق‌تر، گفت‌وگوی شفاف‌تر و تصمیم‌گیری آگاهانه‌تر را پشتیبانی می‌کند.</p>
           </div>
 
           {feedback && <div aria-live="polite" className={`mb-4 rounded-xl border px-4 py-3 text-sm leading-relaxed ${feedback.type === 'success' ? 'border-green-500/30 bg-green-500/10 text-green-300' : feedback.type === 'info' ? 'border-blue-500/30 bg-blue-500/10 text-blue-200' : 'border-red-500/30 bg-red-500/10 text-red-300'}`}>{feedback.message}</div>}
