@@ -580,7 +580,7 @@ export default function App() {
       // Close the plan selector before opening Bazaar's external payment UI.
       // Keep purchaseBusy active so the user cannot start a second purchase.
       setShowPurchase(false);
-      const purchaseResult = await purchaseMedicationCards(selectedProductId);
+      await purchaseMedicationCards(selectedProductId);
       let currentPaidCardCount = await db.getPaidMedicationCardCount();
 
       // If the payment activity returned late, recover and re-read persisted credits.
@@ -596,9 +596,6 @@ export default function App() {
       setShowPurchase(false);
       setShowAdd(true);
       setEditing(null);
-      if (purchaseResult.recoveredPreviousPurchase) {
-        window.alert('این بسته قبلاً با حساب کافه‌بازار شما خریداری شده بود؛ خرید قبلی بازیابی شد و ظرفیت داروها همگام‌سازی شد.');
-      }
     } catch (error) {
       // Follow Smart Mechanic's reconciliation pattern: after an interrupted or
       // ambiguous Bazaar response, recover owned purchases and re-read the local
@@ -1156,7 +1153,7 @@ export default function App() {
               {priceLoading && <p className="rounded-xl bg-white/[0.04] p-3 text-xs text-slate-400">در حال دریافت قیمت بسته‌ها از کافه‌بازار…</p>}
               {!priceLoading && cardProducts.length === 0 && !purchaseError && <p className="text-xs text-slate-400">بسته‌ای برای خرید در دسترس نیست.</p>}
               <p className="pt-1 text-[11px] leading-relaxed text-slate-500">قیمت‌ها مستقیماً از بازار دریافت می‌شوند. خرید موفق، ظرفیت خریداری‌شده را به تعداد کارت‌های فعلی اضافه می‌کند.</p>
-              <p className="rounded-xl border border-amber-400/25 bg-amber-500/10 p-3 text-[11px] leading-relaxed text-amber-100">خریدها به حساب کافه‌بازار شما وابسته‌اند. اگر برنامه را دوباره نصب کردید یا ظرفیت خریداری‌شده نمایش داده نشد، از همان حساب بازار استفاده کنید و خریدهای قبلی را بازیابی کنید. برای افزایش ظرفیت، بسته‌های موجود را مطابق توضیحات بازار خریداری کنید.</p>
+              <p className="rounded-xl border border-amber-400/25 bg-amber-500/10 p-3 text-[11px] leading-relaxed text-amber-100">بسته‌های کارت دارو قابل خریدِ تکراری هستند و پس از پرداخت، ظرفیت به‌صورت محلی روی همین دستگاه ثبت می‌شود. چون برنامه حساب کاربری یا سرور پشتیبان ندارد، حذف برنامه یا پاک‌کردن داده‌های آن ممکن است ظرفیت خریداری‌شده را از بین ببرد.</p>
             </div>
             {purchaseError && <div role="alert" className="mt-3 rounded-xl border border-amber-400/25 bg-amber-500/10 p-3 text-xs leading-relaxed text-amber-100">{purchaseError}</div>}
             </div>
