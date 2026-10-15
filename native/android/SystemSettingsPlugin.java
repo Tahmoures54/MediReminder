@@ -1,7 +1,10 @@
 package __APP_PACKAGE__;
 
+import android.content.Context;
 import android.content.Intent;
 import android.net.Uri;
+import android.os.Build;
+import android.os.PowerManager;
 import android.provider.Settings;
 
 import com.getcapacitor.JSObject;
@@ -13,6 +16,25 @@ import com.getcapacitor.annotation.CapacitorPlugin;
 /** Opens Android system settings through native Intents, not WebView URL navigation. */
 @CapacitorPlugin(name = "SystemSettings")
 public class SystemSettingsPlugin extends Plugin {
+
+    /** Reports Android's actual battery-optimization exemption state. */
+    @PluginMethod
+    public void checkBatteryOptimization(PluginCall call) {
+        try {
+            boolean exempt = true;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                PowerManager powerManager =
+                    (PowerManager) getContext().getSystemService(Context.POWER_SERVICE);
+                exempt = powerManager != null
+                    && powerManager.isIgnoringBatteryOptimizations(getContext().getPackageName());
+            }
+            JSObject result = new JSObject();
+            result.put("ignoringBatteryOptimizations", exempt);
+            call.resolve(result);
+        } catch (Exception exception) {
+            call.reject("Unable to check battery optimization status", exception);
+        }
+    }
 
     @PluginMethod
     public void openBatterySettings(PluginCall call) {
