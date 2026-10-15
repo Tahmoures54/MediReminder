@@ -23,4 +23,13 @@ describe('Bazaar purchase safety contracts', () => {
     expect(appSource).toContain('ظرفیت خریداری‌شده فعلاً روی همین دستگاه ذخیره می‌شود');
     expect(appSource).toContain('پاک‌کردن داده‌های برنامه یا نصب مجدد ممکن است ظرفیت را حذف کند');
   });
+
+  it('recovers owned pending purchases before attempting to buy the same SKU again', () => {
+    expect(billingSource.indexOf('const recoveredCards = await restorePendingMedicationCardPurchases()'))
+      .toBeGreaterThanOrEqual(0);
+    expect(billingSource.indexOf('const recoveredCards = await restorePendingMedicationCardPurchases()'))
+      .toBeLessThan(billingSource.indexOf('CafebazaarPoolakey.purchaseProduct({'));
+    expect(billingSource).toContain('if (recoveredCards > 0 || countAfterRecovery > countBeforeRecovery)');
+    expect(billingSource).toContain('export async function restorePendingMedicationCardPurchases(): Promise<number>');
+  });
 });

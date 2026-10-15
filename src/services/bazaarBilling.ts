@@ -69,21 +69,34 @@ export async function getMedicationCardProducts(): Promise<MedicationCardProduct
   return products;
 }
 
-async function grantAndConsume(purchaseToken: string, cardCount: number): Promise<void> {
+async function grantAndConsume(purchaseToken: string, cardCount: number): Promise<boolean> {
   // Persist the full bundle before consuming the Bazaar token. The token ledger
   // prevents a recovered purchase from granting cards twice.
-  await db.grantPaidMedicationCards(purchaseToken, cardCount);
+  const granted = await db.grantPaidMedicationCards(purchaseToken, cardCount);
   try {
     await CafebazaarPoolakey.consumeProduct({ token: purchaseToken });
   } catch (error) {
+    // Do not discard the entitlement: the local grant is already committed.
+    // A later recovery retries consumption so Bazaar will permit repurchase.
     console.warn('[BazaarBilling] consume deferred; local cards were saved:', error);
   }
+  return granted;
 }
 
 export async function purchaseMedicationCards(productId: string): Promise<void> {
   await connectToBazaar();
   const bundle = MEDICATION_CARD_PACKAGES.find((item) => item.productId === productId);
   if (!bundle) throw new Error('بسته انتخاب‌شده معتبر نیست.');
+
+  // Recover a purchase left owned by Bazaar after an interrupted app return.
+  // Otherwise the next purchase of this SKU may fail with "already purchased".
+  const countBeforeRecovery = await db.getPaidMedicationCardCount();
+  const recoveredCards = await restorePendingMedicationCardPurchases();
+  const countAfterRecovery = await db.getPaidMedicationCardCount();
+  if (recoveredCards > 0 || countAfterRecovery > countBeforeRecovery) {
+    // The old purchase has now been delivered; don't charge the user again.
+    return;
+  }
 
   const result = await CafebazaarPoolakey.purchaseProduct({
     productId: bundle.productId,
@@ -105,9 +118,10 @@ export async function purchaseMedicationCards(productId: string): Promise<void> 
 }
 
 /** Recover interrupted purchases. Legacy one-card purchases remain supported. */
-export async function restorePendingMedicationCardPurchases(): Promise<void> {
+export async function restorePendingMedicationCardPurchases(): Promise<number> {
   await connectToBazaar();
   const result = await CafebazaarPoolakey.getPurchaseInfo();
+  let recoveredCards = 0;
   const cardCounts = new Map<string, number>([
     ...MEDICATION_CARD_PACKAGES.map((item) => [item.productId, item.cardCount] as const),
     ...Object.entries(LEGACY_PRODUCT_CARD_COUNTS),
@@ -116,6 +130,8 @@ export async function restorePendingMedicationCardPurchases(): Promise<void> {
   for (const purchase of result.purchases) {
     const cardCount = cardCounts.get(purchase.productId);
     if (!cardCount || !purchase.purchaseToken?.trim()) continue;
-    await grantAndConsume(purchase.purchaseToken, cardCount);
+    const granted = await grantAndConsume(purchase.purchaseToken, cardCount);
+    if (granted) recoveredCards += cardCount;
   }
+  return recoveredCards;
 }
