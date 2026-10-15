@@ -75,8 +75,8 @@ jobs:
               repo_block = s.find('repositories {', start)
               if repo_block < 0:
                   raise SystemExit('dependency repositories block not found in android/settings.gradle')
-              insert_at = s.find('\\n', repo_block) + 1
-              s = s[:insert_at] + "        maven { url 'https://jitpack.io' }\\n" + s[insert_at:]
+              insert_at = s.find('\n', repo_block) + 1
+              s = s[:insert_at] + "        maven { url 'https://jitpack.io' }\n" + s[insert_at:]
               p.write_text(s)
           print('JitPack repository configured for Poolakey dependencies')
           PY
