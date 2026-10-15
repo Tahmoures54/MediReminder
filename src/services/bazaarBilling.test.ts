@@ -5,12 +5,22 @@ import { fileURLToPath } from 'node:url';
 const billingSource = readFileSync(fileURLToPath(new URL('./bazaarBilling.ts', import.meta.url)), 'utf8');
 const databaseSource = readFileSync(fileURLToPath(new URL('../db/database.ts', import.meta.url)), 'utf8');
 
-describe('Bazaar purchase safety contracts (non-consumable, existing SKUs)', () => {
-  it('does not call consumeProduct at runtime for card packages', () => {
-    expect(billingSource).toContain('// NON-CONSUMABLE: grant only');
-    // Word may appear in comments; there must be no actual SDK call.
-    expect(billingSource).not.toMatch(/CafebazaarPoolakey\.consumeProduct\s*\(/);
-    expect(billingSource).not.toMatch(/\.consumeProduct\s*\(/);
+describe('Bazaar consumable medication-card purchase safety', () => {
+  it('consumes card-pack purchases using the purchase token', () => {
+    expect(billingSource).toContain('CafebazaarPoolakey.consumeProduct({ token: purchase.purchaseToken })');
+    expect(billingSource).toContain('CafebazaarPoolakey.consumeProduct({ token: result.purchase.purchaseToken })');
+  });
+
+  it('records the entitlement before attempting consumption in both purchase paths', () => {
+    const syncGrant = billingSource.indexOf('await db.grantPaidMedicationCards(purchase.purchaseToken, cardCount)');
+    const syncConsume = billingSource.indexOf('await CafebazaarPoolakey.consumeProduct({ token: purchase.purchaseToken })');
+    const purchaseGrant = billingSource.indexOf('await db.grantPaidMedicationCards(result.purchase.purchaseToken, bundle.cardCount)');
+    const purchaseConsume = billingSource.indexOf('await CafebazaarPoolakey.consumeProduct({ token: result.purchase.purchaseToken })');
+
+    expect(syncGrant).toBeGreaterThanOrEqual(0);
+    expect(syncConsume).toBeGreaterThan(syncGrant);
+    expect(purchaseGrant).toBeGreaterThanOrEqual(0);
+    expect(purchaseConsume).toBeGreaterThan(purchaseGrant);
   });
 
   it('uses the purchase token as an idempotency key inside the IndexedDB write transaction', () => {
