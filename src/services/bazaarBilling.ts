@@ -46,10 +46,18 @@ export async function getMedicationCardProducts(): Promise<MedicationCardProduct
     skus: MEDICATION_CARD_PACKAGES.map((item) => item.productId),
   });
 
-  const products = MEDICATION_CARD_PACKAGES.map((item) => {
+  const products: MedicationCardProduct[] = [];
+  for (const item of MEDICATION_CARD_PACKAGES) {
     const product = result.products.find((candidate) => candidate.sku === item.productId);
-    return product ? { ...item, price: product.price } : null;
-  }).filter((item): item is MedicationCardProduct => item !== null);
+    if (product) {
+      products.push({
+        productId: item.productId,
+        cardCount: item.cardCount,
+        title: item.title,
+        price: product.price,
+      });
+    }
+  }
 
   if (products.length !== MEDICATION_CARD_PACKAGES.length) {
     const found = new Set(products.map((item) => item.productId));
