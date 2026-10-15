@@ -3,9 +3,11 @@ import { CafebazaarPoolakey } from '@salarizadi/capacitor-cafebazaar-poolakey';
 import { db } from '../db/database';
 
 /**
- * Existing Cafe Bazaar one-time products (یک‌بار خرید).
- * We treat them as NON-CONSUMABLE: never call consumeProduct for these SKUs.
- * Ownership stays on the user's Bazaar account and can be restored after reinstall.
+ * Medication-card packs are CONSUMABLE products: users may buy the same pack
+ * repeatedly. Grant each purchase token exactly once, then consume it so Bazaar
+ * makes that SKU available for another purchase. Because this app has no backend,
+ * granted card capacity is stored locally and cannot be reconstructed after the
+ * app's local data is erased once the purchase token has been consumed.
  */
 export const MEDICATION_CARD_PACKAGES = [
   { productId: 'medireminder_cards_3', cardCount: 3, title: 'بسته ۳ کارت اضافه' },
@@ -73,9 +75,9 @@ export async function getMedicationCardProducts(): Promise<MedicationCardProduct
 }
 
 /**
- * Sync owned purchases from Bazaar → local cache.
- * Source of truth is Bazaar ownership (we never consume these SKUs).
- * Returns the total paid card count after sync.
+ * Reconcile any unconsumed purchases from Bazaar. Grant each token idempotently
+ * before consuming it: if consumption fails or the app closes mid-flow, a later
+ * sync retries consumption without granting the same bundle twice.
  */
 export async function syncEntitlementsFromBazaar(): Promise<number> {
   await connectToBazaar();
@@ -92,8 +94,17 @@ export async function syncEntitlementsFromBazaar(): Promise<number> {
     const cardCount = cardCounts.get(purchase.productId);
     if (!cardCount || !purchase.purchaseToken?.trim()) continue;
 
-    // Grant idempotently (token ledger prevents double-count).
+    // Persist the entitlement first. The local token ledger prevents a retry
+    // from granting the same purchase twice if consumption fails.
     await db.grantPaidMedicationCards(purchase.purchaseToken, cardCount);
+
+    try {
+      await CafebazaarPoolakey.consumeProduct({ token: purchase.purchaseToken });
+    } catch (error) {
+      // Keep the granted cards. The token remains visible in Bazaar's inventory
+      // and this reconciliation path will retry consumption next time.
+      console.warn('[BazaarBilling] purchase granted but consumption needs retry:', error);
+    }
     bestFromOwned = Math.max(bestFromOwned, cardCount);
   }
 
@@ -111,12 +122,16 @@ export async function purchaseMedicationCards(productId: string): Promise<Medica
   const bundle = MEDICATION_CARD_PACKAGES.find((item) => item.productId === productId);
   if (!bundle) throw new Error('بسته انتخاب‌شده معتبر نیست.');
 
-  // Already owned? Just sync and return (non-consumable cannot be bought again).
+  // First reconcile a previous purchase that may have been interrupted before
+  // Bazaar consumption. If consumption succeeds, the same SKU becomes buyable
+  // again. If Bazaar still reports it as owned, do not launch a duplicate flow.
+  await syncEntitlementsFromBazaar();
   const owned = await CafebazaarPoolakey.getPurchaseInfo();
-  const alreadyOwned = owned.purchases.some((p) => p.productId === bundle.productId);
-  if (alreadyOwned) {
-    await syncEntitlementsFromBazaar();
-    return { recoveredPreviousPurchase: true };
+  const stillOwned = owned.purchases.some((p) => p.productId === bundle.productId);
+  if (stillOwned) {
+    throw new Error(
+      'ظرفیت خرید قبلی ثبت شده، اما اعلام تحویل به کافه‌بازار کامل نشده است. اتصال اینترنت را بررسی کنید و کمی بعد دوباره تلاش کنید؛ فعلاً هزینه دیگری پرداخت نکنید.',
+    );
   }
 
   const result = await CafebazaarPoolakey.purchaseProduct({
@@ -135,8 +150,14 @@ export async function purchaseMedicationCards(productId: string): Promise<Medica
     throw new Error('شناسه محصول خریداری‌شده با بسته انتخاب‌شده مطابقت ندارد.');
   }
 
-  // NON-CONSUMABLE: grant only — do NOT call consumeProduct.
+  // Grant first, then consume. If consumption fails, the entitlement remains
+  // available and a later reconciliation retries consumption idempotently.
   await db.grantPaidMedicationCards(result.purchase.purchaseToken, bundle.cardCount);
+  try {
+    await CafebazaarPoolakey.consumeProduct({ token: result.purchase.purchaseToken });
+  } catch (error) {
+    console.warn('[BazaarBilling] purchase granted; consumption will be retried later:', error);
+  }
   await syncEntitlementsFromBazaar();
 
   return { recoveredPreviousPurchase: false };
