@@ -616,6 +616,20 @@ export default function App() {
     [medications]
   );
 
+  const takenTodayCount = useMemo(() => {
+    const now = new Date();
+    const dayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    const dayEnd = dayStart + 24 * 60 * 60 * 1000;
+    return medications.reduce((count, medication) => {
+      const takenToday = (medication.history ?? []).filter((record) =>
+        record.takenAt >= dayStart &&
+        record.takenAt < dayEnd &&
+        (record.status === 'on-time' || record.status === 'early' || record.status === 'late')
+      ).length;
+      return count + takenToday;
+    }, 0);
+  }, [medications]);
+
   useEffect(() => {
     if (!showPurchase) return;
     let active = true;
@@ -716,20 +730,20 @@ export default function App() {
           </div>
 
           {medications.length > 0 && (
-            <div className="mt-4 grid grid-cols-1 gap-2 min-[360px]:grid-cols-3">
-              <div className="rounded-2xl border border-white/10 bg-white/[0.04] px-3 py-2.5 text-center backdrop-blur">
+            <div className="mt-4 grid grid-cols-2 gap-2 min-[420px]:grid-cols-4">
+              <div className="rounded-2xl border border-white/10 bg-white/[0.04] px-3 py-3 text-center backdrop-blur">
                 <div className="text-lg font-black tabular-nums text-white">{medications.length}</div>
                 <div className="text-[10px] font-medium text-slate-400">کل داروها</div>
               </div>
-              <div className="rounded-2xl border border-cyan-400/20 bg-cyan-500/10 px-3 py-2.5 text-center backdrop-blur">
+              <div className="rounded-2xl border border-cyan-400/20 bg-cyan-500/10 px-3 py-3 text-center backdrop-blur">
                 <div className="text-lg font-black tabular-nums text-cyan-200">{activeCount}</div>
-                <div className="text-[10px] font-medium text-cyan-200/70">در حال یادآوری</div>
+                <div className="text-[10px] font-medium text-cyan-200/70">یادآوری فعال</div>
               </div>
               <div
                 className={
                   dueCount > 0
-                    ? 'rounded-2xl border border-rose-400/30 bg-rose-500/15 px-3 py-2.5 text-center backdrop-blur'
-                    : 'rounded-2xl border border-white/10 bg-white/[0.04] px-3 py-2.5 text-center backdrop-blur'
+                    ? 'rounded-2xl border border-rose-400/30 bg-rose-500/15 px-3 py-3 text-center backdrop-blur'
+                    : 'rounded-2xl border border-white/10 bg-white/[0.04] px-3 py-3 text-center backdrop-blur'
                 }
               >
                 <div className={dueCount > 0 ? 'text-lg font-black tabular-nums text-rose-200' : 'text-lg font-black tabular-nums text-white'}>
@@ -738,6 +752,10 @@ export default function App() {
                 <div className={dueCount > 0 ? 'text-[10px] font-medium text-rose-200/80' : 'text-[10px] font-medium text-slate-400'}>
                   منتظر تأیید
                 </div>
+              </div>
+              <div className="rounded-2xl border border-emerald-400/20 bg-emerald-500/[0.08] px-3 py-3 text-center backdrop-blur">
+                <div className="text-lg font-black tabular-nums text-emerald-200">{takenTodayCount}</div>
+                <div className="text-[10px] font-medium text-emerald-200/70">مصرف ثبت‌شده امروز</div>
               </div>
             </div>
           )}
