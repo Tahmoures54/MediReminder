@@ -127,6 +127,7 @@ export async function requestExactAlarmPermission(): Promise<boolean> {
 }
 
 interface SystemSettingsPlugin {
+  checkBatteryOptimization(): Promise<{ ignoringBatteryOptimizations: boolean }>;
   openBatterySettings(): Promise<{ opened: boolean; screen?: string }>;
   openAppSettings(): Promise<{ opened: boolean }>;
 }
@@ -145,6 +146,19 @@ export async function openAndroidAppSettings(): Promise<void> {
   } catch (error) {
     console.error('[Perm] native app settings failed:', error);
     throw error;
+  }
+}
+
+export async function checkBatteryOptimizationExemption(): Promise<boolean> {
+  if (!Capacitor.isNativePlatform() || Capacitor.getPlatform() !== 'android') return true;
+
+  try {
+    const result = await getSystemSettings().checkBatteryOptimization();
+    return result.ignoringBatteryOptimizations === true;
+  } catch (error) {
+    // Fail closed: if Android cannot confirm the state, keep the guidance visible.
+    console.warn('[Perm] battery optimization check failed:', error);
+    return false;
   }
 }
 
