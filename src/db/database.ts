@@ -191,6 +191,67 @@ class Database {
     await this.transaction(STATE_STORE, 'readwrite', (store) => store.put({ key, value }));
   }
 
+  async getPaidMedicationCardCount(): Promise<number> {
+    const value = await this.getState<{ count?: number }>('paidMedicationCards');
+    return Math.max(0, Math.floor(Number(value?.count) || 0));
+  }
+
+  /** Grant one local slot per unique Bazaar purchase token. */
+  async grantPaidMedicationCard(purchaseToken: string): Promise<boolean> {
+    const token = purchaseToken.trim();
+    if (!token) throw new Error('توکن خرید بازار خالی است.');
+
+    const db = await this.dbPromise;
+    return new Promise<boolean>((resolve, reject) => {
+      let granted = false;
+      let settled = false;
+      const tx = db.transaction(STATE_STORE, 'readwrite');
+      const store = tx.objectStore(STATE_STORE);
+      const request = store.get('paidMedicationCards');
+
+      request.onsuccess = () => {
+        try {
+          const current = request.result?.value as { count?: number; tokens?: string[] } | undefined;
+          const tokens = Array.isArray(current?.tokens) ? current.tokens : [];
+          if (tokens.includes(token)) return;
+          const count = Math.max(0, Math.floor(Number(current?.count) || 0));
+          store.put({
+            key: 'paidMedicationCards',
+            value: { count: count + 1, tokens: [...tokens, token] },
+          });
+          granted = true;
+        } catch (error) {
+          tx.abort();
+          if (!settled) {
+            settled = true;
+            reject(error);
+          }
+        }
+      };
+      request.onerror = () => {
+        if (!settled) {
+          settled = true;
+          reject(request.error || new Error('خواندن سوابق خرید ناموفق بود.'));
+        }
+      };
+      tx.oncomplete = () => {
+        if (settled) return;
+        settled = true;
+        resolve(granted);
+      };
+      tx.onerror = () => {
+        if (settled) return;
+        settled = true;
+        reject(tx.error || new Error('ذخیره حق استفاده از کارت ناموفق بود.'));
+      };
+      tx.onabort = () => {
+        if (settled) return;
+        settled = true;
+        reject(tx.error || new Error('ثبت خرید لغو شد.'));
+      };
+    });
+  }
+
   async getState<T>(key: string): Promise<T | null> {
     const result = (await this.transaction<any>(STATE_STORE, 'readonly', (store) => store.get(key))) as any;
     return result?.value ?? null;
