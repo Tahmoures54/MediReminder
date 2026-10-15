@@ -3,7 +3,7 @@ import type { CapacitorConfig } from '@capacitor/cli';
 const config: CapacitorConfig = {
   // Unique package for Cafe Bazaar / Play (previous id was already taken)
   appId: 'com.tahmoures54.medireminder',
-  appName: 'یادآور دارو',
+  appName: 'یادآور هوشمند دارو',
   webDir: 'dist',
   // Ensure the WebView uses the same origin as PWA for SW compatibility (web only)
   server: {
