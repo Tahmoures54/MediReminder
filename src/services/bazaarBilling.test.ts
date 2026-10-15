@@ -6,9 +6,11 @@ const billingSource = readFileSync(fileURLToPath(new URL('./bazaarBilling.ts', i
 const databaseSource = readFileSync(fileURLToPath(new URL('../db/database.ts', import.meta.url)), 'utf8');
 
 describe('Bazaar purchase safety contracts (non-consumable, existing SKUs)', () => {
-  it('does not consume the main card packages', () => {
+  it('does not call consumeProduct at runtime for card packages', () => {
     expect(billingSource).toContain('// NON-CONSUMABLE: grant only');
-    expect(billingSource.includes('consumeProduct')).toBe(false);
+    // Word may appear in comments; there must be no actual SDK call.
+    expect(billingSource).not.toMatch(/CafebazaarPoolakey\.consumeProduct\s*\(/);
+    expect(billingSource).not.toMatch(/\.consumeProduct\s*\(/);
   });
 
   it('uses the purchase token as an idempotency key inside the IndexedDB write transaction', () => {
