@@ -287,9 +287,16 @@ export default function App() {
         for (const m of current) {
           if (m.running && m.nextDoseAt && m.nextDoseAt <= now && !m.pendingDose && claimDueTransition(m)) {
             const due = toDue(normalize(m), now);
-            setMedications((prev) => prev.map((x) => (x.id === m.id ? due : x)));
-            persist(due).catch(() => {});
-            openAlert(due, true);
+            try {
+              // Persist the due state before presenting it as committed. If storage
+              // fails, release the transition guard so the next resume can retry.
+              await persist(due);
+              setMedications((prev) => prev.map((x) => (x.id === m.id ? due : x)));
+              openAlert(due, true);
+            } catch (error) {
+              dueTransitionRef.current.delete(`${m.id}:${m.nextDoseAt}`);
+              console.error('[App] failed to persist due medication on resume; retry will be allowed', error);
+            }
           }
         }
       } catch (e) {
@@ -407,20 +414,29 @@ export default function App() {
           if (id == null || deletedIdsRef.current.has(id)) continue;
           const n = normalize(m);
           if (n.running && n.nextDoseAt && n.nextDoseAt <= now && claimDueTransition(n)) {
-            const due = toDue(n, now);
-            updates.set(id, due);
-            dueToPersist.push(due);
-            openAlert(due, true);
+            dueToPersist.push(toDue(n, now));
           } else if (n.running && n.remaining !== m.remaining) updates.set(id, n);
         }
-        if (updates.size) {
-          setMedications((prev) => patchMedications(prev, updates));
-          const stillLive = dueToPersist.filter((m) => {
-            const id = toMedId(m.id);
-            return id != null && !deletedIdsRef.current.has(id);
-          });
-          if (stillLive.length) await Promise.all(stillLive.map(persist));
+        // A due transition is not shown as committed until IndexedDB confirms it.
+        // Handle each medication independently so one storage failure does not
+        // prevent other due reminders from being recorded.
+        for (const due of dueToPersist) {
+          const id = toMedId(due.id);
+          if (id == null || deletedIdsRef.current.has(id)) continue;
+          try {
+            await persist(due);
+            if (deletedIdsRef.current.has(id)) continue;
+            updates.set(id, due);
+            openAlert(due, true);
+          } catch (error) {
+            const original = current.find((m) => toMedId(m.id) === id);
+            if (original?.nextDoseAt != null) {
+              dueTransitionRef.current.delete(`${id}:${original.nextDoseAt}`);
+            }
+            console.error('[App] failed to persist due medication; retry will be allowed', { id, error });
+          }
         }
+        if (updates.size) setMedications((prev) => patchMedications(prev, updates));
       } finally {
         tickLock.current = false;
       }
