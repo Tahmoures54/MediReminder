@@ -637,11 +637,15 @@ export default function App() {
       .catch((error: unknown) => console.warn('[BazaarBilling] pending purchase recovery skipped:', error));
   }, [bootDone, isNative]);
 
+  // Do not front-load battery optimization advice before the user has added a medicine.
+  // Permission blockers stay visible immediately; battery guidance appears when reminders are active.
   const showPermBanner =
     !permBannerHidden &&
     (permission !== 'granted' ||
       (isNative && !exactAlarmGranted) ||
-      (isNative && Capacitor.getPlatform() === 'android'));
+      (isNative &&
+        Capacitor.getPlatform() === 'android' &&
+        medications.some((m) => m.running || m.pendingDose)));
 
   if (bootError) {
     return (
@@ -790,10 +794,15 @@ export default function App() {
               <div className="relative mx-auto flex h-20 w-20 items-center justify-center rounded-3xl bg-gradient-to-br from-cyan-400/30 to-teal-600/20 text-5xl ring-1 ring-white/10">
                 💊
               </div>
-              <h2 className="relative mt-5 text-xl font-black text-white">هنوز دارویی ثبت نشده</h2>
-              <p className="relative mx-auto mt-2 max-w-[16rem] text-sm leading-relaxed text-slate-400">
-                اولین دارو را اضافه کنید تا یادآوری دقیق روی همین دستگاه شروع شود.
+              <h2 className="relative mt-5 text-xl font-black text-white">اولین یادآوری را در چند قدم تنظیم کنید</h2>
+              <p className="relative mx-auto mt-2 max-w-[18rem] text-sm leading-relaxed text-slate-300">
+                لازم نیست چیزی را به خاطر بسپارید؛ دارو را ثبت کنید تا برنامه زمان یادآوری را روی همین دستگاه نگه دارد.
               </p>
+              <div className="relative mx-auto mt-5 max-w-xs space-y-2 text-right text-xs leading-relaxed text-slate-400">
+                <p><span className="me-2 inline-flex h-6 w-6 items-center justify-center rounded-full bg-cyan-400/15 font-bold text-cyan-200">۱</span>نام دارو و مقدار مصرف را وارد کنید.</p>
+                <p><span className="me-2 inline-flex h-6 w-6 items-center justify-center rounded-full bg-cyan-400/15 font-bold text-cyan-200">۲</span>فاصله یادآوری را مطابق دستور پزشک انتخاب کنید.</p>
+                <p><span className="me-2 inline-flex h-6 w-6 items-center justify-center rounded-full bg-cyan-400/15 font-bold text-cyan-200">۳</span>مجوز اعلان را بدهید تا گوشی بتواند یادآوری کند.</p>
+              </div>
               <button
                 type="button"
                 onClick={() => {
@@ -805,7 +814,7 @@ export default function App() {
                 افزودن اولین دارو
               </button>
               <p className="relative mt-5 text-[11px] leading-relaxed text-slate-500">
-                برای دقت بیشتر: مجوز اعلان و باتری بدون محدودیت را فعال کنید.
+                اطلاعات دارو روی همین دستگاه ذخیره می‌شود. این برنامه جایگزین دستور پزشک نیست.
               </p>
             </div>
           ) : (

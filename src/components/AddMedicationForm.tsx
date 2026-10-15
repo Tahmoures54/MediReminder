@@ -145,6 +145,11 @@ export function AddMedicationForm({ initial, onSubmit, onCancel }: Props) {
       </div>
 
       <form onSubmit={submit} className="space-y-4" noValidate autoComplete="off">
+        {!isEdit && (
+          <div className="rounded-2xl border border-cyan-400/20 bg-cyan-500/[0.07] p-3 text-xs leading-relaxed text-cyan-50/90">
+            فاصله یادآوری را مطابق دستور پزشک یا داروساز وارد کنید. برنامه خودش زمان یا مقدار درمان را تعیین نمی‌کند.
+          </div>
+        )}
         {error && (
           <div
             role="alert"
@@ -232,7 +237,8 @@ export function AddMedicationForm({ initial, onSubmit, onCancel }: Props) {
         </div>
 
         <div>
-          <p className="mb-2.5 text-sm font-medium text-slate-300">یادآوری هر چند ساعت؟</p>
+          <p className="mb-1 text-sm font-medium text-slate-200">فاصله بین یادآوری‌ها</p>
+          <p className="mb-2.5 text-xs leading-relaxed text-slate-500">مثلاً با انتخاب ۸ ساعت، اولین یادآوری حدود ۸ ساعت پس از شروع شمارش می‌رسد.</p>
           <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
             {PRESETS.map((v) => (
               <button
@@ -290,9 +296,11 @@ export function AddMedicationForm({ initial, onSubmit, onCancel }: Props) {
             className="mt-0.5 h-5 w-5 shrink-0 rounded border-slate-600 bg-slate-900 accent-cyan-500"
           />
           <span className="leading-relaxed text-slate-300">
-            {isEdit ? 'شروع / بازنشانی تایمر با ذخیره' : 'شروع اولین شمارش بلافاصله'}
-            <span className="mt-1 block text-xs text-slate-500">
-              {isEdit ? 'تایمر با بازه جدید دوباره شروع می‌شود' : 'اگر خاموش باشد، بعداً دستی شروع کنید'}
+            {isEdit ? 'شروع / بازنشانی یادآوری با ذخیره' : 'فعال‌کردن یادآوری بعد از ذخیره'}
+            <span className="mt-1 block text-xs leading-relaxed text-slate-500">
+              {isEdit
+                ? 'شمارش با فاصله جدید از همین لحظه شروع می‌شود'
+                : 'روشن: اولین یادآوری پس از پایان فاصله انتخابی می‌رسد. خاموش: دارو ثبت می‌شود اما باید یادآوری را بعداً دستی شروع کنید.'}
             </span>
           </span>
         </label>
@@ -309,7 +317,7 @@ export function AddMedicationForm({ initial, onSubmit, onCancel }: Props) {
             type="submit"
             className="flex-[1.5] rounded-2xl bg-gradient-to-b from-emerald-400 to-emerald-600 py-4 text-[15px] font-bold text-slate-950 shadow-lg shadow-emerald-900/30 transition active:scale-[0.97] hover:from-emerald-300 hover:to-emerald-500 touch-manipulation"
           >
-            {isEdit ? 'ذخیره تغییرات' : 'افزودن دارو'}
+            {isEdit ? 'ذخیره تغییرات' : 'ثبت دارو'}
           </button>
         </div>
       </form>
