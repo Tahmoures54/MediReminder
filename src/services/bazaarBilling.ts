@@ -85,7 +85,7 @@ function isAlreadyPurchasedError(error: unknown): boolean {
   const message = error instanceof Error
     ? `${error.name} ${error.message}`
     : `${String(error)} ${JSON.stringify(error)}`;
-  return /already[ _-]?(purchased|owned)|item_already_owned|product_already_owned|قبلاً\\s*خریداری|قبلا\\s*خریداری/i.test(message);
+  return /already[ _-]?(purchased|owned)|item_already_owned|product_already_owned|قبلاً\s*خریداری|قبلا\s*خریداری/i.test(message);
 }
 
 export type MedicationCardPurchaseResult = {
@@ -112,12 +112,19 @@ export async function purchaseMedicationCards(productId: string): Promise<Medica
     // Bazaar still owns an unconsumed token from the previous purchase.
     // Deliver its credits idempotently, consume the token, then retry the user's
     // explicit purchase exactly once. This is what makes a consumable SKU reusable.
-    const recoveredCards = await restorePendingMedicationCardPurchases();
-    if (recoveredCards <= 0) {
-      throw new Error('این بسته قبلاً خریداری شده است. خرید قبلی بازیابی شدنی نبود؛ اتصال بازار را بررسی کنید و دوباره تلاش کنید.');
-    }
+    // Even if the token was credited on an earlier interrupted attempt,
+    // restore still consumes any outstanding owned token. Retry exactly once;
+    // Bazaar itself will reject it again if the pending token could not be cleared.
+    await restorePendingMedicationCardPurchases();
     recoveredPreviousPurchase = true;
-    result = await purchase();
+    try {
+      result = await purchase();
+    } catch (retryError) {
+      if (isAlreadyPurchasedError(retryError)) {
+        throw new Error('این بسته قبلاً خریداری شده است. اعتبار خرید قبلی بررسی شد، اما بازار هنوز اجازه خرید مجدد نمی‌دهد. چند لحظه بعد دوباره تلاش کنید.');
+      }
+      throw retryError;
+    }
   }
 
   if (result.state !== 'PURCHASED' || !result.purchase?.purchaseToken) {
