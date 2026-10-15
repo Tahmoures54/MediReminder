@@ -676,17 +676,17 @@ export default function App() {
               💊
             </div>
             <div className="min-w-0 flex-1">
-              <h1 className="text-2xl font-black tracking-tight text-white">یادآور دارو</h1>
+              <h1 className="text-xl font-black tracking-tight text-white min-[380px]:text-2xl">یادآور دارو</h1>
               <p className="mt-1 text-xs text-slate-400">یادآوری ساده‌تر، خیال آسوده‌تر</p>
               <p className="mt-0.5 text-[10px] text-slate-500">آفلاین · نسخه {APP_VERSION}</p>
             </div>
           </div>
 
-          <div className="mt-4 grid grid-cols-[1fr_1.5fr] gap-2">
+          <div className="mt-4 grid grid-cols-1 gap-2 min-[360px]:grid-cols-[1fr_1.5fr]">
             <button
               type="button"
               onClick={openSupportWhatsApp}
-              className="flex min-h-12 items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/[0.05] px-3 py-3 text-sm font-semibold text-slate-200 transition active:scale-[0.98] hover:bg-white/10"
+              className="order-2 flex min-h-12 items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/[0.05] px-3 py-3 text-sm font-semibold text-slate-200 transition active:scale-[0.98] hover:bg-white/10 min-[360px]:order-1"
             >
               <span aria-hidden>💬</span>
               پشتیبانی
@@ -694,7 +694,7 @@ export default function App() {
             <button
               type="button"
               onClick={openAddMedication}
-              className="flex min-h-12 items-center justify-center gap-2 rounded-2xl bg-gradient-to-b from-cyan-400 to-cyan-600 px-4 py-3 text-sm font-black text-slate-950 shadow-md shadow-cyan-950/40 transition active:scale-[0.98] hover:from-cyan-300 hover:to-cyan-500"
+              className="order-1 flex min-h-12 items-center justify-center gap-2 rounded-2xl bg-gradient-to-b from-cyan-400 to-cyan-600 px-4 py-3 text-sm font-black text-slate-950 shadow-md shadow-cyan-950/40 transition active:scale-[0.98] hover:from-cyan-300 hover:to-cyan-500 min-[360px]:order-2"
             >
               <span className="text-lg leading-none" aria-hidden>{formVisible ? '×' : '+'}</span>
               {formVisible ? 'بستن فرم' : medications.length >= getMedicationLimit(paidCardCount) ? 'خرید کارت دارو' : 'افزودن دارو'}
@@ -710,7 +710,7 @@ export default function App() {
           </div>
 
           {medications.length > 0 && (
-            <div className="mt-4 grid grid-cols-3 gap-2">
+            <div className="mt-4 grid grid-cols-1 gap-2 min-[360px]:grid-cols-3">
               <div className="rounded-2xl border border-white/10 bg-white/[0.04] px-3 py-2.5 text-center backdrop-blur">
                 <div className="text-lg font-black tabular-nums text-white">{medications.length}</div>
                 <div className="text-[10px] font-medium text-slate-400">کل داروها</div>
