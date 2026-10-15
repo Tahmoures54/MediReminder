@@ -88,16 +88,6 @@ export async function purchaseMedicationCards(productId: string): Promise<void> 
   const bundle = MEDICATION_CARD_PACKAGES.find((item) => item.productId === productId);
   if (!bundle) throw new Error('بسته انتخاب‌شده معتبر نیست.');
 
-  // Recover a purchase left owned by Bazaar after an interrupted app return.
-  // Otherwise the next purchase of this SKU may fail with "already purchased".
-  const countBeforeRecovery = await db.getPaidMedicationCardCount();
-  const recoveredCards = await restorePendingMedicationCardPurchases();
-  const countAfterRecovery = await db.getPaidMedicationCardCount();
-  if (recoveredCards > 0 || countAfterRecovery > countBeforeRecovery) {
-    // The old purchase has now been delivered; don't charge the user again.
-    return;
-  }
-
   const result = await CafebazaarPoolakey.purchaseProduct({
     productId: bundle.productId,
     payload: `medireminder-extra-medication-cards:${bundle.cardCount}`,
