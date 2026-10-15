@@ -492,15 +492,21 @@ export default function App() {
 
   useEffect(() => {
     if (!isNative) return;
-    const received = LocalNotifications.addListener('localNotificationReceived', (n) => {
+    const received = LocalNotifications.addListener('localNotificationReceived', async (n) => {
       const id = Number(n.extra?.medicationId);
       const m = findMedication(medsRef.current, id);
       if (!m) return;
       if (!m.pendingDose && claimDueTransition(m)) {
         const due = toDue(m);
-        setMedications((v) => sortMedications(v.map((x) => (x.id === m.id ? due : x))));
-        persist(due).catch(() => {});
-        openAlert(due, true);
+        try {
+          // Do not show a committed due state until it has been stored.
+          await persist(due);
+          setMedications((v) => sortMedications(v.map((x) => (x.id === m.id ? due : x))));
+          openAlert(due, true);
+        } catch (error) {
+          dueTransitionRef.current.delete(`${m.id}:${m.nextDoseAt}`);
+          console.error('[App] failed to persist native due medication; retry will be allowed', { id, error });
+        }
       } else openAlert(m, true);
     });
     const action = LocalNotifications.addListener('localNotificationActionPerformed', (e) => {
