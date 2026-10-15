@@ -115,7 +115,7 @@ export async function purchaseMedicationCards(productId: string): Promise<Medica
     // Even if the token was credited on an earlier interrupted attempt,
     // restore still consumes any outstanding owned token. Retry exactly once;
     // Bazaar itself will reject it again if the pending token could not be cleared.
-    await restorePendingMedicationCardPurchases();
+    await restorePendingMedicationCardPurchases(bundle.productId);
     recoveredPreviousPurchase = true;
     try {
       result = await purchase();
@@ -143,7 +143,7 @@ export async function purchaseMedicationCards(productId: string): Promise<Medica
 }
 
 /** Recover interrupted purchases. Legacy one-card purchases remain supported. */
-export async function restorePendingMedicationCardPurchases(): Promise<number> {
+export async function restorePendingMedicationCardPurchases(onlyProductId?: string): Promise<number> {
   await connectToBazaar();
   const result = await CafebazaarPoolakey.getPurchaseInfo();
   let recoveredCards = 0;
@@ -153,6 +153,7 @@ export async function restorePendingMedicationCardPurchases(): Promise<number> {
   ]);
 
   for (const purchase of result.purchases) {
+    if (onlyProductId && purchase.productId !== onlyProductId) continue;
     const cardCount = cardCounts.get(purchase.productId);
     if (!cardCount || !purchase.purchaseToken?.trim()) continue;
     const granted = await grantAndConsume(purchase.purchaseToken, cardCount);
