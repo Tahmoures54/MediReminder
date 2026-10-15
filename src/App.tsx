@@ -987,9 +987,6 @@ export default function App() {
               >
                 افزودن اولین دارو
               </button>
-              <p className="relative mt-5 text-[11px] leading-relaxed text-slate-500">
-                اطلاعات دارو روی همین دستگاه ذخیره می‌شود. این برنامه جایگزین دستور پزشک نیست.
-              </p>
             </div>
           ) : (
             medications.map((m, i) => (
