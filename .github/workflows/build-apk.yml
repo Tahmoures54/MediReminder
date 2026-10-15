@@ -72,7 +72,7 @@ jobs:
               raise SystemExit(f'Expected one MainActivity.java, found {len(main_files)}')
           main = main_files[0]
           source = main.read_text()
-          match = re.search(r'^package\\s+([\\w.]+);', source, re.M)
+          match = re.search(r'^package\s+([\w.]+);', source, re.M)
           if not match:
               raise SystemExit('Could not determine Android application package from MainActivity.java')
           package_name = match.group(1)
@@ -86,12 +86,12 @@ jobs:
           if 'SystemSettingsPlugin.class' not in source:
               if 'import android.os.Bundle;' not in source:
                   source = source.replace(
-                      match.group(0), match.group(0) + '\\n\\nimport android.os.Bundle;', 1
+                      match.group(0), match.group(0) + '\n\nimport android.os.Bundle;', 1
                   )
               if 'public void onCreate(Bundle savedInstanceState)' in source:
                   source = source.replace(
                       'super.onCreate(savedInstanceState);',
-                      'registerPlugin(SystemSettingsPlugin.class);\\n        super.onCreate(savedInstanceState);',
+                      'registerPlugin(SystemSettingsPlugin.class);\n        super.onCreate(savedInstanceState);',
                       1,
                   )
               else:
