@@ -58,9 +58,20 @@ describe('Bazaar consumable medication-card purchase safety', () => {
     expect(billingSource).toContain('return syncEntitlementsFromBazaar()');
   });
 
-  it('uses the existing Cafe Bazaar product IDs', () => {
-    expect(billingSource).toContain('medireminder_cards_3');
-    expect(billingSource).toContain('medireminder_cards_10');
-    expect(billingSource).toContain('medireminder_cards_25');
+  it('uses the current Bazaar token-pack IDs in the shop catalog', () => {
+    expect(billingSource).toContain("productId: 'medireminder_tokens_10', cardCount: 10");
+    expect(billingSource).toContain("productId: 'medireminder_tokens_30', cardCount: 30");
+    expect(billingSource).toContain("productId: 'medireminder_cards_100', cardCount: 100");
+  });
+
+  it('keeps retired SKUs recoverable without offering them for new purchases', () => {
+    expect(billingSource).toContain("productId: 'medireminder_cards_3', cardCount: 3");
+    expect(billingSource).toContain("productId: 'medireminder_cards_10', cardCount: 10");
+    expect(billingSource).toContain("productId: 'medireminder_cards_25', cardCount: 25");
+    expect(billingSource).toContain("productId: 'medication_card_1', cardCount: 1");
+    const catalogStart = billingSource.indexOf('export const MEDICATION_CARD_PACKAGES');
+    const legacyStart = billingSource.indexOf('const LEGACY_CARD_PRODUCTS');
+    expect(legacyStart).toBeGreaterThan(catalogStart);
+    expect(billingSource.slice(catalogStart, legacyStart)).not.toContain('medireminder_cards_3');
   });
 });
