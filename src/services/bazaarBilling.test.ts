@@ -33,10 +33,12 @@ describe('Bazaar consumable medication-token purchase safety', () => {
   });
 
   it('spends one token atomically with creating each medication after the first free one', () => {
-    expect(databaseSource).toContain('addMedicationWithToken(medication: Medication, consumeToken: boolean)');
+    expect(databaseSource).toContain('addMedicationWithToken(medication: Medication)');
     expect(databaseSource).toContain("db.transaction([STORE_NAME, STATE_STORE], 'readwrite')");
     expect(databaseSource).toContain('count: count - 1');
     expect(databaseSource).toContain('if (count < 1)');
+    expect(databaseSource).toContain("key: 'freeMedicationUsed', value: true");
+    expect(databaseSource).toContain('canAddMedicationWithoutToken');
   });
 
   it('keeps old pending card-pack SKUs recoverable while using new token SKUs for sales', () => {
