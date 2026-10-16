@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 const billingSource = readFileSync(fileURLToPath(new URL('./bazaarBilling.ts', import.meta.url)), 'utf8');
+const appSource = readFileSync(fileURLToPath(new URL('../App.tsx', import.meta.url)), 'utf8');
 const databaseSource = readFileSync(fileURLToPath(new URL('../db/database.ts', import.meta.url)), 'utf8');
 const billingDocs = readFileSync(fileURLToPath(new URL('../../BAZAAR_BILLING.md', import.meta.url)), 'utf8');
 const restoreDocs = readFileSync(fileURLToPath(new URL('../../RESTORE_APP.md', import.meta.url)), 'utf8');
@@ -50,6 +51,13 @@ describe('Bazaar consumable medication-card purchase safety', () => {
     expect(restoreDocs).toContain('مصرف‌شدنی');
     expect(restoreDocs).toContain('تضمین‌شده قابل بازیابی نیست');
     expect(billingDocs).not.toContain('محصولات یک‌بار خرید هرگز `consume` نمی‌شوند');
+  });
+
+  it('reconciles pending Bazaar purchases on cold start as well as resume', () => {
+    expect(appSource).toContain('await restorePendingMedicationCardPurchases();');
+    expect(appSource).toContain("console.warn('[BazaarBilling] startup recovery skipped:', error)");
+    expect(appSource).toContain('purchaseRecoveryRef.current = bootRecovery');
+    expect(appSource).toContain('setPaidCardCount(recoveredCount)');
   });
 
   it('exposes syncEntitlementsFromBazaar as the restore path', () => {
