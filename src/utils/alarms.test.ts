@@ -136,8 +136,8 @@ describe('deleted medication notification cleanup', () => {
     const swSource = readFileSync(fileURLToPath(new URL('../../public/sw.js', import.meta.url)), 'utf8');
     expect(appSource).toContain('const loadedMedications = await load();');
     expect(appSource).toContain('await syncAllAlarms(loadedMedications);');
-    expect(appSource.indexOf('await db.deleteMedication(id)'))
-      .toBeLessThan(appSource.indexOf('await cancelMedNotifications(id)'));
+    expect(appSource.indexOf('await cancelMedNotifications(id)'))
+      .toBeLessThan(appSource.indexOf('await db.deleteMedication(id)'));
     expect(swSource).toContain('const orphanMedicationIds = new Set();');
     expect(swSource).toContain('await cancelAlarmCompletely(medicationId);');
     expect(swSource).toContain('self.registration.getNotifications');
