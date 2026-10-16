@@ -226,6 +226,26 @@ export default function App() {
         setExactAlarmGranted(exactAlarm);
         setBatteryOptimizationIgnored(batteryIgnored);
         setPermission(status);
+
+        // Recover any purchase still pending in Bazaar during cold start, not
+        // only when the app resumes from the payment UI. Share the same promise
+        // with resume handlers to avoid concurrent token consumption attempts.
+        if (native && Capacitor.getPlatform() === 'android') {
+          const bootRecovery = (async () => {
+            await restorePendingMedicationCardPurchases();
+            const recoveredCount = await db.getPaidMedicationCardCount();
+            if (active) setPaidCardCount(recoveredCount);
+          })();
+          purchaseRecoveryRef.current = bootRecovery;
+          try {
+            await bootRecovery;
+          } catch (error) {
+            console.warn('[BazaarBilling] startup recovery skipped:', error);
+          } finally {
+            if (purchaseRecoveryRef.current === bootRecovery) purchaseRecoveryRef.current = null;
+          }
+        }
+
         setBootError(null);
         setBootDone(true);
       } catch (error) {
