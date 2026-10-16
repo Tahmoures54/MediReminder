@@ -564,7 +564,8 @@ export default function App() {
     // which may be stale after returning from the external Bazaar payment UI.
     const currentPaidCardCount = await db.getMedicationTokenBalance();
     setPaidCardCount(currentPaidCardCount);
-    if (medications.length > 0 && currentPaidCardCount < 1) {
+    const freeAllowance = await db.canAddMedicationWithoutToken();
+    if (!freeAllowance && currentPaidCardCount < 1) {
       setPurchaseError('');
       setShowPurchase(true);
       return;
@@ -635,8 +636,7 @@ export default function App() {
     // UI state can lag behind an Android activity round-trip.
     const currentPaidCardCount = await db.getMedicationTokenBalance();
     setPaidCardCount(currentPaidCardCount);
-    const consumeToken = medications.length > 0;
-    if (consumeToken && currentPaidCardCount < 1) {
+    if (!(await db.canAddMedicationWithoutToken()) && currentPaidCardCount < 1) {
       setShowAdd(false);
       setPurchaseError('');
       setShowPurchase(true);
@@ -661,11 +661,11 @@ export default function App() {
     };
     let id: number;
     try {
-      id = await db.addMedicationWithToken(m, consumeToken);
+      id = await db.addMedicationWithToken(m);
     } catch (error) {
       const latestBalance = await db.getMedicationTokenBalance().catch(() => currentPaidCardCount);
       setPaidCardCount(latestBalance);
-      if (consumeToken && latestBalance < 1) {
+      if (latestBalance < 1 && !(await db.canAddMedicationWithoutToken().catch(() => false))) {
         setShowAdd(false);
         setPurchaseError('');
         setShowPurchase(true);
