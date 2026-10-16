@@ -729,15 +729,19 @@ export default function App() {
         setConfirm(null);
         void (async () => {
           const id = m.id!;
-          // Block timer-driven state transitions immediately, then commit the
-          // deletion. Startup reconciliation is the recovery path if the
-          // process stops before native/browser cancellation completes.
+          // Block timer-driven state transitions immediately and cancel first.
+          // This avoids a crash window where the medication is gone from IndexedDB
+          // but its OS-scheduled notification has not yet been cancelled.
           deletedIdsRef.current.add(id);
+          await cancelMedNotifications(id);
+          dismissSwFollowUps(id);
           try {
             await db.deleteMedication(id);
           } catch (error) {
             deletedIdsRef.current.delete(id);
             console.error('[App] failed to delete medication from IndexedDB', { id, error });
+            // The record still exists, so rebuild its reminders after a failed delete.
+            await syncAllAlarms(medsRef.current);
             window.alert('حذف دارو ذخیره نشد. اطلاعات قبلی حفظ شده است؛ لطفاً دوباره تلاش کنید.');
             return;
           }
@@ -749,11 +753,8 @@ export default function App() {
             setAlert(null);
           }
 
-          // Both operations are intentionally idempotent. Native cancellation
-          // also removes delivered notifications; web cancellation clears the
-          // Service Worker timer, queue row, follow-up row, and visible banner.
-          await cancelMedNotifications(id);
-          dismissSwFollowUps(id);
+          // Reconcile once more against the new source of truth. Repeating this
+          // cleanup is safe and prevents stale queue rows from being recreated.
           await syncAllAlarms(medsRef.current.filter((medication) => medication.id !== id));
         })().catch((error: unknown) => {
           console.error('[App] medication deletion cleanup failed', { id: m.id, error });
