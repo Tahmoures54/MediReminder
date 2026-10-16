@@ -11,6 +11,7 @@ describe('Bazaar consumable medication-card purchase safety', () => {
   it('consumes card-pack purchases using the purchase token', () => {
     expect(billingSource).toContain('CafebazaarPoolakey.consumeProduct({ token: purchase.purchaseToken })');
     expect(billingSource).toContain('CafebazaarPoolakey.consumeProduct({ token: result.purchase.purchaseToken })');
+    expect(billingSource).toContain('payload: `medireminder-tokens:${bundle.cardCount}`');
   });
 
   it('records the entitlement before attempting consumption in both purchase paths', () => {
@@ -26,7 +27,10 @@ describe('Bazaar consumable medication-card purchase safety', () => {
   });
 
   it('uses the purchase token as an idempotency key inside the IndexedDB write transaction', () => {
-    expect(databaseSource).toContain("const tx = db.transaction(STATE_STORE, 'readwrite')");
+    expect(databaseSource).toContain("const tx = db.transaction([STATE_STORE, PURCHASE_STORE], 'readwrite')");
+    expect(databaseSource).toContain("const PURCHASE_STORE = 'localPurchases'");
+    expect(databaseSource).toContain('purchaseToken: token');
+    expect(databaseSource).toContain('productId: sku');
     expect(databaseSource.indexOf('if (tokens.includes(token)) return;'))
       .toBeLessThan(databaseSource.indexOf('count: count + cards, tokens: [...tokens, token]'));
   });
