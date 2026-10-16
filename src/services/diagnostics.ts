@@ -238,6 +238,7 @@ function openViewer(): void {
   const copyBtn = makeActionBtn('کپی همه لاگ‌ها', true);
   const downloadBtn = makeActionBtn('دانلود فایل');
   const selectBtn = makeActionBtn('انتخاب متن');
+  const recoverBtn = makeActionBtn('ثبت ۷۸ کارت خریدهای پنل');
 
   copyBtn.addEventListener('click', async () => {
     const current = textarea.value || buildReport();
@@ -261,9 +262,34 @@ function openViewer(): void {
     status.style.color = '#94a3b8';
   });
 
+  recoverBtn.addEventListener('click', async () => {
+    recoverBtn.disabled = true;
+    status.textContent = 'در حال ثبت اعتبار خریدهای تأییدشده پنل…';
+    status.style.color = '#94a3b8';
+    try {
+      const { applyPanelConfirmedRecoveryGrant } = await import('./bazaarBilling');
+      const result = await applyPanelConfirmedRecoveryGrant();
+      textarea.value = buildReport();
+      textarea.scrollTop = textarea.scrollHeight;
+      if (result.granted) {
+        status.textContent = `✓ ۷۸ کارت ثبت شد. اعتبار کل: ${result.totalCredits}. برنامه را یک‌بار ببندید و دوباره باز کنید.`;
+        status.style.color = '#34d399';
+      } else {
+        status.textContent = `این بازیابی قبلاً اعمال شده. اعتبار فعلی: ${result.totalCredits}`;
+        status.style.color = '#fbbf24';
+      }
+    } catch (error) {
+      status.textContent = `ثبت اعتبار ناموفق: ${error instanceof Error ? error.message : String(error)}`;
+      status.style.color = '#f87171';
+    } finally {
+      recoverBtn.disabled = false;
+    }
+  });
+
   footer.appendChild(copyBtn);
   footer.appendChild(downloadBtn);
   footer.appendChild(selectBtn);
+  footer.appendChild(recoverBtn);
   footer.appendChild(status);
 
   panel.appendChild(header);
