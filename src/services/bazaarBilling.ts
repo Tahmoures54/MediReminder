@@ -146,21 +146,27 @@ export async function purchaseMedicationCards(productId: string): Promise<void> 
     throw new Error('شناسه محصول خریداری‌شده با بسته انتخاب‌شده مطابقت ندارد.');
   }
 
-  // Grant first, then consume. If consumption fails, the entitlement remains
-  // available and a later reconciliation retries consumption idempotently.
+  // Persist the entitlement before consuming. The IndexedDB transaction is the
+  // success boundary for the user's cards; do not turn a successful local grant
+  // into a purchase failure because a redundant follow-up sync failed.
   await db.grantPaidMedicationCards(result.purchase.purchaseToken, bundle.cardCount);
+
   try {
     await CafebazaarPoolakey.consumeProduct({ token: result.purchase.purchaseToken });
   } catch (error) {
+    // The cards are already persisted. A future boot/resume/restore sync retries
+    // consumption using the still-pending token, without granting it twice.
     console.warn('[BazaarBilling] purchase granted; consumption will be retried later:', error);
   }
-  await syncEntitlementsFromBazaar();
-
 }
 
 /**
  * Public restore entry-point (button + auto on boot / resume).
  * Returns current paid card count.
+ *
+ * Only unconsumed purchases can be recovered from Bazaar. Once a purchase token
+ * is consumed, this offline-only app cannot restore its grant after local data
+ * is cleared or the app is reinstalled.
  */
 export async function restorePendingMedicationCardPurchases(_onlyProductId?: string): Promise<number> {
   return syncEntitlementsFromBazaar();
