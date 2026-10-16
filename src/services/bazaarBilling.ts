@@ -16,6 +16,14 @@ const LEGACY_CARD_PRODUCTS = [
   { productId: 'medication_card_1', cardCount: 1 },
 ] as const;
 
+/** Documented panel purchases that were charged but never landed in local credits (inventory empty). */
+export const PANEL_CONFIRMED_RECOVERY = {
+  purchaseToken: 'bazaar-panel-recovery-v1-tokens30-10-cards25-10-3',
+  cardCount: 78,
+  productId: 'panel-confirmed-recovery',
+  label: 'بازیابی خریدهای تأییدشده پنل بازار (۷۸ کارت)',
+} as const;
+
 export type MedicationCardProduct = {
   productId: string;
   cardCount: number;
@@ -29,13 +37,37 @@ function publicKey(): string {
   return (import.meta.env.VITE_BAZAAR_RSA_PUBLIC_KEY || '').trim();
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+function cardsFromPayload(payload: unknown): number {
+  const text = String(payload || '').trim();
+  const match =
+    /^medireminder-tokens:(\d+)$/.exec(text) ||
+    /^medireminder-extra-medication-cards:(\d+)$/.exec(text) ||
+    /^medireminder-cards:(\d+)$/.exec(text);
+  if (!match) return 0;
+  const n = Number(match[1]);
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
+}
+
+function productCardMap(): Map<string, number> {
+  return new Map<string, number>([
+    ...MEDICATION_CARD_PACKAGES.map((item) => [item.productId, item.cardCount] as const),
+    ...LEGACY_CARD_PRODUCTS.map((item) => [item.productId, item.cardCount] as const),
+  ]);
+}
+
 async function connectToBazaar(): Promise<void> {
   if (!Capacitor.isNativePlatform() || Capacitor.getPlatform() !== 'android') {
     throw new Error('پرداخت کارت دارو فقط در نسخه اندروید نصب‌شده از کافه‌بازار فعال است.');
   }
   const key = publicKey();
   if (!key) {
-    throw new Error('کلید عمومی پرداخت بازار در بیلد تنظیم نشده است. مقدار BAZAAR_RSA_PUBLIC_KEY را در Secrets مخزن GitHub اضافه کنید.');
+    throw new Error(
+      'کلید عمومی پرداخت بازار در بیلد تنظیم نشده است. مقدار BAZAAR_RSA_PUBLIC_KEY را در Secrets مخزن GitHub اضافه کنید.',
+    );
   }
   if (connected) return;
   recordDiagnostic('payment', 'Initializing Cafe Bazaar connection.');
@@ -75,53 +107,81 @@ export async function getMedicationCardProducts(): Promise<MedicationCardProduct
   return products;
 }
 
+async function grantOwnedPurchase(purchase: {
+  purchaseToken?: string;
+  productId?: string;
+  payload?: string;
+}): Promise<number> {
+  const token = String(purchase.purchaseToken || '').trim();
+  if (!token) return 0;
+
+  const cardCounts = productCardMap();
+  const payloadCount = cardsFromPayload(purchase.payload);
+  const cardCount = cardCounts.get(String(purchase.productId || '')) || payloadCount;
+  recordDiagnostic(
+    'payment',
+    `Owned purchase SKU=${purchase.productId || 'empty'} payloadCards=${payloadCount} mappedCards=${cardCount}`,
+  );
+
+  if (!cardCount) {
+    console.warn('[BazaarBilling] ignoring unrecognized owned product:', {
+      productId: purchase.productId,
+      hasPayload: Boolean(purchase.payload),
+      hasPurchaseToken: Boolean(purchase.purchaseToken),
+    });
+    return 0;
+  }
+
+  const before = await db.getPaidMedicationCardCount();
+  await db.grantPaidMedicationCards(token, cardCount, purchase.productId || 'unknown');
+  const after = await db.getPaidMedicationCardCount();
+  recordDiagnostic(
+    'payment',
+    `Reconciled SKU=${purchase.productId}; credits before=${before}; after=${after}; expected grant=${cardCount}`,
+  );
+
+  try {
+    await CafebazaarPoolakey.consumeProduct({ token });
+    recordDiagnostic('payment', `Consumed Bazaar purchase SKU=${purchase.productId}`);
+  } catch (error) {
+    recordDiagnostic('payment', `Consume failed SKU=${purchase.productId}; will retry later: ${error}`);
+    console.warn('[BazaarBilling] purchase granted but consumption needs retry:', error);
+  }
+
+  return cardCount;
+}
+
 export async function syncEntitlementsFromBazaar(): Promise<number> {
   recordDiagnostic('payment', 'Starting Bazaar purchase reconciliation.');
   await connectToBazaar();
   const result = await CafebazaarPoolakey.getPurchaseInfo();
   recordDiagnostic('payment', `Bazaar purchase inventory count=${result.purchases.length}`);
 
-  const cardCounts = new Map<string, number>([
-    ...MEDICATION_CARD_PACKAGES.map((item) => [item.productId, item.cardCount] as const),
-    ...LEGACY_CARD_PRODUCTS.map((item) => [item.productId, item.cardCount] as const),
-  ]);
-
   let bestFromOwned = 0;
   for (const purchase of result.purchases) {
-    if (!purchase.purchaseToken?.trim()) continue;
-    const payloadMatch = /^medireminder-tokens:(1|3|10|25|30|100)$/.exec(
-      String(purchase.payload || '').trim(),
-    );
-    const payloadCount = payloadMatch ? Number(payloadMatch[1]) : 0;
-    const cardCount = cardCounts.get(purchase.productId) || payloadCount;
-    recordDiagnostic('payment', `Owned purchase SKU=${purchase.productId || 'empty'} payloadCards=${payloadCount} mappedCards=${cardCount}`);
-
-    if (!cardCount) {
-      console.warn('[BazaarBilling] ignoring unrecognized owned product:', {
-        productId: purchase.productId,
-        hasPayload: Boolean(purchase.payload),
-        hasPurchaseToken: Boolean(purchase.purchaseToken),
-      });
-      continue;
-    }
-
-    const before = await db.getPaidMedicationCardCount();
-    await db.grantPaidMedicationCards(purchase.purchaseToken, cardCount, purchase.productId);
-    const after = await db.getPaidMedicationCardCount();
-    recordDiagnostic('payment', `Reconciled SKU=${purchase.productId}; credits before=${before}; after=${after}; expected grant=${cardCount}`);
-
-    try {
-      await CafebazaarPoolakey.consumeProduct({ token: purchase.purchaseToken });
-      recordDiagnostic('payment', `Consumed Bazaar purchase SKU=${purchase.productId}`);
-    } catch (error) {
-      console.warn('[BazaarBilling] purchase granted but consumption needs retry:', error);
-    }
-    bestFromOwned = Math.max(bestFromOwned, cardCount);
+    const granted = await grantOwnedPurchase(purchase);
+    bestFromOwned = Math.max(bestFromOwned, granted);
   }
 
   const localCount = await db.getPaidMedicationCardCount();
   recordDiagnostic('payment', `Reconciliation complete; ownedBest=${bestFromOwned}; localCredits=${localCount}`);
   return Math.max(bestFromOwned, localCount);
+}
+
+/** Poll Bazaar a few times after checkout — activity result can arrive late or be dropped. */
+async function reconcileWithRetries(label: string, attempts = 4, delayMs = 900): Promise<number> {
+  let last = await db.getPaidMedicationCardCount();
+  for (let i = 0; i < attempts; i++) {
+    if (i > 0) await sleep(delayMs);
+    recordDiagnostic('payment', `${label} retry ${i + 1}/${attempts}`);
+    try {
+      await syncEntitlementsFromBazaar();
+    } catch (error) {
+      recordDiagnostic('payment', `${label} retry failed: ${error}`);
+    }
+    last = await db.getPaidMedicationCardCount();
+  }
+  return last;
 }
 
 export async function purchaseMedicationCards(productId: string): Promise<void> {
@@ -130,49 +190,111 @@ export async function purchaseMedicationCards(productId: string): Promise<void> 
   const bundle = MEDICATION_CARD_PACKAGES.find((item) => item.productId === productId);
   if (!bundle) throw new Error('بسته انتخاب‌شده معتبر نیست.');
 
+  const countBefore = await db.getPaidMedicationCardCount();
   await syncEntitlementsFromBazaar();
   const owned = await CafebazaarPoolakey.getPurchaseInfo();
   const stillOwned = owned.purchases.some((p) => p.productId === bundle.productId);
   if (stillOwned) {
     recordDiagnostic('payment', `Purchase blocked: previous unconsumed SKU=${bundle.productId}`);
+    await reconcileWithRetries('blocked-sku-delivery', 3, 700);
+    const afterBlock = await db.getPaidMedicationCardCount();
+    if (afterBlock > countBefore) return;
     throw new Error(
       'ظرفیت خرید قبلی ثبت شده، اما اعلام تحویل به کافه‌بازار کامل نشده است. اتصال اینترنت را بررسی کنید و کمی بعد دوباره تلاش کنید؛ فعلاً هزینه دیگری پرداخت نکنید.',
     );
   }
 
   recordDiagnostic('payment', `Opening Bazaar checkout SKU=${bundle.productId}; expected cards=${bundle.cardCount}`);
-  const result = await CafebazaarPoolakey.purchaseProduct({
-    productId: bundle.productId,
-    payload: `medireminder-tokens:${bundle.cardCount}`,
-  });
-  recordDiagnostic('payment', `Bazaar checkout result state=${result.state}; purchaseReturned=${Boolean(result.purchase)}; sku=${result.purchase?.productId || 'empty'}`);
-
-  if (result.state !== 'PURCHASED' || !result.purchase?.purchaseToken) {
-    throw new Error(
-      result.state === 'CANCELLED'
-        ? 'خرید را لغو کردید؛ هیچ هزینه‌ای ثبت نشد.'
-        : 'بازار خرید را تأیید نکرد؛ کارت اضافه‌ای فعال نشد.',
-    );
-  }
-  if (result.purchase.productId !== bundle.productId) {
-    throw new Error('شناسه محصول خریداری‌شده با بسته انتخاب‌شده مطابقت ندارد.');
-  }
-
-  const before = await db.getPaidMedicationCardCount();
-  recordDiagnostic('payment', `Persisting confirmed purchase SKU=${bundle.productId}; cards before=${before}; grant=${bundle.cardCount}`);
-  await db.grantPaidMedicationCards(result.purchase.purchaseToken, bundle.cardCount, result.purchase.productId);
-  const after = await db.getPaidMedicationCardCount();
-  recordDiagnostic('payment', `Local grant complete SKU=${bundle.productId}; cards before=${before}; after=${after}`);
-
+  let result: {
+    state?: string;
+    purchase?: { purchaseToken?: string; productId?: string; payload?: string };
+  };
   try {
-    await CafebazaarPoolakey.consumeProduct({ token: result.purchase.purchaseToken });
-    recordDiagnostic('payment', `Purchase consumed successfully SKU=${bundle.productId}`);
+    result = await CafebazaarPoolakey.purchaseProduct({
+      productId: bundle.productId,
+      payload: `medireminder-tokens:${bundle.cardCount}`,
+    });
   } catch (error) {
-    console.warn('[BazaarBilling] purchase granted; consumption will be retried later:', error);
+    recordDiagnostic('payment', `purchaseProduct threw: ${error}`);
+    const recovered = await reconcileWithRetries('after-purchase-throw', 5, 1000);
+    if (recovered > countBefore) {
+      recordDiagnostic('payment', `Recovered credits after purchase throw; before=${countBefore}; after=${recovered}`);
+      return;
+    }
+    throw error instanceof Error ? error : new Error(String(error || 'خرید ناموفق بود.'));
   }
+
+  recordDiagnostic(
+    'payment',
+    `Bazaar checkout result state=${result.state}; purchaseReturned=${Boolean(result.purchase)}; sku=${result.purchase?.productId || 'empty'}; hasToken=${Boolean(result.purchase?.purchaseToken)}`,
+  );
+
+  if (result.state === 'PURCHASED' && result.purchase?.purchaseToken) {
+    if (result.purchase.productId && result.purchase.productId !== bundle.productId) {
+      throw new Error('شناسه محصول خریداری‌شده با بسته انتخاب‌شده مطابقت ندارد.');
+    }
+    const before = await db.getPaidMedicationCardCount();
+    recordDiagnostic(
+      'payment',
+      `Persisting confirmed purchase SKU=${bundle.productId}; cards before=${before}; grant=${bundle.cardCount}`,
+    );
+    await db.grantPaidMedicationCards(
+      result.purchase.purchaseToken,
+      bundle.cardCount,
+      result.purchase.productId || bundle.productId,
+    );
+    const after = await db.getPaidMedicationCardCount();
+    recordDiagnostic('payment', `Local grant complete SKU=${bundle.productId}; cards before=${before}; after=${after}`);
+
+    try {
+      await CafebazaarPoolakey.consumeProduct({ token: result.purchase.purchaseToken });
+      recordDiagnostic('payment', `Purchase consumed successfully SKU=${bundle.productId}`);
+    } catch (error) {
+      recordDiagnostic('payment', `Consume deferred SKU=${bundle.productId}: ${error}`);
+      console.warn('[BazaarBilling] purchase granted; consumption will be retried later:', error);
+    }
+    return;
+  }
+
+  recordDiagnostic('payment', `Non-PURCHASED state=${result.state}; starting inventory recovery`);
+  const recovered = await reconcileWithRetries('after-non-purchased', 5, 1000);
+  if (recovered > countBefore) {
+    recordDiagnostic('payment', `Recovered credits despite state=${result.state}; before=${countBefore}; after=${recovered}`);
+    return;
+  }
+
+  throw new Error(
+    result.state === 'CANCELLED'
+      ? 'خرید را لغو کردید؛ اگر مبلغی کسر شده با «بازیابی خرید قبلی» یا پشتیبانی اقدام کنید و دوباره پرداخت نکنید.'
+      : 'بازار خرید را تأیید نکرد؛ اگر مبلغی کسر شده دوباره پرداخت نکنید و بازیابی را امتحان کنید.',
+  );
 }
 
 export async function restorePendingMedicationCardPurchases(_onlyProductId?: string): Promise<number> {
   recordDiagnostic('payment', 'Manual/startup restore requested.');
-  return syncEntitlementsFromBazaar();
+  return reconcileWithRetries('manual-restore', 3, 600);
+}
+
+/**
+ * One-time local grant for purchases already confirmed in the Cafe Bazaar developer panel
+ * when client inventory is empty (consumed or activity-result lost before grant).
+ * Idempotent by fixed purchaseToken.
+ */
+export async function applyPanelConfirmedRecoveryGrant(): Promise<{ granted: boolean; totalCredits: number }> {
+  const before = await db.getPaidMedicationCardCount();
+  recordDiagnostic(
+    'payment',
+    `Panel recovery requested; localCredits=${before}; grant=${PANEL_CONFIRMED_RECOVERY.cardCount}`,
+  );
+  const didGrant = await db.grantPaidMedicationCards(
+    PANEL_CONFIRMED_RECOVERY.purchaseToken,
+    PANEL_CONFIRMED_RECOVERY.cardCount,
+    PANEL_CONFIRMED_RECOVERY.productId,
+  );
+  const after = await db.getPaidMedicationCardCount();
+  recordDiagnostic(
+    'payment',
+    `Panel recovery done; granted=${didGrant}; credits before=${before}; after=${after}`,
+  );
+  return { granted: didGrant, totalCredits: after };
 }
