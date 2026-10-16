@@ -366,16 +366,32 @@ self.addEventListener('message', event => {
           const alarms = Array.isArray(data.alarms) ? data.alarms : [];
           clearAllTimers();
           const allAlarms = await getAllStoredAlarms();
+          const desiredIds = new Set(alarms.map(alarm => String(alarm.id)));
+          const orphanMedicationIds = new Set();
+
+          // The app's current database-backed queue is authoritative. Remove
+          // timers, persisted follow-ups, and visible notifications for alarms
+          // no longer present before replacing the stored queue.
           for (const old of allAlarms) {
-            if (String(old.id).startsWith('followup-')) {
-              stopFollowUpAlarms(old.medicationId ?? old.id);
+            const isFollowUp = String(old.id).startsWith('followup-');
+            const medicationId = isFollowUp
+              ? (old.medicationId ?? String(old.id).replace(/^followup-/, ''))
+              : old.id;
+            if (!desiredIds.has(String(medicationId))) {
+              orphanMedicationIds.add(medicationId);
             }
           }
+          for (const medicationId of orphanMedicationIds) {
+            await cancelAlarmCompletely(medicationId);
+          }
+
+          // cancelAlarmCompletely is safe to repeat; storeAlarms then removes
+          // any stale rows, including legacy follow-up entries.
           await storeAlarms(alarms);
           for (const alarm of alarms) {
             await scheduleAlarm(alarm);
           }
-          console.info('[SW] scheduled', alarms.length, 'alarms');
+          console.info('[SW] reconciled and scheduled', alarms.length, 'alarms');
         } else if (data.type === 'CANCEL_ALARM' && data.id != null) {
           await cancelAlarmCompletely(data.id);
         } else if (data.type === 'DISMISS_ALARM' && data.id != null) {
