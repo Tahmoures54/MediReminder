@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { Share } from '@capacitor/share';
-import { getMedicationCardProducts, purchaseMedicationCards, restorePendingMedicationCardPurchases, type MedicationCardProduct } from './services/bazaarBilling';
-import { getMedicationLimit } from './utils/medicationAccess';
+import { getMedicationTokenProducts, purchaseMedicationTokens, restorePendingMedicationTokenPurchases, type MedicationTokenProduct } from './services/bazaarBilling';
 import { LocalNotifications } from '@capacitor/local-notifications';
 import { MedicationCard } from './components/MedicationCard';
 import { AddMedicationForm } from './components/AddMedicationForm';
@@ -121,8 +120,8 @@ export default function App() {
   const [paidCardCount, setPaidCardCount] = useState(0);
   const [showPurchase, setShowPurchase] = useState(false);
   const [showTerms, setShowTerms] = useState(false);
-  const [cardProducts, setCardProducts] = useState<MedicationCardProduct[]>([]);
-  const [selectedProductId, setSelectedProductId] = useState('medireminder_cards_3');
+  const [cardProducts, setCardProducts] = useState<MedicationTokenProduct[]>([]);
+  const [selectedProductId, setSelectedProductId] = useState('medireminder_tokens_10');
   const [priceLoading, setPriceLoading] = useState(false);
   const [purchaseBusy, setPurchaseBusy] = useState(false);
   const [purchaseError, setPurchaseError] = useState('');
@@ -224,7 +223,7 @@ export default function App() {
         // first screen is shown. This removes orphaned alarms left by a crash
         // during deletion and closes already-delivered notifications too.
         await syncAllAlarms(loadedMedications);
-        const purchasedCards = await db.getPaidMedicationCardCount();
+        const purchasedCards = await db.getMedicationTokenBalance();
         if (!active) return;
         setPaidCardCount(purchasedCards);
         setIsNative(native);
@@ -260,9 +259,9 @@ export default function App() {
       return;
     }
     const recovery = (async () => {
-      const previousCount = await db.getPaidMedicationCardCount();
-      await restorePendingMedicationCardPurchases();
-      const count = await db.getPaidMedicationCardCount();
+      const previousCount = await db.getMedicationTokenBalance();
+      await restorePendingMedicationTokenPurchases();
+      const count = await db.getMedicationTokenBalance();
       setPaidCardCount(count);
       // If a purchase completed while Bazaar was foregrounded, return the user
       // directly to adding the medication instead of leaving the purchase dialog open.
@@ -563,9 +562,9 @@ export default function App() {
     }
     // Read the persisted entitlement instead of relying only on React state,
     // which may be stale after returning from the external Bazaar payment UI.
-    const currentPaidCardCount = await db.getPaidMedicationCardCount();
+    const currentPaidCardCount = await db.getMedicationTokenBalance();
     setPaidCardCount(currentPaidCardCount);
-    if (medications.length >= getMedicationLimit(currentPaidCardCount)) {
+    if (medications.length > 0 && currentPaidCardCount < 1) {
       setPurchaseError('');
       setShowPurchase(true);
       return;
@@ -580,18 +579,18 @@ export default function App() {
     setPurchaseError('');
     let countBeforePurchase = 0;
     try {
-      countBeforePurchase = await db.getPaidMedicationCardCount();
+      countBeforePurchase = await db.getMedicationTokenBalance();
 
       // Close the plan selector before opening Bazaar's external payment UI.
       // Keep purchaseBusy active so the user cannot start a second purchase.
       setShowPurchase(false);
-      await purchaseMedicationCards(selectedProductId);
-      let currentPaidCardCount = await db.getPaidMedicationCardCount();
+      await purchaseMedicationTokens(selectedProductId);
+      let currentPaidCardCount = await db.getMedicationTokenBalance();
 
       // If the payment activity returned late, recover and re-read persisted credits.
       if (currentPaidCardCount <= countBeforePurchase) {
         await recoverMedicationCards();
-        currentPaidCardCount = await db.getPaidMedicationCardCount();
+        currentPaidCardCount = await db.getMedicationTokenBalance();
       }
       if (currentPaidCardCount <= countBeforePurchase) {
         throw new Error('خرید تأیید شد اما اعتبار جدید در حافظه برنامه ثبت نشد. لطفاً دوباره تلاش نکنید و با پشتیبانی تماس بگیرید.');
@@ -608,7 +607,7 @@ export default function App() {
       await recoverMedicationCards().catch((recoveryError: unknown) => {
         console.warn('[BazaarBilling] purchase-failure recovery skipped:', recoveryError);
       });
-      const latestCount = await db.getPaidMedicationCardCount().catch(() => paidCardCount);
+      const latestCount = await db.getMedicationTokenBalance().catch(() => paidCardCount);
       setPaidCardCount(latestCount);
       if (latestCount > countBeforePurchase) {
         setPurchaseError('');
@@ -634,10 +633,12 @@ export default function App() {
   }) => {
     // Re-read entitlement at submit time. This is the authoritative local value;
     // UI state can lag behind an Android activity round-trip.
-    const currentPaidCardCount = await db.getPaidMedicationCardCount();
+    const currentPaidCardCount = await db.getMedicationTokenBalance();
     setPaidCardCount(currentPaidCardCount);
-    if (medications.length >= getMedicationLimit(currentPaidCardCount)) {
+    const consumeToken = medications.length > 0;
+    if (consumeToken && currentPaidCardCount < 1) {
       setShowAdd(false);
+      setPurchaseError('');
       setShowPurchase(true);
       return;
     }
@@ -658,7 +659,24 @@ export default function App() {
       updatedAt: now,
       history: [],
     };
-    const id = await db.addMedication(m);
+    let id: number;
+    try {
+      id = await db.addMedicationWithToken(m, consumeToken);
+    } catch (error) {
+      const latestBalance = await db.getMedicationTokenBalance().catch(() => currentPaidCardCount);
+      setPaidCardCount(latestBalance);
+      if (consumeToken && latestBalance < 1) {
+        setShowAdd(false);
+        setPurchaseError('');
+        setShowPurchase(true);
+        return;
+      }
+      console.error('[App] failed to save medication or spend token', error);
+      window.alert('ذخیره دارو انجام نشد و شارژ مصرف نشد. لطفاً دوباره تلاش کنید.');
+      return;
+    }
+    const latestBalance = await db.getMedicationTokenBalance();
+    setPaidCardCount(latestBalance);
     setMedications((v) => sortMedications([...v, { ...m, id }]));
     setShowAdd(false);
     setEditing(null);
@@ -814,7 +832,7 @@ export default function App() {
       setPriceLoading(false);
       return;
     }
-    getMedicationCardProducts()
+    getMedicationTokenProducts()
       .then((products) => {
         if (!active) return;
         setCardProducts(products);
@@ -897,16 +915,16 @@ export default function App() {
               className="order-1 flex min-h-12 items-center justify-center gap-2 rounded-2xl bg-gradient-to-b from-cyan-400 to-cyan-600 px-4 py-3 text-sm font-black text-slate-950 shadow-md shadow-cyan-950/40 transition active:scale-[0.98] hover:from-cyan-300 hover:to-cyan-500 min-[360px]:order-2"
             >
               <span className="text-lg leading-none" aria-hidden>{formVisible ? '×' : '+'}</span>
-              {formVisible ? 'بستن فرم' : medications.length >= getMedicationLimit(paidCardCount) ? 'خرید کارت دارو' : 'افزودن دارو'}
+              {formVisible ? 'بستن فرم' : medications.length > 0 && paidCardCount <= 0 ? 'خرید شارژ' : 'افزودن دارو'}
             </button>
           </div>
 
           <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 rounded-xl border border-cyan-400/15 bg-cyan-500/[0.06] px-3 py-2.5 text-xs leading-relaxed text-slate-400">
-            <span>ظرفیت ثبت:</span>
-            <span className="font-bold text-cyan-200">{getMedicationLimit(paidCardCount)} دارو</span>
+            <span>موجودی شارژ:</span>
+            <span className="font-bold text-cyan-200">{paidCardCount} توکن</span>
             <span className="text-slate-600">·</span>
             <span>داروی اول رایگان</span>
-            {paidCardCount > 0 ? <span className="text-cyan-100/70">· {paidCardCount} کارت اضافه خریداری‌شده</span> : null}
+            {paidCardCount > 0 ? <span className="text-cyan-100/70">· {paidCardCount} توکن باقی‌مانده</span> : null}
           </div>
 
           {medications.length > 0 && (
@@ -1058,7 +1076,7 @@ export default function App() {
                 همراه سلامت باشید
               </h2>
               <p className="mt-2 text-xs leading-6 text-slate-200">
-                با خرید بسته‌های کارت دارو از داخل برنامه، امکان ثبت داروهای بیشتری را فراهم کنید؛
+                با خرید بسته شارژ، برای افزودن داروهای بیشتر توکن دریافت کنید؛
                 یا با معرفی «یادآور هوشمند دارو» به دوستان و خانواده، به آشنایی افراد بیشتری با برنامه کمک کنید.
                 خرید اختیاری است و معرفی برنامه رایگان است.
               </p>
@@ -1149,14 +1167,14 @@ export default function App() {
               <div className="flex items-start gap-3">
                 <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-cyan-400/10 text-xl sm:h-12 sm:w-12 sm:rounded-2xl sm:text-2xl">💊</div>
                 <div className="min-w-0 flex-1">
-                  <h2 id="card-purchase-title" className="text-base font-black text-white sm:text-lg">افزودن کارت داروی جدید</h2>
-                  <p className="mt-1 text-xs leading-relaxed text-slate-300 sm:text-sm">کارت اول رایگان است. بسته دلخواه را انتخاب کنید تا ظرفیت ثبت همان تعداد داروی اضافه شود.</p>
+                  <h2 id="card-purchase-title" className="text-base font-black text-white sm:text-lg">خرید شارژ توکن</h2>
+                  <p className="mt-1 text-xs leading-relaxed text-slate-300 sm:text-sm">داروی اول رایگان است. برای افزودن داروهای بعدی، هر داروی جدید یک توکن مصرف می‌کند.</p>
                 </div>
               </div>
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-3 sm:p-5">
             <div className="mb-3 space-y-2 sm:mb-4">
-              <div className="mb-2 text-xs font-bold text-slate-400">انتخاب بسته</div>
+              <div className="mb-2 text-xs font-bold text-slate-400">انتخاب بسته شارژ</div>
               {cardProducts.map((product) => (
                 <button
                   key={product.productId}
@@ -1170,21 +1188,21 @@ export default function App() {
                 >
                   <span className="min-w-0">
                     <span className="block text-sm font-bold text-white">{product.title}</span>
-                    <span className="mt-1 block text-xs text-slate-400">{product.cardCount} کارت اضافه</span>
+                    <span className="mt-1 block text-xs text-slate-400">{product.tokenCount} توکن</span>
                   </span>
                   <span className="shrink-0 text-sm font-black text-cyan-200">{product.price}</span>
                 </button>
               ))}
               {priceLoading && <p className="rounded-xl bg-white/[0.04] p-3 text-xs text-slate-400">در حال دریافت قیمت بسته‌ها از کافه‌بازار…</p>}
-              {!priceLoading && cardProducts.length === 0 && !purchaseError && <p className="text-xs text-slate-400">بسته‌ای برای خرید در دسترس نیست.</p>}
-              <p className="pt-1 text-[11px] leading-relaxed text-slate-500">قیمت‌ها مستقیماً از بازار دریافت می‌شوند. خرید موفق، ظرفیت خریداری‌شده را به تعداد کارت‌های فعلی اضافه می‌کند.</p>
-              <p className="rounded-xl border border-amber-400/25 bg-amber-500/10 p-3 text-[11px] leading-relaxed text-amber-100">بسته‌های کارت دارو قابل خریدِ تکراری هستند و پس از پرداخت، ظرفیت به‌صورت محلی روی همین دستگاه ثبت می‌شود. چون برنامه حساب کاربری یا سرور پشتیبان ندارد، حذف برنامه یا پاک‌کردن داده‌های آن ممکن است ظرفیت خریداری‌شده را از بین ببرد.</p>
+              {!priceLoading && cardProducts.length === 0 && !purchaseError && <p className="text-xs text-slate-400">بسته شارژی برای خرید در دسترس نیست.</p>}
+              <p className="pt-1 text-[11px] leading-relaxed text-slate-500">قیمت‌ها مستقیماً از بازار دریافت می‌شوند. توکن‌های خریداری‌شده به موجودی شارژ اضافه می‌شوند.</p>
+              <p className="rounded-xl border border-amber-400/25 bg-amber-500/10 p-3 text-[11px] leading-relaxed text-amber-100">بسته‌های شارژ قابل خریدِ تکراری هستند. هر داروی جدید پس از داروی اول، یک توکن مصرف می‌کند؛ حذف دارو توکن مصرف‌شده را برنمی‌گرداند. موجودی روی همین دستگاه نگهداری می‌شود. چون برنامه حساب کاربری یا سرور پشتیبان ندارد، حذف برنامه یا پاک‌کردن داده‌های آن ممکن است ظرفیت خریداری‌شده را از بین ببرد.</p>
             </div>
             {purchaseError && <div role="alert" className="mt-3 rounded-xl border border-amber-400/25 bg-amber-500/10 p-3 text-xs leading-relaxed text-amber-100">{purchaseError}</div>}
             </div>
             <div className="flex shrink-0 gap-3 border-t border-white/10 bg-slate-900 px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:p-4">
               <button type="button" disabled={purchaseBusy} onClick={() => setShowPurchase(false)} className="flex-1 rounded-xl border border-white/10 bg-white/5 px-3 py-3 text-sm font-bold text-slate-200 disabled:opacity-50">انصراف</button>
-              <button type="button" disabled={!isNative || !cardProducts.some((product) => product.productId === selectedProductId) || priceLoading || purchaseBusy} onClick={() => void handlePurchaseMedicationCard()} className="flex-[1.4] rounded-xl bg-gradient-to-b from-cyan-400 to-cyan-600 px-3 py-3 text-sm font-black text-slate-950 disabled:cursor-not-allowed disabled:opacity-50">{purchaseBusy ? 'در حال پرداخت…' : 'خرید بسته انتخاب‌شده'}</button>
+              <button type="button" disabled={!isNative || !cardProducts.some((product) => product.productId === selectedProductId) || priceLoading || purchaseBusy} onClick={() => void handlePurchaseMedicationCard()} className="flex-[1.4] rounded-xl bg-gradient-to-b from-cyan-400 to-cyan-600 px-3 py-3 text-sm font-black text-slate-950 disabled:cursor-not-allowed disabled:opacity-50">{purchaseBusy ? 'در حال پرداخت…' : 'خرید شارژ انتخاب‌شده'}</button>
             </div>
           </section>
         </div>
