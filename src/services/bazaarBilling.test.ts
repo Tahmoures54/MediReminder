@@ -46,7 +46,7 @@ describe('Bazaar consumable medication-card purchase safety', () => {
     expect(restoreStart).toBeGreaterThan(purchaseStart);
     expect(consumeAt).toBeGreaterThanOrEqual(0);
     expect(purchaseBody.slice(consumeAt)).not.toContain('await syncEntitlementsFromBazaar()');
-    expect(purchaseBody).toContain('await db.grantPaidMedicationCards(result.purchase.purchaseToken, bundle.cardCount)');
+    expect(purchaseBody).toContain('await db.grantPaidMedicationCards(result.purchase.purchaseToken, bundle.cardCount, result.purchase.productId)');
   });
 
   it('documents the consumable model and the local-data recovery limitation accurately', () => {
