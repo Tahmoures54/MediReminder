@@ -10,13 +10,22 @@ import { db } from '../db/database';
  * app's local data is erased once the purchase token has been consumed.
  */
 export const MEDICATION_CARD_PACKAGES = [
-  { productId: 'medireminder_cards_3', cardCount: 3, title: 'بسته ۳ کارت اضافه' },
-  { productId: 'medireminder_cards_10', cardCount: 10, title: 'بسته ۱۰ کارت اضافه' },
-  { productId: 'medireminder_cards_25', cardCount: 25, title: 'بسته ۲۵ کارت اضافه' },
+  { productId: 'medireminder_tokens_10', cardCount: 10, title: 'بسته ۱۰ توکن' },
+  { productId: 'medireminder_tokens_30', cardCount: 30, title: 'بسته ۳۰ توکن' },
+  { productId: 'medireminder_cards_100', cardCount: 100, title: 'بسته ۱۰۰ توکن' },
 ] as const;
 
-/** Very old single-card SKU (if any pending owned token remains). */
-const LEGACY_SINGLE_CARD_PRODUCT_ID = 'medication_card_1';
+/**
+ * Retired SKUs are deliberately excluded from the shop catalog, but remain
+ * recognized during reconciliation so a successful purchase from an older APK
+ * can still be credited if Bazaar reports its unconsumed purchase token.
+ */
+const LEGACY_CARD_PRODUCTS = [
+  { productId: 'medireminder_cards_3', cardCount: 3 },
+  { productId: 'medireminder_cards_10', cardCount: 10 },
+  { productId: 'medireminder_cards_25', cardCount: 25 },
+  { productId: 'medication_card_1', cardCount: 1 },
+] as const;
 
 export type MedicationCardProduct = {
   productId: string;
@@ -85,7 +94,7 @@ export async function syncEntitlementsFromBazaar(): Promise<number> {
 
   const cardCounts = new Map<string, number>([
     ...MEDICATION_CARD_PACKAGES.map((item) => [item.productId, item.cardCount] as const),
-    [LEGACY_SINGLE_CARD_PRODUCT_ID, 1],
+    ...LEGACY_CARD_PRODUCTS.map((item) => [item.productId, item.cardCount] as const),
   ]);
 
   let bestFromOwned = 0;
