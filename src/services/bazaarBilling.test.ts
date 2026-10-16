@@ -15,9 +15,9 @@ describe('Bazaar consumable medication-card purchase safety', () => {
   });
 
   it('records the entitlement before attempting consumption in both purchase paths', () => {
-    const syncGrant = billingSource.indexOf('await db.grantPaidMedicationCards(purchase.purchaseToken, cardCount)');
+    const syncGrant = billingSource.indexOf('await db.grantPaidMedicationCards(purchase.purchaseToken, cardCount, purchase.productId)');
     const syncConsume = billingSource.indexOf('await CafebazaarPoolakey.consumeProduct({ token: purchase.purchaseToken })');
-    const purchaseGrant = billingSource.indexOf('await db.grantPaidMedicationCards(result.purchase.purchaseToken, bundle.cardCount)');
+    const purchaseGrant = billingSource.indexOf('await db.grantPaidMedicationCards(result.purchase.purchaseToken, bundle.cardCount, result.purchase.productId)');
     const purchaseConsume = billingSource.indexOf('await CafebazaarPoolakey.consumeProduct({ token: result.purchase.purchaseToken })');
 
     expect(syncGrant).toBeGreaterThanOrEqual(0);
@@ -31,7 +31,8 @@ describe('Bazaar consumable medication-card purchase safety', () => {
     expect(databaseSource).toContain("const PURCHASE_STORE = 'localPurchases'");
     expect(databaseSource).toContain('purchaseToken: token');
     expect(databaseSource).toContain('productId: sku');
-    expect(databaseSource.indexOf('if (tokens.includes(token)) return;'))
+    expect(databaseSource).toContain('const alreadyGrantedByLegacyLedger = tokens.includes(token)');
+    expect(databaseSource.indexOf('const alreadyGrantedByLegacyLedger = tokens.includes(token)'))
       .toBeLessThan(databaseSource.indexOf('count: count + cards, tokens: [...tokens, token]'));
   });
 
