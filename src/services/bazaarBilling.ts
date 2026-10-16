@@ -100,8 +100,24 @@ export async function syncEntitlementsFromBazaar(): Promise<number> {
   let bestFromOwned = 0;
 
   for (const purchase of result.purchases) {
-    const cardCount = cardCounts.get(purchase.productId);
-    if (!cardCount || !purchase.purchaseToken?.trim()) continue;
+    if (!purchase.purchaseToken?.trim()) continue;
+
+    // Prefer the product ID, but also honor the developer payload we attached
+    // at checkout. This recovers a paid consumable if Bazaar returns an SKU that
+    // an older/newer app catalog no longer recognizes.
+    const payloadMatch = /^medireminder-tokens:(1|3|10|25|30|100)$/.exec(
+      String(purchase.payload || '').trim(),
+    );
+    const payloadCount = payloadMatch ? Number(payloadMatch[1]) : 0;
+    const cardCount = cardCounts.get(purchase.productId) || payloadCount;
+    if (!cardCount) {
+      console.warn('[BazaarBilling] ignoring unrecognized owned product:', {
+        productId: purchase.productId,
+        hasPayload: Boolean(purchase.payload),
+        hasPurchaseToken: Boolean(purchase.purchaseToken),
+      });
+      continue;
+    }
 
     // Persist the entitlement first. The local token ledger prevents a retry
     // from granting the same purchase twice if consumption fails.
