@@ -31,8 +31,9 @@ describe('Bazaar consumable medication-card purchase safety', () => {
     expect(databaseSource).toContain("const PURCHASE_STORE = 'localPurchases'");
     expect(databaseSource).toContain('purchaseToken: token');
     expect(databaseSource).toContain('productId: sku');
-    expect(databaseSource).toContain('const alreadyGrantedByLegacyLedger = tokens.includes(token)');
-    expect(databaseSource.indexOf('const alreadyGrantedByLegacyLedger = tokens.includes(token)'))
+    expect(databaseSource).toContain('const alreadyGrantedByLegacyLedger = alreadyInState');
+    expect(databaseSource).toContain('const shouldRepair = existing.credited !== false && !alreadyInState');
+    expect(databaseSource.indexOf('const alreadyGrantedByLegacyLedger = alreadyInState'))
       .toBeLessThan(databaseSource.indexOf('count: count + cards, tokens: [...tokens, token]'));
   });
 
