@@ -47,7 +47,7 @@ async function connectToBazaar(): Promise<void> {
   connected = true;
 }
 
-export async function getMedicationTokenProducts(): Promise<MedicationCardProduct[]> {
+export async function getMedicationTokenProducts(): Promise<MedicationTokenProduct[]> {
   await connectToBazaar();
   const result = await CafebazaarPoolakey.getProducts({
     skus: MEDICATION_TOKEN_PACKAGES.map((item) => item.productId),
@@ -91,8 +91,6 @@ export async function syncEntitlementsFromBazaar(): Promise<number> {
     [LEGACY_SINGLE_CARD_PRODUCT_ID, 1],
   ]);
 
-  let bestFromOwned = 0;
-
   for (const purchase of result.purchases) {
     const tokenCount = tokenCounts.get(purchase.productId);
     if (!tokenCount || !purchase.purchaseToken?.trim()) continue;
@@ -108,7 +106,6 @@ export async function syncEntitlementsFromBazaar(): Promise<number> {
       // and this reconciliation path will retry consumption next time.
       console.warn('[BazaarBilling] purchase granted but consumption needs retry:', error);
     }
-    bestFromOwned = Math.max(bestFromOwned, tokenCount);
   }
 
   // Local may already be higher from earlier grants; take the max.
