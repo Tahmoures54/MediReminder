@@ -1196,7 +1196,7 @@ export default function App() {
               {priceLoading && <p className="rounded-xl bg-white/[0.04] p-3 text-xs text-slate-400">در حال دریافت قیمت بسته‌ها از کافه‌بازار…</p>}
               {!priceLoading && cardProducts.length === 0 && !purchaseError && <p className="text-xs text-slate-400">بسته شارژی برای خرید در دسترس نیست.</p>}
               <p className="pt-1 text-[11px] leading-relaxed text-slate-500">قیمت‌ها مستقیماً از بازار دریافت می‌شوند. توکن‌های خریداری‌شده به موجودی شارژ اضافه می‌شوند.</p>
-              <p className="rounded-xl border border-amber-400/25 bg-amber-500/10 p-3 text-[11px] leading-relaxed text-amber-100">بسته‌های شارژ قابل خریدِ تکراری هستند. هر داروی جدید پس از داروی اول، یک توکن مصرف می‌کند؛ حذف دارو توکن مصرف‌شده را برنمی‌گرداند. موجودی روی همین دستگاه نگهداری می‌شود. چون برنامه حساب کاربری یا سرور پشتیبان ندارد، حذف برنامه یا پاک‌کردن داده‌های آن ممکن است ظرفیت خریداری‌شده را از بین ببرد.</p>
+              <p className="rounded-xl border border-amber-400/25 bg-amber-500/10 p-3 text-[11px] leading-relaxed text-amber-100">بسته‌های شارژ قابل خریدِ تکراری هستند. هر داروی جدید پس از داروی اول، یک توکن مصرف می‌کند؛ حذف دارو توکن مصرف‌شده را برنمی‌گرداند. موجودی روی همین دستگاه نگهداری می‌شود. چون برنامه حساب کاربری یا سرور پشتیبان ندارد، حذف برنامه یا پاک‌کردن داده‌های آن ممکن است موجودی توکن خریداری‌شده را از بین ببرد.</p>
             </div>
             {purchaseError && <div role="alert" className="mt-3 rounded-xl border border-amber-400/25 bg-amber-500/10 p-3 text-xs leading-relaxed text-amber-100">{purchaseError}</div>}
             </div>
