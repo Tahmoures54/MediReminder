@@ -41,13 +41,16 @@ describe('Bazaar consumable medication-token purchase safety', () => {
     expect(databaseSource).toContain('canAddMedicationWithoutToken');
   });
 
-  it('keeps old pending card-pack SKUs recoverable while using new token SKUs for sales', () => {
+  it('keeps old pending card-pack SKUs recoverable while using the configured new SKUs for sales', () => {
     expect(billingSource).toContain('medireminder_tokens_10');
     expect(billingSource).toContain('medireminder_tokens_30');
-    expect(billingSource).toContain('medireminder_tokens_100');
+    expect(billingSource).toContain('medireminder_cards_100');
+    expect(billingSource).not.toContain("productId: 'medireminder_tokens_100'");
     expect(billingSource).toContain('medireminder_cards_3');
     expect(billingSource).toContain('medireminder_cards_10');
     expect(billingSource).toContain('medireminder_cards_25');
+    expect(billingDocs).toContain('medireminder_cards_100');
+    expect(restoreDocs).toContain('medireminder_cards_100');
   });
 
   it('documents consumable packs and local-data recovery limits', () => {
