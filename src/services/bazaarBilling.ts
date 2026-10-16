@@ -102,13 +102,13 @@ export async function syncEntitlementsFromBazaar(): Promise<number> {
     try {
       await CafebazaarPoolakey.consumeProduct({ token: purchase.purchaseToken });
     } catch (error) {
-      // Keep the granted cards. The token remains visible in Bazaar's inventory
+      // Keep the granted cards. The purchase token remains visible in Bazaar's inventory
       // and this reconciliation path will retry consumption next time.
       console.warn('[BazaarBilling] purchase granted but consumption needs retry:', error);
     }
   }
 
-  // Local may already be higher from earlier grants; take the max.
+  // Return the current spendable local balance, not the size of a still-pending bundle.
   const localCount = await db.getPaidMedicationCardCount();
   return localCount;
 }
@@ -147,14 +147,14 @@ export async function purchaseMedicationTokens(productId: string): Promise<void>
   }
 
   // Persist the entitlement before consuming. The IndexedDB transaction is the
-  // success boundary for the user's cards; do not turn a successful local grant
+  // success boundary for the user's token balance; do not turn a successful local grant
   // into a purchase failure because a redundant follow-up sync failed.
   await db.grantPaidMedicationCards(result.purchase.purchaseToken, bundle.tokenCount);
 
   try {
     await CafebazaarPoolakey.consumeProduct({ token: result.purchase.purchaseToken });
   } catch (error) {
-    // The cards are already persisted. A future boot/resume/restore sync retries
+    // The tokens are already persisted. A future boot/resume/restore sync retries
     // consumption using the still-pending token, without granting it twice.
     console.warn('[BazaarBilling] purchase granted; consumption will be retried later:', error);
   }
