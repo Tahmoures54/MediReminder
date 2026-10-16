@@ -4,6 +4,8 @@ import { fileURLToPath } from 'node:url';
 
 const billingSource = readFileSync(fileURLToPath(new URL('./bazaarBilling.ts', import.meta.url)), 'utf8');
 const databaseSource = readFileSync(fileURLToPath(new URL('../db/database.ts', import.meta.url)), 'utf8');
+const billingDocs = readFileSync(fileURLToPath(new URL('../../BAZAAR_BILLING.md', import.meta.url)), 'utf8');
+const restoreDocs = readFileSync(fileURLToPath(new URL('../../RESTORE_APP.md', import.meta.url)), 'utf8');
 
 describe('Bazaar consumable medication-card purchase safety', () => {
   it('consumes card-pack purchases using the purchase token', () => {
@@ -27,6 +29,27 @@ describe('Bazaar consumable medication-card purchase safety', () => {
     expect(databaseSource).toContain("const tx = db.transaction(STATE_STORE, 'readwrite')");
     expect(databaseSource.indexOf('if (tokens.includes(token)) return;'))
       .toBeLessThan(databaseSource.indexOf('count: count + cards, tokens: [...tokens, token]'));
+  });
+
+  it('does not turn a persisted successful purchase into a failure due to a redundant post-purchase sync', () => {
+    const purchaseStart = billingSource.indexOf('export async function purchaseMedicationCards');
+    const restoreStart = billingSource.indexOf('export async function restorePendingMedicationCardPurchases');
+    const purchaseBody = billingSource.slice(purchaseStart, restoreStart);
+    const consumeAt = purchaseBody.indexOf('await CafebazaarPoolakey.consumeProduct({ token: result.purchase.purchaseToken })');
+
+    expect(purchaseStart).toBeGreaterThanOrEqual(0);
+    expect(restoreStart).toBeGreaterThan(purchaseStart);
+    expect(consumeAt).toBeGreaterThanOrEqual(0);
+    expect(purchaseBody.slice(consumeAt)).not.toContain('await syncEntitlementsFromBazaar()');
+    expect(purchaseBody).toContain('await db.grantPaidMedicationCards(result.purchase.purchaseToken, bundle.cardCount)');
+  });
+
+  it('documents the consumable model and the local-data recovery limitation accurately', () => {
+    expect(billingDocs).toContain('**مصرف‌شدنی (Consumable)**');
+    expect(billingDocs).toContain('نمی‌تواند اعتبار محلی آن خرید را از کافه‌بازار بازسازی کند');
+    expect(restoreDocs).toContain('مصرف‌شدنی');
+    expect(restoreDocs).toContain('تضمین‌شده قابل بازیابی نیست');
+    expect(billingDocs).not.toContain('محصولات یک‌بار خرید هرگز `consume` نمی‌شوند');
   });
 
   it('exposes syncEntitlementsFromBazaar as the restore path', () => {
