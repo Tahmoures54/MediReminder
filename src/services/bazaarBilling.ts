@@ -3,27 +3,29 @@ import { CafebazaarPoolakey } from '@salarizadi/capacitor-cafebazaar-poolakey';
 import { db } from '../db/database';
 
 /**
- * Medication-card packs are CONSUMABLE products: users may buy the same pack
- * repeatedly. Grant each purchase token exactly once, then consume it so Bazaar
- * makes that SKU available for another purchase. Because this app has no backend,
- * granted card capacity is stored locally and cannot be reconstructed after the
- * app's local data is erased once the purchase token has been consumed.
+ * Consumable token packs. A token is spent when adding a medication after the
+ * first free medication. Legacy card-pack purchases remain recoverable if pending.
  */
-export const MEDICATION_CARD_PACKAGES = [
-  { productId: 'medireminder_cards_3', cardCount: 3, title: 'بسته ۳ کارت اضافه' },
-  { productId: 'medireminder_cards_10', cardCount: 10, title: 'بسته ۱۰ کارت اضافه' },
-  { productId: 'medireminder_cards_25', cardCount: 25, title: 'بسته ۲۵ کارت اضافه' },
+export const MEDICATION_TOKEN_PACKAGES = [
+  { productId: 'medireminder_tokens_10', tokenCount: 10, title: 'شارژ ۱۰ توکن' },
+  { productId: 'medireminder_tokens_30', tokenCount: 30, title: 'شارژ ۳۰ توکن' },
+  { productId: 'medireminder_tokens_100', tokenCount: 100, title: 'شارژ ۱۰۰ توکن' },
 ] as const;
 
-/** Very old single-card SKU (if any pending owned token remains). */
+const LEGACY_CARD_PACKAGES = [
+  { productId: 'medireminder_cards_3', tokenCount: 3 },
+  { productId: 'medireminder_cards_10', tokenCount: 10 },
+  { productId: 'medireminder_cards_25', tokenCount: 25 },
+] as const;
 const LEGACY_SINGLE_CARD_PRODUCT_ID = 'medication_card_1';
 
-export type MedicationCardProduct = {
+export type MedicationTokenProduct = {
   productId: string;
-  cardCount: number;
+  tokenCount: number;
   title: string;
   price: string;
 };
+export type MedicationCardProduct = MedicationTokenProduct;
 
 let connected = false;
 
@@ -33,7 +35,7 @@ function publicKey(): string {
 
 async function connectToBazaar(): Promise<void> {
   if (!Capacitor.isNativePlatform() || Capacitor.getPlatform() !== 'android') {
-    throw new Error('پرداخت کارت دارو فقط در نسخه اندروید نصب‌شده از کافه‌بازار فعال است.');
+    throw new Error('پرداخت توکن شارژ فقط در نسخه اندروید نصب‌شده از کافه‌بازار فعال است.');
   }
   const key = publicKey();
   if (!key) {
@@ -45,28 +47,28 @@ async function connectToBazaar(): Promise<void> {
   connected = true;
 }
 
-export async function getMedicationCardProducts(): Promise<MedicationCardProduct[]> {
+export async function getMedicationTokenProducts(): Promise<MedicationCardProduct[]> {
   await connectToBazaar();
   const result = await CafebazaarPoolakey.getProducts({
-    skus: MEDICATION_CARD_PACKAGES.map((item) => item.productId),
+    skus: MEDICATION_TOKEN_PACKAGES.map((item) => item.productId),
   });
 
   const products: MedicationCardProduct[] = [];
-  for (const item of MEDICATION_CARD_PACKAGES) {
+  for (const item of MEDICATION_TOKEN_PACKAGES) {
     const product = result.products.find((candidate) => candidate.sku === item.productId);
     if (product) {
       products.push({
         productId: item.productId,
-        cardCount: item.cardCount,
+        tokenCount: item.tokenCount,
         title: item.title,
         price: product.price,
       });
     }
   }
 
-  if (products.length !== MEDICATION_CARD_PACKAGES.length) {
+  if (products.length !== MEDICATION_TOKEN_PACKAGES.length) {
     const found = new Set(products.map((item) => item.productId));
-    const missing = MEDICATION_CARD_PACKAGES.filter((item) => !found.has(item.productId));
+    const missing = MEDICATION_TOKEN_PACKAGES.filter((item) => !found.has(item.productId));
     throw new Error(
       `این محصولات در بازار قابل دریافت نیستند: ${missing.map((item) => item.productId).join('، ')}. وضعیت فعال‌بودن شناسه‌ها را در پنل بازار بررسی کنید.`,
     );
@@ -83,20 +85,21 @@ export async function syncEntitlementsFromBazaar(): Promise<number> {
   await connectToBazaar();
   const result = await CafebazaarPoolakey.getPurchaseInfo();
 
-  const cardCounts = new Map<string, number>([
-    ...MEDICATION_CARD_PACKAGES.map((item) => [item.productId, item.cardCount] as const),
+  const tokenCounts = new Map<string, number>([
+    ...MEDICATION_TOKEN_PACKAGES.map((item) => [item.productId, item.tokenCount] as const),
+    ...LEGACY_CARD_PACKAGES.map((item) => [item.productId, item.tokenCount] as const),
     [LEGACY_SINGLE_CARD_PRODUCT_ID, 1],
   ]);
 
   let bestFromOwned = 0;
 
   for (const purchase of result.purchases) {
-    const cardCount = cardCounts.get(purchase.productId);
-    if (!cardCount || !purchase.purchaseToken?.trim()) continue;
+    const tokenCount = tokenCounts.get(purchase.productId);
+    if (!tokenCount || !purchase.purchaseToken?.trim()) continue;
 
     // Persist the entitlement first. The local token ledger prevents a retry
     // from granting the same purchase twice if consumption fails.
-    await db.grantPaidMedicationCards(purchase.purchaseToken, cardCount);
+    await db.grantPaidMedicationCards(purchase.purchaseToken, tokenCount);
 
     try {
       await CafebazaarPoolakey.consumeProduct({ token: purchase.purchaseToken });
@@ -105,17 +108,17 @@ export async function syncEntitlementsFromBazaar(): Promise<number> {
       // and this reconciliation path will retry consumption next time.
       console.warn('[BazaarBilling] purchase granted but consumption needs retry:', error);
     }
-    bestFromOwned = Math.max(bestFromOwned, cardCount);
+    bestFromOwned = Math.max(bestFromOwned, tokenCount);
   }
 
   // Local may already be higher from earlier grants; take the max.
   const localCount = await db.getPaidMedicationCardCount();
-  return Math.max(bestFromOwned, localCount);
+  return localCount;
 }
 
-export async function purchaseMedicationCards(productId: string): Promise<void> {
+export async function purchaseMedicationTokens(productId: string): Promise<void> {
   await connectToBazaar();
-  const bundle = MEDICATION_CARD_PACKAGES.find((item) => item.productId === productId);
+  const bundle = MEDICATION_TOKEN_PACKAGES.find((item) => item.productId === productId);
   if (!bundle) throw new Error('بسته انتخاب‌شده معتبر نیست.');
 
   // First reconcile a previous purchase that may have been interrupted before
@@ -126,20 +129,20 @@ export async function purchaseMedicationCards(productId: string): Promise<void> 
   const stillOwned = owned.purchases.some((p) => p.productId === bundle.productId);
   if (stillOwned) {
     throw new Error(
-      'ظرفیت خرید قبلی ثبت شده، اما اعلام تحویل به کافه‌بازار کامل نشده است. اتصال اینترنت را بررسی کنید و کمی بعد دوباره تلاش کنید؛ فعلاً هزینه دیگری پرداخت نکنید.',
+      'شارژ خرید قبلی ثبت شده، اما اعلام تحویل به کافه‌بازار کامل نشده است. اتصال اینترنت را بررسی کنید و کمی بعد دوباره تلاش کنید؛ فعلاً هزینه دیگری پرداخت نکنید.',
     );
   }
 
   const result = await CafebazaarPoolakey.purchaseProduct({
     productId: bundle.productId,
-    payload: `medireminder-cards:${bundle.cardCount}`,
+    payload: `medireminder-tokens:${bundle.tokenCount}`,
   });
 
   if (result.state !== 'PURCHASED' || !result.purchase?.purchaseToken) {
     throw new Error(
       result.state === 'CANCELLED'
         ? 'خرید را لغو کردید؛ هیچ هزینه‌ای ثبت نشد.'
-        : 'بازار خرید را تأیید نکرد؛ کارت اضافه‌ای فعال نشد.',
+        : 'بازار خرید را تأیید نکرد؛ توکنی اضافه نشد.',
     );
   }
   if (result.purchase.productId !== bundle.productId) {
@@ -149,7 +152,7 @@ export async function purchaseMedicationCards(productId: string): Promise<void> 
   // Persist the entitlement before consuming. The IndexedDB transaction is the
   // success boundary for the user's cards; do not turn a successful local grant
   // into a purchase failure because a redundant follow-up sync failed.
-  await db.grantPaidMedicationCards(result.purchase.purchaseToken, bundle.cardCount);
+  await db.grantPaidMedicationCards(result.purchase.purchaseToken, bundle.tokenCount);
 
   try {
     await CafebazaarPoolakey.consumeProduct({ token: result.purchase.purchaseToken });
@@ -168,6 +171,6 @@ export async function purchaseMedicationCards(productId: string): Promise<void> 
  * is consumed, this offline-only app cannot restore its grant after local data
  * is cleared or the app is reinstalled.
  */
-export async function restorePendingMedicationCardPurchases(_onlyProductId?: string): Promise<number> {
+export async function restorePendingMedicationTokenPurchases(_onlyProductId?: string): Promise<number> {
   return syncEntitlementsFromBazaar();
 }
