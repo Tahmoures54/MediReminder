@@ -214,6 +214,15 @@ export default function App() {
     (async () => {
       try {
         const native = Capacitor.isNativePlatform();
+        // Reconcile pending Bazaar purchases on cold start as well as resume.
+        // Failure to reach Bazaar must not prevent the offline reminder app from opening.
+        if (native && Capacitor.getPlatform() === 'android') {
+          try {
+            await restorePendingMedicationCardPurchases();
+          } catch (purchaseRecoveryError) {
+            console.warn('[BazaarBilling] startup purchase recovery skipped:', purchaseRecoveryError);
+          }
+        }
         const permCheck = await initAllPermissions();
         const status = permCheck.notification ? 'granted' : await checkNotificationPermission();
         const exactAlarm = await checkExactAlarmPermission();
@@ -572,6 +581,36 @@ export default function App() {
     }
     setEditing(null);
     setShowAdd(true);
+  };
+
+  const handleRestoreMedicationCards = async () => {
+    if (purchaseBusy) return;
+    setPurchaseBusy(true);
+    setPurchaseError('');
+    try {
+      const before = await db.getPaidMedicationCardCount();
+      await restorePendingMedicationCardPurchases();
+      const after = await db.getPaidMedicationCardCount();
+      setPaidCardCount(after);
+      if (after > before) {
+        setShowPurchase(false);
+        setShowAdd(true);
+        setEditing(null);
+        setPurchaseError('');
+      } else {
+        setPurchaseError(
+          'کافه‌بازار فعلاً خرید مصرف‌نشده‌ای که برنامه بتواند به اعتبار تبدیل کند برنگرداند. دوباره پرداخت نکنید؛ اگر مبلغ کسر شده، با پشتیبانی تماس بگیرید و شناسه سفارش بازار را نگه دارید.'
+        );
+      }
+    } catch (error) {
+      setPurchaseError(
+        error instanceof Error
+          ? `بازیابی از کافه‌بازار انجام نشد: ${error.message}. دوباره پرداخت نکنید.`
+          : 'بازیابی از کافه‌بازار انجام نشد. دوباره پرداخت نکنید.'
+      );
+    } finally {
+      setPurchaseBusy(false);
+    }
   };
 
   const handlePurchaseMedicationCard = async () => {
@@ -1180,7 +1219,15 @@ export default function App() {
               <p className="pt-1 text-[11px] leading-relaxed text-slate-500">قیمت‌ها مستقیماً از بازار دریافت می‌شوند. خرید موفق، ظرفیت خریداری‌شده را به تعداد کارت‌های فعلی اضافه می‌کند.</p>
               <p className="rounded-xl border border-amber-400/25 bg-amber-500/10 p-3 text-[11px] leading-relaxed text-amber-100">بسته‌های کارت دارو قابل خریدِ تکراری هستند و پس از پرداخت، ظرفیت به‌صورت محلی روی همین دستگاه ثبت می‌شود. چون برنامه حساب کاربری یا سرور پشتیبان ندارد، حذف برنامه یا پاک‌کردن داده‌های آن ممکن است ظرفیت خریداری‌شده را از بین ببرد.</p>
             </div>
-            {purchaseError && <div role="alert" className="mt-3 rounded-xl border border-amber-400/25 bg-amber-500/10 p-3 text-xs leading-relaxed text-amber-100">{purchaseError}</div>}
+            <button
+                type="button"
+                disabled={!isNative || purchaseBusy || priceLoading}
+                onClick={() => void handleRestoreMedicationCards()}
+                className="mt-3 min-h-11 w-full rounded-xl border border-cyan-300/30 bg-cyan-400/10 px-3 py-2 text-sm font-bold text-cyan-100 disabled:opacity-50"
+              >
+                {purchaseBusy ? 'در حال بررسی خرید…' : 'بازیابی خرید قبلی'}
+              </button>
+              {purchaseError && <div role="alert" className="mt-3 rounded-xl border border-amber-400/25 bg-amber-500/10 p-3 text-xs leading-relaxed text-amber-100">{purchaseError}</div>}
             </div>
             <div className="flex shrink-0 gap-3 border-t border-white/10 bg-slate-900 px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:p-4">
               <button type="button" disabled={purchaseBusy} onClick={() => setShowPurchase(false)} className="flex-1 rounded-xl border border-white/10 bg-white/5 px-3 py-3 text-sm font-bold text-slate-200 disabled:opacity-50">انصراف</button>
