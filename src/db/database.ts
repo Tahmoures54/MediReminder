@@ -151,10 +151,25 @@ class Database {
   }
 
   /**
-   * Atomically save a new medication and spend one token when required.
-   * The first medication remains free; deletion never refunds spent tokens.
+   * Check whether the one-time free first-medication allowance is still available.
+   * Existing installations with medications are migrated as having used it.
    */
-  async addMedicationWithToken(medication: Medication, consumeToken: boolean): Promise<number> {
+  async canAddMedicationWithoutToken(): Promise<boolean> {
+    const alreadyUsed = await this.getState<boolean>('freeMedicationUsed');
+    if (alreadyUsed) return false;
+    const count = (await this.transaction(STORE_NAME, 'readonly', (store) => store.count())) as number;
+    if (count > 0) {
+      await this.setState('freeMedicationUsed', true);
+      return false;
+    }
+    return true;
+  }
+
+  /**
+   * Atomically create a medication and debit one token after the one-time free
+   * first medication. The decision is made in IndexedDB, not from stale UI state.
+   */
+  async addMedicationWithToken(medication: Medication): Promise<number> {
     const now = Date.now();
     const value = sanitizeMedication({
       ...medication,
@@ -166,6 +181,12 @@ class Database {
     return new Promise<number>((resolve, reject) => {
       let newId: number | undefined;
       let settled = false;
+      let medicationCount = 0;
+      let freeUsed = false;
+      let balanceRecord: { count?: number; tokens?: string[] } | undefined;
+      let countReady = false;
+      let freeReady = false;
+      let balanceReady = false;
       const tx = db.transaction([STORE_NAME, STATE_STORE], 'readwrite');
       const medicationStore = tx.objectStore(STORE_NAME);
       const stateStore = tx.objectStore(STATE_STORE);
@@ -179,31 +200,66 @@ class Database {
           }
         };
       };
-
-      if (consumeToken) {
-        const stateRequest = stateStore.get('paidMedicationCards');
-        stateRequest.onsuccess = () => {
-          const current = stateRequest.result?.value as { count?: number; tokens?: string[] } | undefined;
-          const count = Math.max(0, Math.floor(Number(current?.count) || 0));
+      const decide = () => {
+        if (!countReady || !freeReady || !balanceReady || settled) return;
+        const firstMedicationIsFree = !freeUsed && medicationCount === 0;
+        if (!firstMedicationIsFree) {
+          const count = Math.max(0, Math.floor(Number(balanceRecord?.count) || 0));
           if (count < 1) {
             tx.abort();
             return;
           }
           stateStore.put({
             key: 'paidMedicationCards',
-            value: { ...current, count: count - 1, tokens: Array.isArray(current?.tokens) ? current.tokens : [] },
+            value: {
+              ...balanceRecord,
+              count: count - 1,
+              tokens: Array.isArray(balanceRecord?.tokens) ? balanceRecord.tokens : [],
+            },
           });
-          insert();
-        };
-        stateRequest.onerror = () => {
-          if (!settled) {
-            settled = true;
-            reject(stateRequest.error || new Error('خواندن موجودی شارژ ناموفق بود.'));
-          }
-        };
-      } else {
+        }
+        stateStore.put({ key: 'freeMedicationUsed', value: true });
         insert();
-      }
+      };
+
+      const countRequest = medicationStore.count();
+      countRequest.onsuccess = () => {
+        medicationCount = Number(countRequest.result) || 0;
+        countReady = true;
+        decide();
+      };
+      countRequest.onerror = () => {
+        if (!settled) {
+          settled = true;
+          reject(countRequest.error || new Error('خواندن فهرست داروها ناموفق بود.'));
+        }
+      };
+
+      const freeRequest = stateStore.get('freeMedicationUsed');
+      freeRequest.onsuccess = () => {
+        freeUsed = Boolean(freeRequest.result?.value);
+        freeReady = true;
+        decide();
+      };
+      freeRequest.onerror = () => {
+        if (!settled) {
+          settled = true;
+          reject(freeRequest.error || new Error('خواندن وضعیت شارژ ناموفق بود.'));
+        }
+      };
+
+      const balanceRequest = stateStore.get('paidMedicationCards');
+      balanceRequest.onsuccess = () => {
+        balanceRecord = balanceRequest.result?.value as { count?: number; tokens?: string[] } | undefined;
+        balanceReady = true;
+        decide();
+      };
+      balanceRequest.onerror = () => {
+        if (!settled) {
+          settled = true;
+          reject(balanceRequest.error || new Error('خواندن موجودی شارژ ناموفق بود.'));
+        }
+      };
 
       tx.oncomplete = () => {
         if (settled) return;
@@ -219,7 +275,7 @@ class Database {
       tx.onabort = () => {
         if (settled) return;
         settled = true;
-        reject(tx.error || new Error(consumeToken ? 'شارژ کافی نیست؛ ابتدا بسته شارژ بخرید.' : 'ثبت دارو لغو شد.'));
+        reject(tx.error || new Error('شارژ کافی نیست؛ ابتدا بسته شارژ بخرید.'));
       };
     });
   }
