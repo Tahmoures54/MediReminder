@@ -9,7 +9,7 @@ import { db } from '../db/database';
 export const MEDICATION_TOKEN_PACKAGES = [
   { productId: 'medireminder_tokens_10', tokenCount: 10, title: 'شارژ ۱۰ توکن' },
   { productId: 'medireminder_tokens_30', tokenCount: 30, title: 'شارژ ۳۰ توکن' },
-  { productId: 'medireminder_tokens_100', tokenCount: 100, title: 'شارژ ۱۰۰ توکن' },
+  { productId: 'medireminder_cards_100', tokenCount: 100, title: 'شارژ ۱۰۰ توکن' },
 ] as const;
 
 const LEGACY_CARD_PACKAGES = [
