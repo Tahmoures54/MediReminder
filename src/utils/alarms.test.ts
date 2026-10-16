@@ -131,13 +131,16 @@ describe('deleted medication notification cleanup', () => {
     expect(nativeState.removeDelivered.mock.calls.flatMap(([arg]) => arg.notifications.map((item) => item.id))).not.toContain(8101);
   });
 
-  it('boot performs a database-backed alarm reconciliation and the Service Worker removes stale queue entries', () => {
+  it('boot reconciles alarms and deletion commits to IndexedDB before notification cleanup', () => {
     const appSource = readFileSync(fileURLToPath(new URL('../App.tsx', import.meta.url)), 'utf8');
     const swSource = readFileSync(fileURLToPath(new URL('../../public/sw.js', import.meta.url)), 'utf8');
     expect(appSource).toContain('const loadedMedications = await load();');
     expect(appSource).toContain('await syncAllAlarms(loadedMedications);');
+    expect(appSource.indexOf('await db.deleteMedication(id)'))
+      .toBeLessThan(appSource.indexOf('await cancelMedNotifications(id)'));
     expect(swSource).toContain('const orphanMedicationIds = new Set();');
     expect(swSource).toContain('await cancelAlarmCompletely(medicationId);');
-    expect(swSource).toContain('self.registration.getNotifications({ tag: `med-${alarmId}` })');
+    expect(swSource).toContain('self.registration.getNotifications');
+    expect(swSource).toContain('notifications.forEach(n => n.close())');
   });
 });
