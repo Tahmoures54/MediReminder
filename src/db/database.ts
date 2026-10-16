@@ -30,9 +30,10 @@ export interface Medication {
 }
 
 const DB_NAME = 'MedicationReminderDB';
-const DB_VERSION = 5;
+const DB_VERSION = 6;
 const STORE_NAME = 'medications';
 const STATE_STORE = 'appState';
+const PURCHASE_STORE = 'localPurchases';
 
 /** Prevent unbounded growth for long-term users at scale. */
 export const MAX_HISTORY_RECORDS = 120;
@@ -85,6 +86,11 @@ class Database {
         }
         if (!db.objectStoreNames.contains(STATE_STORE)) {
           db.createObjectStore(STATE_STORE, { keyPath: 'key' });
+        }
+        // Mirrors the proven Smart Mechanic pattern: retain one durable record
+        // per Bazaar purchase token, including the SKU and timestamp.
+        if (!db.objectStoreNames.contains(PURCHASE_STORE)) {
+          db.createObjectStore(PURCHASE_STORE, { keyPath: 'purchaseToken' });
         }
       };
     });
@@ -196,43 +202,72 @@ class Database {
     return Math.max(0, Math.floor(Number(value?.count) || 0));
   }
 
-  /** Grant the full bundle once per unique Bazaar purchase token. */
-  async grantPaidMedicationCards(purchaseToken: string, cardCount: number): Promise<boolean> {
+  /**
+   * Atomically record a Bazaar purchase and grant its bundle exactly once.
+   * The dedicated ledger follows Smart Mechanic's local_purchases pattern.
+   * Existing tokens in appState remain authoritative for older installations.
+   */
+  async grantPaidMedicationCards(
+    purchaseToken: string,
+    cardCount: number,
+    productId = 'unknown',
+  ): Promise<boolean> {
     const token = purchaseToken.trim();
     const cards = Math.max(1, Math.floor(Number(cardCount) || 1));
+    const sku = productId.trim() || 'unknown';
     if (!token) throw new Error('توکن خرید بازار خالی است.');
 
     const db = await this.dbPromise;
     return new Promise<boolean>((resolve, reject) => {
       let granted = false;
       let settled = false;
-      const tx = db.transaction(STATE_STORE, 'readwrite');
-      const store = tx.objectStore(STATE_STORE);
-      const request = store.get('paidMedicationCards');
+      const tx = db.transaction([STATE_STORE, PURCHASE_STORE], 'readwrite');
+      const stateStore = tx.objectStore(STATE_STORE);
+      const purchaseStore = tx.objectStore(PURCHASE_STORE);
+      const existingPurchase = purchaseStore.get(token);
 
-      request.onsuccess = () => {
-        try {
-          const current = request.result?.value as { count?: number; tokens?: string[] } | undefined;
-          const tokens = Array.isArray(current?.tokens) ? current.tokens : [];
-          if (tokens.includes(token)) return;
-          const count = Math.max(0, Math.floor(Number(current?.count) || 0));
-          store.put({
-            key: 'paidMedicationCards',
-            value: { count: count + cards, tokens: [...tokens, token] },
-          });
-          granted = true;
-        } catch (error) {
-          tx.abort();
+      existingPurchase.onsuccess = () => {
+        if (existingPurchase.result) return;
+        const stateRequest = stateStore.get('paidMedicationCards');
+        stateRequest.onsuccess = () => {
+          try {
+            const current = stateRequest.result?.value as { count?: number; tokens?: string[] } | undefined;
+            const tokens = Array.isArray(current?.tokens) ? current.tokens : [];
+            const alreadyGrantedByLegacyLedger = tokens.includes(token);
+            const count = Math.max(0, Math.floor(Number(current?.count) || 0));
+            purchaseStore.add({
+              purchaseToken: token,
+              productId: sku,
+              cardCount: cards,
+              purchasedAt: Date.now(),
+              credited: !alreadyGrantedByLegacyLedger,
+            });
+            if (!alreadyGrantedByLegacyLedger) {
+              stateStore.put({
+                key: 'paidMedicationCards',
+                value: { count: count + cards, tokens: [...tokens, token] },
+              });
+              granted = true;
+            }
+          } catch (error) {
+            tx.abort();
+            if (!settled) {
+              settled = true;
+              reject(error);
+            }
+          }
+        };
+        stateRequest.onerror = () => {
           if (!settled) {
             settled = true;
-            reject(error);
+            reject(stateRequest.error || new Error('خواندن سوابق خرید ناموفق بود.'));
           }
-        }
+        };
       };
-      request.onerror = () => {
+      existingPurchase.onerror = () => {
         if (!settled) {
           settled = true;
-          reject(request.error || new Error('خواندن سوابق خرید ناموفق بود.'));
+          reject(existingPurchase.error || new Error('خواندن دفتر خرید ناموفق بود.'));
         }
       };
       tx.oncomplete = () => {
