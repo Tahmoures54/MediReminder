@@ -58,9 +58,11 @@ describe('Bazaar consumable medication-card purchase safety', () => {
     expect(billingSource).toContain('return syncEntitlementsFromBazaar()');
   });
 
-  it('uses the existing Cafe Bazaar product IDs', () => {
-    expect(billingSource).toContain('medireminder_cards_3');
-    expect(billingSource).toContain('medireminder_cards_10');
-    expect(billingSource).toContain('medireminder_cards_25');
+  it('maps each configured SKU to its exact medication-card quantity', () => {
+    const packageBlock = billingSource.match(/export const MEDICATION_CARD_PACKAGES = \[([\s\S]*?)\] as const/);
+    expect(packageBlock).not.toBeNull();
+    const entries = [...(packageBlock?.[1] ?? '').matchAll(/productId:\s*'([^']+)'\s*,\s*cardCount:\s*(\d+)/g)];
+    expect(Object.fromEntries(entries.map((entry) => [entry[1], Number(entry[2])])))
+      .toEqual({ medireminder_cards_3: 3, medireminder_cards_10: 10, medireminder_cards_25: 25 });
   });
 });
