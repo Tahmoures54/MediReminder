@@ -227,14 +227,36 @@ class Database {
       const existingPurchase = purchaseStore.get(token);
 
       existingPurchase.onsuccess = () => {
-        if (existingPurchase.result) return;
+        const existing = existingPurchase.result as
+          | { purchaseToken: string; productId?: string; cardCount?: number; credited?: boolean }
+          | undefined;
         const stateRequest = stateStore.get('paidMedicationCards');
         stateRequest.onsuccess = () => {
           try {
             const current = stateRequest.result?.value as { count?: number; tokens?: string[] } | undefined;
             const tokens = Array.isArray(current?.tokens) ? current.tokens : [];
-            const alreadyGrantedByLegacyLedger = tokens.includes(token);
+            const alreadyInState = tokens.includes(token);
             const count = Math.max(0, Math.floor(Number(current?.count) || 0));
+
+            if (existing) {
+              // Repair a partially migrated/older local ledger: if a purchase row
+              // exists but its token was never reflected in appState, restore its
+              // entitlement once. A row explicitly marked credited=false means
+              // the legacy ledger had already credited it, so do not add it again.
+              const shouldRepair = existing.credited !== false && !alreadyInState;
+              if (shouldRepair) {
+                const repairedCards = Math.max(1, Math.floor(Number(existing.cardCount) || cards));
+                stateStore.put({
+                  key: 'paidMedicationCards',
+                  value: { count: count + repairedCards, tokens: [...tokens, token] },
+                });
+                purchaseStore.put({ ...existing, productId: existing.productId || sku, credited: true });
+                granted = true;
+              }
+              return;
+            }
+
+            const alreadyGrantedByLegacyLedger = alreadyInState;
             purchaseStore.add({
               purchaseToken: token,
               productId: sku,
