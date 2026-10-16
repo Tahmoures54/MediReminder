@@ -84,19 +84,47 @@ function notifIdsFor(medId: number): number[] {
 }
 
 export async function cancelMedNotifications(medId: number): Promise<void> {
+  if (!Number.isFinite(medId)) return;
   if (!isNative()) {
+    // CANCEL_ALARM removes timers, persisted alarms, follow-ups, and visible
+    // notifications. The message is intentionally idempotent.
     postToSw({ type: 'CANCEL_ALARM', id: medId });
     return;
   }
+
   try {
-    const ids = notifIdsFor(medId).map((id) => ({ id }));
-    for (let i = 0; i < ids.length; i += SCHEDULE_CHUNK_SIZE) {
-      const chunk = ids.slice(i, i + SCHEDULE_CHUNK_SIZE);
-      await LocalNotifications.cancel({ notifications: chunk });
+    const ids = new Set(notifIdsFor(medId));
+    // cancel() clears scheduled alarms, but an already delivered notification
+    // can remain visible in Android's notification shade. Match both the
+    // stable ID range and plugin metadata so legacy/stale IDs are covered too.
+    const [pendingResult, deliveredResult] = await Promise.all([
+      LocalNotifications.getPending(),
+      LocalNotifications.getDeliveredNotifications(),
+    ]);
+    const pending = pendingResult.notifications.filter(
+      (notification) => ids.has(notification.id) || Number(notification.extra?.medicationId) === medId,
+    );
+    const delivered = deliveredResult.notifications.filter(
+      (notification) => ids.has(notification.id) || Number(notification.extra?.medicationId) === medId,
+    );
+
+    const pendingToCancel = new Map<number, { id: number }>();
+    for (const id of ids) pendingToCancel.set(id, { id });
+    for (const notification of pending) pendingToCancel.set(notification.id, { id: notification.id });
+    const cancelList = [...pendingToCancel.values()];
+    for (let i = 0; i < cancelList.length; i += SCHEDULE_CHUNK_SIZE) {
+      await LocalNotifications.cancel({ notifications: cancelList.slice(i, i + SCHEDULE_CHUNK_SIZE) });
     }
-    console.info('[Alarms] canceled native', medId);
+    if (delivered.length > 0) {
+      await LocalNotifications.removeDeliveredNotifications({ notifications: delivered });
+    }
+    console.info('[Alarms] canceled scheduled and delivered native notifications', {
+      medicationId: medId,
+      pending: pending.length,
+      delivered: delivered.length,
+    });
   } catch (e) {
-    console.warn('[Alarms] cancelMedNotifications', e);
+    console.warn('[Alarms] cancelMedNotifications', { medicationId: medId, error: e });
   }
 }
 
@@ -163,6 +191,31 @@ function syncWeb(medications: Medication[]): void {
 
 async function syncNative(medications: Medication[]): Promise<void> {
   const now = Date.now();
+
+  // Reconcile orphaned notifications against the database-backed medication
+  // list on startup/resume. This also catches a process death between deleting
+  // the medication record and posting its explicit cancellation request.
+  const activeMedicationIds = new Set(
+    medications.filter((medication) => medication.id != null).map((medication) => Number(medication.id)),
+  );
+  try {
+    const [pendingResult, deliveredResult] = await Promise.all([
+      LocalNotifications.getPending(),
+      LocalNotifications.getDeliveredNotifications(),
+    ]);
+    const orphanIds = new Set<number>();
+    for (const notification of pendingResult.notifications) {
+      const id = Number(notification.extra?.medicationId);
+      if (Number.isFinite(id) && !activeMedicationIds.has(id)) orphanIds.add(id);
+    }
+    for (const notification of deliveredResult.notifications) {
+      const id = Number(notification.extra?.medicationId);
+      if (Number.isFinite(id) && !activeMedicationIds.has(id)) orphanIds.add(id);
+    }
+    for (const id of orphanIds) await cancelMedNotifications(id);
+  } catch (error) {
+    console.warn('[Alarms] orphan notification reconciliation failed', error);
+  }
 
   // Do not cancel the currently working reminders before replacements are scheduled.
   // If Android rejects a new schedule request, the previous reminder must remain.

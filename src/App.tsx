@@ -145,9 +145,10 @@ export default function App() {
     await db.updateMedication(m);
   }, []);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (): Promise<Medication[]> => {
     const all = sortMedications((await db.getAllMedications()).map(normalize));
     setMedications(all);
+    return all;
   }, []);
 
   const latestMed = useCallback((m: Medication) => findMedication(medsRef.current, m.id) ?? m, []);
@@ -218,7 +219,11 @@ export default function App() {
         const exactAlarm = await checkExactAlarmPermission();
         const batteryIgnored = await checkBatteryOptimizationExemption();
         await registerNotificationActions();
-        await load();
+        const loadedMedications = await load();
+        // Reconcile the native notification queue against IndexedDB before the
+        // first screen is shown. This removes orphaned alarms left by a crash
+        // during deletion and closes already-delivered notifications too.
+        await syncAllAlarms(loadedMedications);
         const purchasedCards = await db.getPaidMedicationCardCount();
         if (!active) return;
         setPaidCardCount(purchasedCards);
@@ -724,17 +729,37 @@ export default function App() {
         setConfirm(null);
         void (async () => {
           const id = m.id!;
+          // Block timer-driven state transitions immediately and cancel first.
+          // This avoids a crash window where the medication is gone from IndexedDB
+          // but its OS-scheduled notification has not yet been cancelled.
           deletedIdsRef.current.add(id);
           await cancelMedNotifications(id);
           dismissSwFollowUps(id);
-          await db.deleteMedication(id);
+          try {
+            await db.deleteMedication(id);
+          } catch (error) {
+            deletedIdsRef.current.delete(id);
+            console.error('[App] failed to delete medication from IndexedDB', { id, error });
+            // The record still exists, so rebuild its reminders after a failed delete.
+            await syncAllAlarms(medsRef.current);
+            window.alert('حذف دارو ذخیره نشد. اطلاعات قبلی حفظ شده است؛ لطفاً دوباره تلاش کنید.');
+            return;
+          }
+
           setMedications((v) => v.filter((x) => x.id !== id));
           if (alertId.current === id) {
             alertId.current = null;
             stopAlarm();
             setAlert(null);
           }
-        })();
+
+          // Reconcile once more against the new source of truth. Repeating this
+          // cleanup is safe and prevents stale queue rows from being recreated.
+          await syncAllAlarms(medsRef.current.filter((medication) => medication.id !== id));
+        })().catch((error: unknown) => {
+          console.error('[App] medication deletion cleanup failed', { id: m.id, error });
+          window.alert('دارو از فهرست حذف شد، اما لغو اعلان کامل تأیید نشد. با باز کردن دوباره برنامه صف اعلان‌ها دوباره همگام‌سازی می‌شود.');
+        });
       },
     });
   };
