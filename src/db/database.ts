@@ -150,6 +150,80 @@ class Database {
     return (await this.transaction(STORE_NAME, 'readwrite', (store) => store.add(value))) as number;
   }
 
+  /**
+   * Atomically save a new medication and spend one token when required.
+   * The first medication remains free; deletion never refunds spent tokens.
+   */
+  async addMedicationWithToken(medication: Medication, consumeToken: boolean): Promise<number> {
+    const now = Date.now();
+    const value = sanitizeMedication({
+      ...medication,
+      createdAt: medication.createdAt ?? now,
+      updatedAt: now,
+      history: medication.history ?? [],
+    });
+    const db = await this.dbPromise;
+    return new Promise<number>((resolve, reject) => {
+      let newId: number | undefined;
+      let settled = false;
+      const tx = db.transaction([STORE_NAME, STATE_STORE], 'readwrite');
+      const medicationStore = tx.objectStore(STORE_NAME);
+      const stateStore = tx.objectStore(STATE_STORE);
+      const insert = () => {
+        const request = medicationStore.add(value);
+        request.onsuccess = () => { newId = Number(request.result); };
+        request.onerror = () => {
+          if (!settled) {
+            settled = true;
+            reject(request.error || new Error('ذخیره دارو ناموفق بود.'));
+          }
+        };
+      };
+
+      if (consumeToken) {
+        const stateRequest = stateStore.get('paidMedicationCards');
+        stateRequest.onsuccess = () => {
+          const current = stateRequest.result?.value as { count?: number; tokens?: string[] } | undefined;
+          const count = Math.max(0, Math.floor(Number(current?.count) || 0));
+          if (count < 1) {
+            tx.abort();
+            return;
+          }
+          stateStore.put({
+            key: 'paidMedicationCards',
+            value: { ...current, count: count - 1, tokens: Array.isArray(current?.tokens) ? current.tokens : [] },
+          });
+          insert();
+        };
+        stateRequest.onerror = () => {
+          if (!settled) {
+            settled = true;
+            reject(stateRequest.error || new Error('خواندن موجودی شارژ ناموفق بود.'));
+          }
+        };
+      } else {
+        insert();
+      }
+
+      tx.oncomplete = () => {
+        if (settled) return;
+        settled = true;
+        if (newId == null) reject(new Error('شناسه داروی ذخیره‌شده دریافت نشد.'));
+        else resolve(newId);
+      };
+      tx.onerror = () => {
+        if (settled) return;
+        settled = true;
+        reject(tx.error || new Error('ذخیره دارو یا مصرف شارژ ناموفق بود.'));
+      };
+      tx.onabort = () => {
+        if (settled) return;
+        settled = true;
+        reject(tx.error || new Error(consumeToken ? 'شارژ کافی نیست؛ ابتدا بسته شارژ بخرید.' : 'ثبت دارو لغو شد.'));
+      };
+    });
+  }
+
   async updateMedication(medication: Medication): Promise<void> {
     const value = sanitizeMedication({
       ...medication,
@@ -194,6 +268,10 @@ class Database {
   async getPaidMedicationCardCount(): Promise<number> {
     const value = await this.getState<{ count?: number }>('paidMedicationCards');
     return Math.max(0, Math.floor(Number(value?.count) || 0));
+  }
+
+  async getMedicationTokenBalance(): Promise<number> {
+    return this.getPaidMedicationCardCount();
   }
 
   /** Grant the full bundle once per unique Bazaar purchase token. */
