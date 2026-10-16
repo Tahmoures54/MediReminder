@@ -105,7 +105,7 @@ export async function syncEntitlementsFromBazaar(): Promise<number> {
 
     // Persist the entitlement first. The local token ledger prevents a retry
     // from granting the same purchase twice if consumption fails.
-    await db.grantPaidMedicationCards(purchase.purchaseToken, cardCount);
+    await db.grantPaidMedicationCards(purchase.purchaseToken, cardCount, purchase.productId);
 
     try {
       await CafebazaarPoolakey.consumeProduct({ token: purchase.purchaseToken });
@@ -141,7 +141,7 @@ export async function purchaseMedicationCards(productId: string): Promise<void> 
 
   const result = await CafebazaarPoolakey.purchaseProduct({
     productId: bundle.productId,
-    payload: `medireminder-cards:${bundle.cardCount}`,
+    payload: `medireminder-tokens:${bundle.cardCount}`,
   });
 
   if (result.state !== 'PURCHASED' || !result.purchase?.purchaseToken) {
@@ -158,7 +158,7 @@ export async function purchaseMedicationCards(productId: string): Promise<void> 
   // Persist the entitlement before consuming. The IndexedDB transaction is the
   // success boundary for the user's cards; do not turn a successful local grant
   // into a purchase failure because a redundant follow-up sync failed.
-  await db.grantPaidMedicationCards(result.purchase.purchaseToken, bundle.cardCount);
+  await db.grantPaidMedicationCards(result.purchase.purchaseToken, bundle.cardCount, result.purchase.productId);
 
   try {
     await CafebazaarPoolakey.consumeProduct({ token: result.purchase.purchaseToken });
