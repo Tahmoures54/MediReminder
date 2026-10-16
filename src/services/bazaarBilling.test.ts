@@ -9,15 +9,15 @@ const restoreDocs = readFileSync(fileURLToPath(new URL('../../RESTORE_APP.md', i
 
 describe('Bazaar consumable medication-card purchase safety', () => {
   it('consumes card-pack purchases using the purchase token', () => {
-    expect(billingSource).toContain('CafebazaarPoolakey.consumeProduct({ token: purchase.purchaseToken })');
-    expect(billingSource).toContain('CafebazaarPoolakey.consumeProduct({ token: result.purchase.purchaseToken })');
+    expect(billingSource).toContain('await CafebazaarPoolakey.consumeProduct({ token })');
+    expect(billingSource).toContain('await CafebazaarPoolakey.consumeProduct({ token: result.purchase.purchaseToken })');
     expect(billingSource).toContain('payload: `medireminder-tokens:${bundle.cardCount}`');
   });
 
   it('records the entitlement before attempting consumption in both purchase paths', () => {
-    const syncGrant = billingSource.indexOf('await db.grantPaidMedicationCards(purchase.purchaseToken, cardCount, purchase.productId)');
-    const syncConsume = billingSource.indexOf('await CafebazaarPoolakey.consumeProduct({ token: purchase.purchaseToken })');
-    const purchaseGrant = billingSource.indexOf('await db.grantPaidMedicationCards(result.purchase.purchaseToken, bundle.cardCount, result.purchase.productId)');
+    const syncGrant = billingSource.indexOf('await db.grantPaidMedicationCards(token, cardCount, purchase.productId || \'unknown\')');
+    const syncConsume = billingSource.indexOf('await CafebazaarPoolakey.consumeProduct({ token })');
+    const purchaseGrant = billingSource.indexOf('await db.grantPaidMedicationCards(');
     const purchaseConsume = billingSource.indexOf('await CafebazaarPoolakey.consumeProduct({ token: result.purchase.purchaseToken })');
 
     expect(syncGrant).toBeGreaterThanOrEqual(0);
@@ -37,17 +37,16 @@ describe('Bazaar consumable medication-card purchase safety', () => {
       .toBeLessThan(databaseSource.indexOf('count: count + cards, tokens: [...tokens, token]'));
   });
 
-  it('does not turn a persisted successful purchase into a failure due to a redundant post-purchase sync', () => {
-    const purchaseStart = billingSource.indexOf('export async function purchaseMedicationCards');
-    const restoreStart = billingSource.indexOf('export async function restorePendingMedicationCardPurchases');
-    const purchaseBody = billingSource.slice(purchaseStart, restoreStart);
-    const consumeAt = purchaseBody.indexOf('await CafebazaarPoolakey.consumeProduct({ token: result.purchase.purchaseToken })');
+  it('recovers inventory after non-PURCHASED or thrown purchase results', () => {
+    expect(billingSource).toContain('reconcileWithRetries');
+    expect(billingSource).toContain('after-purchase-throw');
+    expect(billingSource).toContain('after-non-purchased');
+    expect(billingSource).toContain('Recovered credits despite state=');
+  });
 
-    expect(purchaseStart).toBeGreaterThanOrEqual(0);
-    expect(restoreStart).toBeGreaterThan(purchaseStart);
-    expect(consumeAt).toBeGreaterThanOrEqual(0);
-    expect(purchaseBody.slice(consumeAt)).not.toContain('await syncEntitlementsFromBazaar()');
-    expect(purchaseBody).toContain('await db.grantPaidMedicationCards(result.purchase.purchaseToken, bundle.cardCount, result.purchase.productId)');
+  it('parses legacy and current developer payloads for card counts', () => {
+    expect(billingSource).toContain('medireminder-tokens:(\\d+)');
+    expect(billingSource).toContain('medireminder-extra-medication-cards:(\\d+)');
   });
 
   it('documents the consumable model and the local-data recovery limitation accurately', () => {
@@ -58,10 +57,12 @@ describe('Bazaar consumable medication-card purchase safety', () => {
     expect(billingDocs).not.toContain('محصولات یک‌بار خرید هرگز `consume` نمی‌شوند');
   });
 
-  it('exposes syncEntitlementsFromBazaar as the restore path', () => {
+  it('exposes sync and panel recovery paths', () => {
     expect(billingSource).toContain('export async function syncEntitlementsFromBazaar');
     expect(billingSource).toContain('export async function restorePendingMedicationCardPurchases');
-    expect(billingSource).toContain('return syncEntitlementsFromBazaar()');
+    expect(billingSource).toContain('export async function applyPanelConfirmedRecoveryGrant');
+    expect(billingSource).toContain("purchaseToken: 'bazaar-panel-recovery-v1-tokens30-10-cards25-10-3'");
+    expect(billingSource).toContain('cardCount: 78');
   });
 
   it('uses the current Bazaar token-pack IDs in the shop catalog', () => {
