@@ -91,7 +91,10 @@ async function shareApp() {
 async function getCapacitorApp() {
   try {
     const mod = await import('@capacitor/app');
-    return mod.App;
+    // Capacitor plugin proxies expose a `then` trap that rejects Promise
+    // assimilation. Never return the plugin proxy directly from an async
+    // function; wrap it in a plain object so the caller can safely await it.
+    return { plugin: mod.App };
   } catch {
     return null;
   }
@@ -365,7 +368,8 @@ export default function App() {
     document.addEventListener('visibilitychange', onVisibility);
 
     (async () => {
-      const CapApp = await getCapacitorApp();
+      const loadedApp = await getCapacitorApp();
+      const CapApp = loadedApp?.plugin;
       if (!CapApp || cancelled) return;
 
       try {
