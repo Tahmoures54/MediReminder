@@ -59,6 +59,7 @@ const STATUS_CONFIG: Record<MedicationStatus, StatusDisplay> = {
   late:      { text: 'با تأخیر', color: '#b54736', bg: '#fff0eb' },
   missed:    { text: 'از دست رفته', color: '#b42318', bg: '#ffebe9' },
   skipped:   { text: 'رد شده', color: '#5f6875', bg: '#f0f2f5' },
+  snoozed:   { text: 'تعویق‌یافته', color: '#3869a8', bg: '#eaf2ff' },
 };
 
 const DEFAULT_STATUS: StatusDisplay = { text: 'نامشخص', color: '#5f6875', bg: '#f0f2f5' };
