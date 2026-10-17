@@ -141,7 +141,8 @@ describe('Bazaar consumable medication-card purchase — safety contracts', () =
 
   describe('idempotency at the database layer', () => {
     it('uses a single multi-store readwrite transaction for atomic grant', () => {
-      expectContains(database, "const tx = db.transaction([STATE_STORE, PURCHASE_STORE], 'readwrite')");
+      expectContains(database, 'this.runMultiStoreTransaction<GrantResult>(');
+      expectContains(database, '[STATE_STORE, PURCHASE_STORE]');
       expectContains(database, "const PURCHASE_STORE = 'localPurchases'");
     });
 
@@ -157,14 +158,14 @@ describe('Bazaar consumable medication-card purchase — safety contracts', () =
       //   - `shouldRepair`: purchase row exists but was never reflected in
       //     appState — restore it exactly once.
       expectContains(database, 'const alreadyGrantedByLegacyLedger = alreadyInState');
-      expectContains(database, 'const shouldRepair = existing.credited !== false && !alreadyInState');
+      expectContains(database, 'const shouldRepair = existingPurchase.credited !== false && !alreadyInState');
     });
 
     it('writes the incremented count AFTER reading the idempotency state', () => {
       // Guards against a subtle bug: writing the new count before checking
       // the token set would always double-count on the second delivery.
       const readIdx = database.content.indexOf('const alreadyGrantedByLegacyLedger = alreadyInState');
-      const writeIdx = database.content.indexOf('count: count + cards, tokens: [...tokens, token]');
+      const writeIdx = database.content.indexOf('writePaidState(currentCount + cards, [...tokens, token]);');
       expect(readIdx).toBeGreaterThanOrEqual(0);
       expect(writeIdx).toBeGreaterThan(readIdx);
     });
@@ -291,13 +292,13 @@ describe('Bazaar consumable medication-card purchase — safety contracts', () =
 
       // The active catalog slice must NOT mention any retired SKU.
       const catalogSlice = billing.content.slice(catalogStart, legacyStart);
-      expect(catalogSlice).not.toContain('medireminder_cards_3');
+      expect(catalogSlice).not.toContain("productId: 'medireminder_cards_3'");
       // Sanity: also assert the other retired SKUs are absent from the
       // active slice, not just one — a single-SKU check could mask a
       // partial leak.
-      expect(catalogSlice).not.toContain('medireminder_cards_10');
-      expect(catalogSlice).not.toContain('medireminder_cards_25');
-      expect(catalogSlice).not.toContain('medication_card_1');
+      expect(catalogSlice).not.toContain("productId: 'medireminder_cards_10'");
+      expect(catalogSlice).not.toContain("productId: 'medireminder_cards_25'");
+      expect(catalogSlice).not.toContain("productId: 'medication_card_1'");
     });
 
     it('documents active vs retired SKUs for reviewer clarity (informational)', () => {
