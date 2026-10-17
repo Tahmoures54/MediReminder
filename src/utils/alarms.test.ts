@@ -351,13 +351,16 @@ describe('alarms — boot reconciliation & deletion ordering (cross-file)', () =
    * calling syncAllAlarms. Otherwise alarms would be reconciled against
    * an empty list and every existing notification would be cancelled.
    * ------------------------------------------------------------------ */
-  it('App.tsx loads medications before reconciling alarms', () => {
-    expectContains(appSource, 'const loadedMedications = await load();');
-    expectContains(appSource, 'await syncAllAlarms(loadedMedications);');
+  it('App.tsx loads medications before starting background alarm reconciliation', () => {
+    expectContains(appSource, 'const [loadedMedications, purchasedCards, hasFreeToken] = await Promise.all([');
+    expectContains(appSource, 'void syncAllAlarms(loadedMedications)');
+    expectContains(appSource, 'runStartupTasksInBackground(loadedMedications, native);');
 
-    const loadIdx = appSource.indexOf('const loadedMedications = await load();');
-    const syncIdx = appSource.indexOf('await syncAllAlarms(loadedMedications);');
-    expect(syncIdx).toBeGreaterThan(loadIdx);
+    // The reconciliation helper is declared before the DB read, but it is
+    // invoked only after the parallel IndexedDB reads have completed.
+    const loadIdx = appSource.indexOf('const [loadedMedications, purchasedCards, hasFreeToken] = await Promise.all([');
+    const startupIdx = appSource.indexOf('runStartupTasksInBackground(loadedMedications, native);');
+    expect(startupIdx).toBeGreaterThan(loadIdx);
   });
 
   /* --------------------------------------------------------------------
