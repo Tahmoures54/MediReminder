@@ -310,6 +310,11 @@ function closeViewer(): void {
   viewerOpen = false;
 }
 
+/** Opens the diagnostics viewer on explicit support/debug request. */
+export function openDiagnosticViewer(): void {
+  openViewer();
+}
+
 function openViewer(): void {
   if (viewerOpen) return;
   viewerOpen = true;
