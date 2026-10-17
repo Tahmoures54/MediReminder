@@ -133,13 +133,28 @@ export default function App() {
   const tickLock = useRef(false);
   const deletedIdsRef = useRef(new Set<number>());
   const dueTransitionRef = useRef(new Set<string>());
-  const debouncedSync = useRef(createDebouncedSync(400));
   const resumeSyncTimeout = useRef<number | null>(null);
   const purchaseRecoveryRef = useRef<Promise<void> | null>(null);
 
-  useEffect(() => {
-    medsRef.current = medications;
-  }, [medications]);
+  // Debounced sync — lazy init so createDebouncedSync is not called on every render.
+  const debouncedSyncRef = useRef<ReturnType<typeof createDebouncedSync> | null>(null);
+  if (debouncedSyncRef.current === null) {
+    debouncedSyncRef.current = createDebouncedSync(400);
+  }
+
+  // Sync "latest value" refs during render so handlers registered once always
+  // read the committed state (no timing gap with useEffect).
+  const alertRef = useRef(alert);
+  const confirmRef = useRef(confirm);
+  const reportRef = useRef(report);
+  const editingRef = useRef(editing);
+  const showAddRef = useRef(showAdd);
+  alertRef.current = alert;
+  confirmRef.current = confirm;
+  reportRef.current = report;
+  editingRef.current = editing;
+  showAddRef.current = showAdd;
+  medsRef.current = medications;
 
   const persist = useCallback(async (m: Medication) => {
     await db.updateMedication(m);
@@ -182,12 +197,15 @@ export default function App() {
     stopAlarm();
     setAlert(null);
   }, []);
+  const closeAlertUiRef = useRef(closeAlertUi);
+  closeAlertUiRef.current = closeAlertUi;
 
+  // Pass closeAlertUi so the alarm actually stops when the user takes the dose.
   const { takeDose, snooze, toggle, reset, takeDoseRef, snoozeRef } = useDoseActions({
     persist,
     setMedications,
     alertIdRef: alertId,
-    setAlert: () => setAlert(null),
+    setAlert: closeAlertUi,
   });
 
   const clearNagTimer = useCallback(() => {
@@ -251,7 +269,7 @@ export default function App() {
     })();
     return () => {
       active = false;
-      debouncedSync.current.cancel();
+      debouncedSyncRef.current?.cancel();
       if (resumeSyncTimeout.current) clearTimeout(resumeSyncTimeout.current);
     };
   }, [load, bootAttempt]);
@@ -290,79 +308,100 @@ export default function App() {
     }
   }, [showPurchase]);
 
-  useEffect(() => {
-    const handleVisible = async () => {
-      if (document.visibilityState !== 'visible') return;
-      try {
-        // Recover a purchase that completed while Bazaar was in the foreground.
-        await recoverMedicationCards().catch((error: unknown) => {
-          console.warn('[BazaarBilling] resume recovery skipped:', error);
-        });
-        const status = await checkNotificationPermission();
-        const exactAlarm = await checkExactAlarmPermission();
-        const batteryIgnored = await checkBatteryOptimizationExemption();
-        setPermission(status);
-        setExactAlarmGranted(exactAlarm);
-        setBatteryOptimizationIgnored(batteryIgnored);
-        const current = medsRef.current;
-        if (current.some((m) => m.pendingDose || m.running)) await syncAllAlarms(current);
-        const now = Date.now();
-        for (const m of current) {
-          if (m.running && m.nextDoseAt && m.nextDoseAt <= now && !m.pendingDose && claimDueTransition(m)) {
-            const due = toDue(normalize(m), now);
-            try {
-              // Persist the due state before presenting it as committed. If storage
-              // fails, release the transition guard so the next resume can retry.
-              await persist(due);
-              setMedications((prev) => prev.map((x) => (x.id === m.id ? due : x)));
-              openAlert(due, true);
-            } catch (error) {
-              dueTransitionRef.current.delete(`${m.id}:${m.nextDoseAt}`);
-              console.error('[App] failed to persist due medication on resume; retry will be allowed', error);
-            }
+  // handleVisible is a stable callback. Registered once via handleVisibleRef so
+  // the mount effect never re-subscribes on unrelated state changes.
+  const handleVisible = useCallback(async () => {
+    if (document.visibilityState !== 'visible') return;
+    try {
+      // Recover a purchase that completed while Bazaar was in the foreground.
+      await recoverMedicationCards().catch((error: unknown) => {
+        console.warn('[BazaarBilling] resume recovery skipped:', error);
+      });
+      const status = await checkNotificationPermission();
+      const exactAlarm = await checkExactAlarmPermission();
+      const batteryIgnored = await checkBatteryOptimizationExemption();
+      setPermission(status);
+      setExactAlarmGranted(exactAlarm);
+      setBatteryOptimizationIgnored(batteryIgnored);
+      const current = medsRef.current;
+      if (current.some((m) => m.pendingDose || m.running)) await syncAllAlarms(current);
+      const now = Date.now();
+      for (const m of current) {
+        if (m.running && m.nextDoseAt && m.nextDoseAt <= now && !m.pendingDose && claimDueTransition(m)) {
+          const due = toDue(normalize(m), now);
+          try {
+            // Persist the due state before presenting it as committed. If storage
+            // fails, release the transition guard so the next resume can retry.
+            await persist(due);
+            setMedications((prev) => prev.map((x) => (x.id === m.id ? due : x)));
+            openAlert(due, true);
+          } catch (error) {
+            dueTransitionRef.current.delete(`${m.id}:${m.nextDoseAt}`);
+            console.error('[App] failed to persist due medication on resume; retry will be allowed', error);
           }
         }
-      } catch (e) {
-        console.warn('[App] visibility sync failed', e);
       }
-    };
+    } catch (e) {
+      console.warn('[App] visibility sync failed', e);
+    }
+  }, [recoverMedicationCards, persist, claimDueTransition, openAlert]);
 
-    document.addEventListener('visibilitychange', handleVisible);
+  const handleVisibleRef = useRef(handleVisible);
+  handleVisibleRef.current = handleVisible;
+
+  // Single mount effect: register visibility + native listeners exactly once.
+  // Handlers read live state through refs, so no re-subscription on UI state
+  // changes (prevents listener leaks and stale-closure back-button bugs).
+  useEffect(() => {
+    let cancelled = false;
     let appListeners: Array<{ remove: () => Promise<void> }> = [];
+
+    const onVisibility = () => {
+      void handleVisibleRef.current();
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+
     (async () => {
       const CapApp = await getCapacitorApp();
-      if (!CapApp) return;
+      if (!CapApp || cancelled) return;
+
       try {
         const l1 = await CapApp.addListener('appStateChange', async ({ isActive }) => {
-          if (isActive) await handleVisible();
+          if (isActive) await handleVisibleRef.current();
         });
-        const l2 = await CapApp.addListener('resume', async () => {
+        if (cancelled) { void l1.remove(); return; }
+
+        const l2 = await CapApp.addListener('resume', () => {
           if (resumeSyncTimeout.current) clearTimeout(resumeSyncTimeout.current);
-          resumeSyncTimeout.current = window.setTimeout(() => void handleVisible(), 300);
+          resumeSyncTimeout.current = window.setTimeout(() => void handleVisibleRef.current(), 300);
         });
-        appListeners = [l1, l2];
+        if (cancelled) { void l1.remove(); void l2.remove(); return; }
+
         const l3 = await CapApp.addListener('backButton', ({ canGoBack }) => {
-          if (alert) return closeAlertUi();
-          if (confirm) return setConfirm(null);
-          if (report) return setReport(null);
-          if (editing || showAdd) {
+          if (alertRef.current) return closeAlertUiRef.current();
+          if (confirmRef.current) return setConfirm(null);
+          if (reportRef.current) return setReport(null);
+          if (editingRef.current || showAddRef.current) {
             setEditing(null);
             setShowAdd(false);
             return;
           }
           if (!canGoBack) CapApp.exitApp().catch(() => {});
         });
-        appListeners.push(l3);
+        if (cancelled) { void l1.remove(); void l2.remove(); void l3.remove(); return; }
+
+        appListeners = [l1, l2, l3];
       } catch (e) {
         console.warn('[App] CapApp listeners failed', e);
       }
     })();
 
     return () => {
-      document.removeEventListener('visibilitychange', handleVisible);
+      cancelled = true;
+      document.removeEventListener('visibilitychange', onVisibility);
       appListeners.forEach((l) => l.remove().catch(() => {}));
     };
-  }, [alert, confirm, report, editing, showAdd, closeAlertUi, openAlert, persist, claimDueTransition, recoverMedicationCards]);
+  }, []);
 
   const handleRequestPermission = async () => {
     try {
@@ -471,7 +510,7 @@ export default function App() {
 
   useEffect(() => {
     if (!bootDone) return;
-    debouncedSync.current.schedule(medications);
+    debouncedSyncRef.current?.schedule(medications);
   }, [medications, bootDone]);
 
   // Native Android notifications are queued in a bounded ~9h window to
@@ -505,13 +544,31 @@ export default function App() {
       if (!Number.isFinite(id)) return;
       const m = findMedication(medsRef.current, id);
       if (!m) return;
-      if (msg.type === 'ALARM_TAKEN') takeDoseRef.current({ ...m, pendingDose: true, running: false, remaining: 0 });
-      else if (msg.type === 'ALARM_SNOOZED')
+      if (msg.type === 'ALARM_TAKEN') {
+        takeDoseRef.current({ ...m, pendingDose: true, running: false, remaining: 0 });
+      } else if (msg.type === 'ALARM_SNOOZED') {
         snoozeRef.current({ ...m, pendingDose: true, running: false, remaining: 0 }, msg.minutes ?? 10);
-      else if (msg.type === 'ALARM_TRIGGERED' || msg.type === 'ALARM_DISMISSED')
-        openAlert({ ...m, pendingDose: true, running: false, remaining: 0 }, true);
+      } else if (msg.type === 'ALARM_TRIGGERED' || msg.type === 'ALARM_DISMISSED') {
+        // Match the native path: persist the due transition before marking the
+        // state as committed so the visible state never diverges from IndexedDB.
+        if (!m.pendingDose && claimDueTransition(m)) {
+          const due = toDue(m);
+          void (async () => {
+            try {
+              await persist(due);
+              setMedications((v) => sortMedications(v.map((x) => (x.id === m.id ? due : x))));
+              openAlert(due, true);
+            } catch (error) {
+              dueTransitionRef.current.delete(`${m.id}:${m.nextDoseAt}`);
+              console.error('[App] failed to persist SW-triggered due; retry will be allowed', { id, error });
+            }
+          })();
+        } else {
+          openAlert({ ...m, pendingDose: true, running: false, remaining: 0 }, true);
+        }
+      }
     });
-  }, [openAlert, takeDoseRef, snoozeRef]);
+  }, [openAlert, persist, claimDueTransition, takeDoseRef, snoozeRef]);
 
   useEffect(() => {
     if (!isNative) return;
@@ -563,6 +620,8 @@ export default function App() {
       action.then((l) => l.remove()).catch(() => {});
     };
   }, [isNative, openAlert, persist, takeDoseRef, snoozeRef, claimDueTransition]);
+
+  const formVisible = showAdd || editing != null;
 
   const openAddMedication = async () => {
     if (formVisible) {
@@ -771,16 +830,17 @@ export default function App() {
           // Block timer-driven state transitions immediately and cancel first.
           // This avoids a crash window where the medication is gone from IndexedDB
           // but its OS-scheduled notification has not yet been cancelled.
+          // Any failure in the cancel/delete chain restores the guard so the
+          // medication is not silently orphaned forever.
           deletedIdsRef.current.add(id);
-          await cancelMedNotifications(id);
-          dismissSwFollowUps(id);
           try {
+            await cancelMedNotifications(id);
+            dismissSwFollowUps(id);
             await db.deleteMedication(id);
           } catch (error) {
             deletedIdsRef.current.delete(id);
-            console.error('[App] failed to delete medication from IndexedDB', { id, error });
-            // The record still exists, so rebuild its reminders after a failed delete.
-            await syncAllAlarms(medsRef.current);
+            console.error('[App] failed to delete medication; restoring state', { id, error });
+            await syncAllAlarms(medsRef.current).catch(() => {});
             window.alert('حذف دارو ذخیره نشد. اطلاعات قبلی حفظ شده است؛ لطفاً دوباره تلاش کنید.');
             return;
           }
@@ -794,10 +854,14 @@ export default function App() {
 
           // Reconcile once more against the new source of truth. Repeating this
           // cleanup is safe and prevents stale queue rows from being recreated.
-          await syncAllAlarms(medsRef.current.filter((medication) => medication.id !== id));
+          try {
+            await syncAllAlarms(medsRef.current.filter((medication) => medication.id !== id));
+          } catch (error) {
+            console.warn('[App] post-delete alarm sync failed', { id, error });
+            window.alert('دارو از فهرست حذف شد، اما لغو اعلان کامل تأیید نشد. با باز کردن دوباره برنامه صف اعلان‌ها دوباره همگام‌سازی می‌شود.');
+          }
         })().catch((error: unknown) => {
           console.error('[App] medication deletion cleanup failed', { id: m.id, error });
-          window.alert('دارو از فهرست حذف شد، اما لغو اعلان کامل تأیید نشد. با باز کردن دوباره برنامه صف اعلان‌ها دوباره همگام‌سازی می‌شود.');
         });
       },
     });
@@ -812,12 +876,14 @@ export default function App() {
       cancelLabel: 'انصراف',
       onConfirm: () => {
         setConfirm(null);
-        void reset(m);
+        void reset(m).catch((error: unknown) => {
+          console.error('[App] reset failed', error);
+          window.alert('بازنشانی دارو انجام نشد. لطفاً دوباره تلاش کنید.');
+        });
       },
     });
   };
 
-  const formVisible = showAdd || editing != null;
   const dueCount = useMemo(() => medications.filter((m) => m.pendingDose).length, [medications]);
   const lowStockCount = useMemo(
     () => medications.filter((m) => m.quantity > 0 && m.quantity <= LOW_STOCK_THRESHOLD).length,
@@ -832,7 +898,8 @@ export default function App() {
   const takenTodayCount = useMemo(() => {
     const now = new Date();
     const dayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-    const dayEnd = dayStart + 24 * 60 * 60 * 1000;
+    // Using Date constructor (not +24h) keeps the range correct on DST changeovers.
+    const dayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1).getTime();
     return medications.reduce((count, medication) => {
       const takenToday = (medication.history ?? []).filter((record) =>
         record.takenAt >= dayStart &&
@@ -1068,7 +1135,12 @@ export default function App() {
                 key={m.id}
                 medication={m}
                 index={i + 1}
-                onToggle={() => void toggle(m)}
+                onToggle={() => {
+                  void toggle(m).catch((error: unknown) => {
+                    console.error('[App] toggle failed', error);
+                    window.alert('تغییر وضعیت دارو انجام نشد. لطفاً دوباره تلاش کنید.');
+                  });
+                }}
                 onReset={() => requestReset(m)}
                 onDelete={() => void remove(m)}
                 onEdit={() => {
