@@ -336,7 +336,11 @@ describe('alarms — deleted medication notification cleanup', () => {
 
     await cancelMedNotifications(999);
 
-    expect(nativeState.cancel).not.toHaveBeenCalled();
+    // The native cleanup always cancels the medication's reserved ID range,
+    // even when no current notification metadata matches. This clears stale
+    // scheduled slots left by older app versions.
+    expect(nativeState.cancel).toHaveBeenCalled();
+    expect(cancelledIds()).toContain(999100);
     expect(nativeState.removeDelivered).not.toHaveBeenCalled();
   });
 });
@@ -369,7 +373,9 @@ describe('alarms — boot reconciliation & deletion ordering (cross-file)', () =
     const deleteIdx = appSource.indexOf('await db.deleteMedication(id)');
     expect(cancelIdx).toBeGreaterThanOrEqual(0);
     expect(deleteIdx).toBeGreaterThanOrEqual(0);
-    expect(cancelIdx).toBeGreaterThan(deleteIdx);
+    // Native notification cleanup is performed before deletion to avoid a
+    // crash window where the medication is deleted but its OS alarm survives.
+    expect(cancelIdx).toBeLessThan(deleteIdx);
   });
 
   /* --------------------------------------------------------------------
