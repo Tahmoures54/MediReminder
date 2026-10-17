@@ -1,123 +1,102 @@
 @import "tailwindcss";
 
 /* ==========================================================================
-   Base — Mobile-first final release optimizations
+   Prerequisite: index.html must contain
+   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+   Otherwise every env(safe-area-inset-*) below resolves to 0.
+   ========================================================================== */
+
+/* ==========================================================================
+   Base
    ========================================================================== */
 :root {
   color-scheme: dark;
-  /* Safe area insets */
+
   --sat: env(safe-area-inset-top, 0px);
   --sar: env(safe-area-inset-right, 0px);
   --sab: env(safe-area-inset-bottom, 0px);
   --sal: env(safe-area-inset-left, 0px);
-  /* Dynamic viewport */
-  --vh: 1vh;
-  --dvh: 1dvh;
-  --svh: 1svh;
-  /* Touch target */
+
   --min-touch: 44px;
 }
 
+/* Lock the document. The single scroll container is .app-scroll-container. */
 html,
-body,
-#root {
-  min-height: 100%;
-  min-height: 100dvh;
+body {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;              /* one scroller only */
+  overscroll-behavior: none;
+  background-color: #0f172a;
 }
 
 html {
-  background-color: #0f172a;
-  /* Prevent text size adjust on orientation change */
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
-  /* Smooth scroll but not on reduced motion */
-  scroll-behavior: smooth;
-  /* Horizontal lock only — vertical must scroll on long lists */
-  overflow-x: hidden;
-  overflow-y: auto;
-  overscroll-behavior-x: none;
-  overscroll-behavior-y: contain;
-  -webkit-overflow-scrolling: touch;
+  /* Document is locked; smooth-scroll is handled inside the container. */
+  scroll-behavior: auto;
 }
 
 body {
-  margin: 0;
-  background-color: #0f172a;
   color: #e5e7eb;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  /* Mobile: prevent tap highlight, improve touch */
   -webkit-tap-highlight-color: transparent;
-  -webkit-touch-callout: none;
-  /* Allow vertical pan, pinch-zoom */
+  /* Long-press remains enabled so users can copy legal/support text. */
   touch-action: manipulation;
-  /* Allow normal page scroll; contain rubber-band within page */
-  overflow-y: auto;
-  overscroll-behavior-y: contain;
-  -webkit-overflow-scrolling: touch;
-  /* Font stack optimized for Persian + system */
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Vazirmatn", "IRANSans", sans-serif;
-  /* Ensure 16px base to prevent iOS zoom */
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    "Vazirmatn", "IRANSans", sans-serif;
+  /* 16px base prevents iOS zoom on focus. */
   font-size: 16px;
   line-height: 1.6;
-  /* Safe area padding for notched devices */
-  padding-top: var(--sat);
-  padding-right: var(--sar);
-  padding-bottom: var(--sab);
-  padding-left: var(--sal);
 }
 
-/* Root container — grow with content so the document scrolls */
 #root {
-  min-height: 100vh;
-  min-height: 100dvh;
-  min-height: 100svh;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
   width: 100%;
-  display: block;
-  padding-top: 0;
 }
 
+/* ==========================================================================
+   Form controls — iOS-safe sizing, but don't break the design system
+   ========================================================================== */
 button,
 input,
 textarea,
 select {
   font: inherit;
-  /* Prevent iOS zoom: ensure 16px minimum */
-  font-size: max(16px, 1em);
 }
 
-/* Inputs: larger touch, prevent zoom, better mobile UX */
+/* iOS zooms on focus when font-size < 16px. Buttons do NOT trigger zoom,
+   so keep this scoped to text-entry controls only. */
 input,
 textarea,
 select {
-  /* Better touch */
+  font-size: 16px;
   min-height: var(--min-touch);
-  border-radius: 0.75rem;
 }
 
 textarea {
-  min-height: auto;
+  /* Let autoresize work; only the interactive tap area needs 44px. */
+  min-height: calc(var(--min-touch) + 4px);
 }
 
-/* Buttons: ensure minimum touch target 44px, no tap highlight, manipulation */
 button {
-  min-height: var(--min-touch);
   touch-action: manipulation;
   cursor: pointer;
 }
 
 button:disabled {
-  touch-action: manipulation;
   cursor: not-allowed;
 }
 
-/* Links: better touch */
 a {
   touch-action: manipulation;
 }
 
-/* Focus visible for a11y without ugly outlines on tap */
+/* Focus visible for a11y without ugly outlines on tap. */
 :focus:not(:focus-visible) {
   outline: none;
 }
@@ -127,22 +106,27 @@ a {
   outline-offset: 2px;
 }
 
-/* Reduced motion */
-@media (prefers-reduced-motion: reduce) {
-  html {
-    scroll-behavior: auto;
+/* Coarse pointers (touch): enforce min target size only on touch. */
+@media (pointer: coarse) {
+  button {
+    min-height: var(--min-touch);
   }
+}
+
+/* Reduced motion: kill animations, keep color/opacity transitions mild. */
+@media (prefers-reduced-motion: reduce) {
   *,
   *::before,
   *::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }
 
 /* ==========================================================================
-   Scrollbars — thin, unobtrusive, mobile-friendly
+   Scrollbars
    ========================================================================== */
 * {
   scrollbar-width: thin;
@@ -164,27 +148,30 @@ a {
 }
 
 /* ==========================================================================
-   Main app scrolling — one vertical touch-scroll container for the full UI
+   Single scroll container — owns the safe-area padding.
    ========================================================================== */
 .app-scroll-container {
-  height: 100vh;
-  height: 100dvh;
-  min-height: 0;
+  flex: 1 1 auto;
+  min-height: 0;                           /* allows the flex child to shrink */
   overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior-y: contain;
   -webkit-overflow-scrolling: touch;
-  touch-action: pan-y;
-  scrollbar-gutter: stable;
+  /* pan-y + pinch-zoom keeps WCAG 1.4.4 (resize text) accessible. */
+  touch-action: pan-y pinch-zoom;
+  padding-top: var(--sat);
+  padding-right: var(--sar);
+  padding-bottom: var(--sab);
+  padding-left: var(--sal);
 }
 
-/* Keep keyboard focus scrolling inside the page's single scroll container. */
+/* Keyboard focus should scroll into view within the container. */
 .app-scroll-container :is(input, textarea, select, button) {
   scroll-margin-block: 1rem;
 }
 
 /* ==========================================================================
-   Utility animations used by the app
+   Utility animations
    ========================================================================== */
 @keyframes slide-in-from-top {
   from {
@@ -218,15 +205,21 @@ a {
 
 /* Medication card accents */
 .med-card-due {
-  box-shadow: 0 0 0 1px rgba(251, 113, 133, 0.25), 0 18px 50px -24px rgba(0, 0, 0, 0.85);
+  box-shadow: 0 0 0 1px rgba(251, 113, 133, 0.25),
+    0 18px 50px -24px rgba(0, 0, 0, 0.85);
 }
 
 .med-card-running {
-  box-shadow: 0 0 0 1px rgba(34, 211, 238, 0.2), 0 18px 50px -24px rgba(0, 0, 0, 0.85);
+  box-shadow: 0 0 0 1px rgba(34, 211, 238, 0.2),
+    0 18px 50px -24px rgba(0, 0, 0, 0.85);
 }
 
 .med-card-shine {
-  background: radial-gradient(120% 80% at 100% 0%, rgba(255, 255, 255, 0.06), transparent 55%);
+  background: radial-gradient(
+    120% 80% at 100% 0%,
+    rgba(255, 255, 255, 0.06),
+    transparent 55%
+  );
 }
 
 .tap-target {
