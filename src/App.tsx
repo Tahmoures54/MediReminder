@@ -1,3 +1,4 @@
+import { Capacitor } from '@capacitor/core';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { canAddMedication } from './utils/medicationAccess';
 import { getMedicationCardProducts, purchaseMedicationCards, restorePendingMedicationCardPurchases, type MedicationCardProduct } from './services/bazaarBilling';
