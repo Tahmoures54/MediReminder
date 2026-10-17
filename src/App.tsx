@@ -206,39 +206,68 @@ export default function App() {
 
   useEffect(() => {
     let active = true;
-    (async () => {
-      try {
-        const native = Capacitor.isNativePlatform();
-        // Reconcile pending Bazaar purchases on cold start as well as resume.
-        // Failure to reach Bazaar must not prevent the offline reminder app from opening.
-        if (native && Capacitor.getPlatform() === 'android') {
+
+    const runStartupTasksInBackground = (loadedMedications: Medication[], native: boolean) => {
+      // Scheduling and permission probes must start promptly, but must not hold
+      // the first usable screen hostage to slow Android/Bazaar bridge calls.
+      void syncAllAlarms(loadedMedications).catch((error: unknown) => {
+        console.warn('[Alarms] startup reconciliation skipped:', error);
+      });
+
+      void (async () => {
+        try {
+          const [permCheck, exactAlarm, batteryIgnored] = await Promise.all([
+            initAllPermissions(),
+            checkExactAlarmPermission(),
+            checkBatteryOptimizationExemption(),
+          ]);
+          const status = permCheck.notification ? 'granted' : await checkNotificationPermission();
+          if (!active) return;
+          setExactAlarmGranted(exactAlarm);
+          setBatteryOptimizationIgnored(batteryIgnored);
+          setPermission(status);
+        } catch (error) {
+          console.warn('[MediReminder] background permission checks failed:', error);
+        }
+      })();
+
+      // Bazaar can be slow to answer on cold start. Let the offline app open
+      // from IndexedDB first, then reconcile the durable purchase ledger.
+      if (native && Capacitor.getPlatform() === 'android') {
+        const startupRecovery = (async () => {
           try {
             await restorePendingMedicationCardPurchases();
+            const purchasedCards = await db.getPaidMedicationCardCount();
+            if (active) setPaidCardCount(purchasedCards);
           } catch (purchaseRecoveryError) {
             console.warn('[BazaarBilling] startup purchase recovery skipped:', purchaseRecoveryError);
           }
-        }
-        const permCheck = await initAllPermissions();
-        const status = permCheck.notification ? 'granted' : await checkNotificationPermission();
-        const exactAlarm = await checkExactAlarmPermission();
-        const batteryIgnored = await checkBatteryOptimizationExemption();
-        await registerNotificationActions();
-        const loadedMedications = await load();
-        // Reconcile the native notification queue against IndexedDB before the
-        // first screen is shown. This removes orphaned alarms left by a crash
-        // during deletion and closes already-delivered notifications too.
-        await syncAllAlarms(loadedMedications);
-        const purchasedCards = await db.getPaidMedicationCardCount();
-        const hasFreeToken = await db.hasFreeMedicationToken();
+        })();
+        purchaseRecoveryRef.current = startupRecovery;
+        void startupRecovery.finally(() => {
+          if (purchaseRecoveryRef.current === startupRecovery) purchaseRecoveryRef.current = null;
+        });
+      }
+    };
+
+    (async () => {
+      try {
+        const native = Capacitor.isNativePlatform();
+        // Only local database reads are required before showing the main UI.
+        // These operations run together; permissions and external billing are
+        // reconciled after the first screen becomes interactive.
+        const [loadedMedications, purchasedCards, hasFreeToken] = await Promise.all([
+          load(),
+          db.getPaidMedicationCardCount(),
+          db.hasFreeMedicationToken(),
+        ]);
         if (!active) return;
         setPaidCardCount(purchasedCards);
         setFreeTokenAvailable(hasFreeToken);
         setIsNative(native);
-        setExactAlarmGranted(exactAlarm);
-        setBatteryOptimizationIgnored(batteryIgnored);
-        setPermission(status);
         setBootError(null);
         setBootDone(true);
+        runStartupTasksInBackground(loadedMedications, native);
       } catch (error) {
         if (!active) return;
         console.error('[MediReminder] boot failed:', error);
@@ -246,6 +275,7 @@ export default function App() {
         setBootDone(false);
       }
     })();
+
     return () => {
       active = false;
       debouncedSyncRef.current?.cancel();
@@ -608,6 +638,11 @@ export default function App() {
       setShowAdd(false);
       setEditing(null);
       return;
+    }
+    // If cold-start purchase recovery is still running, wait before deciding
+    // whether the user needs to buy credits. This keeps the fast startup safe.
+    if (purchaseRecoveryRef.current) {
+      await purchaseRecoveryRef.current.catch(() => {});
     }
     // Read the persisted entitlement instead of relying only on React state,
     // which may be stale after returning from the external Bazaar payment UI.
