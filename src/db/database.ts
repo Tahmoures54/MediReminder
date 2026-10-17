@@ -346,8 +346,8 @@ class Database {
     const key = Number(id);
     if (!Number.isFinite(key)) return;
     await this.runMultiStoreTransaction<void>([STORE_NAME, STATE_STORE], 'readwrite', async (stores) => {
-      const medicationStore = stores[STORE_NAME];
-      const stateStore = stores[STATE_STORE];
+      const medicationStore = stores[STORE_NAME]!;
+      const stateStore = stores[STATE_STORE]!;
       const medication = await requestToPromise<Medication | undefined>(medicationStore.get(key));
       if (!medication) return;
       const paidState = await requestToPromise<StateEntry<PaidCardsState> | undefined>(stateStore.get(STATE_KEY_PAID_CARDS));
@@ -363,11 +363,11 @@ class Database {
 
   /** Returns whether the one-time free first-medication token is still unused. */
   async hasFreeMedicationToken(): Promise<boolean> {
-    return this.runMultiStoreTransaction<boolean>([STORE_NAME, STATE_STORE], 'readwrite', async (stores) => {
+    const result = await this.runMultiStoreTransaction<boolean>([STORE_NAME, STATE_STORE], 'readwrite', async (stores) => {
       const stateStore = stores[STATE_STORE];
       const used = await requestToPromise<StateEntry<boolean> | undefined>(stateStore.get(STATE_KEY_FREE_TOKEN_USED));
       if (used?.value === true) return false;
-      const medications = await requestToPromise<Medication[]>(stores[STORE_NAME].getAll());
+      const medications = await requestToPromise<Medication[]>(stores[STORE_NAME]!.getAll());
       // Migration: any installation that already contains medication has
       // necessarily used its historical free first card.
       if (medications.length > 0) {
@@ -376,6 +376,7 @@ class Database {
       }
       return true;
     });
+    return result === true;
   }
 
   /**
