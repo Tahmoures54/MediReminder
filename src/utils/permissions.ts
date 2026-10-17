@@ -267,8 +267,16 @@ export async function requestExactAlarmPermission(): Promise<boolean> {
  * browser-only tests and non-Android builds do not need the native bridge
  * to be present at module load time.
  */
+let systemSettingsPlugin: SystemSettingsPlugin | null = null;
+
 function getSystemSettings(): SystemSettingsPlugin {
-  return registerPlugin<SystemSettingsPlugin>('SystemSettings');
+  // registerPlugin installs a proxy in Capacitor's global plugin registry.
+  // Re-registering the same custom plugin on each permission check emits
+  // "plugin already registered" warnings on Android. Keep one lazy instance.
+  if (!systemSettingsPlugin) {
+    systemSettingsPlugin = registerPlugin<SystemSettingsPlugin>('SystemSettings');
+  }
+  return systemSettingsPlugin;
 }
 
 /**
