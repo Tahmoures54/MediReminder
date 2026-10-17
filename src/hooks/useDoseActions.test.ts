@@ -84,7 +84,7 @@ describe('useDoseActions — dose action safety contracts', () => {
         'if (m.quantity <= 0)',
         'window.alert(',
         'return;',
-        'const actionKey = doseActionKey(m);',
+        'const now = Date.now();',
         'const record: HistoryRecord',
       ]);
       contains('دوزی ثبت نشد');
@@ -108,7 +108,7 @@ describe('useDoseActions — dose action safety contracts', () => {
     it('persists a taken dose before updating visible state', () => {
       ordered([
         'await persist(updated);',
-        'setMedications((v) => v.map((x) => (x.id === m.id ? updated : x)))',
+        'setMedications((prev) =>\n        prev.map((x) => (x.id === medication.id ? updated : x)),\n      );',
       ]);
     });
 
@@ -116,7 +116,7 @@ describe('useDoseActions — dose action safety contracts', () => {
       // Guards against a subtle bug: persisting one object but updating state
       // with a different (e.g. re-derived) object, which would desync UI from DB.
       contains('await persist(updated);');
-      contains('x.id === m.id ? updated : x');
+      contains('x.id === medication.id ? updated : x');
     });
   });
 
@@ -128,10 +128,10 @@ describe('useDoseActions — dose action safety contracts', () => {
    * -------------------------------------------------------------------- */
   describe('guard release on persistence failure', () => {
     it('releases the duplicate-action guard if persistence fails', () => {
-      contains('completedDoseActionsRef.current.delete(actionKey)');
+      contains('forgetDoseAction(actionKey)');
       // The console message doubles as an audit trail — operators can grep
       // logs for it to spot flaky environments.
-      contains('failed to persist taken dose; action can be retried');
+      contains('failed to persist ${config.kind} action; action can be retried');
     });
 
     it('deletes the guard inside the catch block (not in finally)', () => {
@@ -139,7 +139,7 @@ describe('useDoseActions — dose action safety contracts', () => {
       // success — defeating the purpose of the dedupe. We assert the delete
       // is textually inside a `catch` block by checking ordering relative to
       // the catch keyword.
-      ordered(['catch', 'completedDoseActionsRef.current.delete(actionKey)']);
+      ordered(['catch (error)', 'forgetDoseAction(actionKey)']);
     });
   });
 
