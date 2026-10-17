@@ -47,7 +47,11 @@ jobs:
         run: npm test
 
       - name: Build web app — Final Release
-        run: npm run build
+        run: |
+          set -euo pipefail
+          export VITE_APP_VERSION="$(node -p "require('./package.json').version")"
+          export VITE_RELEASE_CHANNEL="final"
+          npm run build
         env:
           NODE_ENV: production
           VITE_BAZAAR_RSA_PUBLIC_KEY: ${{ secrets.BAZAAR_RSA_PUBLIC_KEY }}
