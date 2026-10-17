@@ -1,31 +1,94 @@
 {
   "compilerOptions": {
+    /* ===================== Language & target =====================
+       Target ES2020 keeps the build compatible with Android 8+ (Chrome 80+)
+       which is the Capacitor 8 minimum. Bumping to ES2022 would let Vite
+       emit smaller output (no down-leveling for class fields, top-level
+       await, etc.) but would drop Android 7 — verify the store's active
+       install base before raising. */
     "target": "ES2020",
     "useDefineForClassFields": true,
     "lib": ["ES2020", "DOM", "DOM.Iterable"],
-    "module": "ESNext",
-    "skipLibCheck": true,
-    "types": ["node"],
 
-    /* Bundler mode */
+    /* ===================== Module system =====================
+       ESM throughout — the project sets "type": "module" in package.json
+       and Vite handles bundling. "bundler" module resolution lets us use
+       the modern import semantics (no Node.js-style file extensions
+       required, no `index.ts` lookups) without breaking Vite. */
+    "module": "ESNext",
     "moduleResolution": "bundler",
-    "allowImportingTsExtensions": true,
     "resolveJsonModule": true,
     "isolatedModules": true,
+    "verbatimModuleSyntax": false,
+
+    /* ===================== Type checking (strict) =====================
+       All strict-family flags are on. Each catches a different class of
+       runtime bug at compile time — turning any of them off after this
+       point will surface as a wave of `any` creeping into the codebase.
+       Keep them on; fix the type errors properly instead. */
+    "strict": true,
+    "noImplicitAny": true,
+    "strictNullChecks": true,
+    "strictFunctionTypes": true,
+    "strictBindCallApply": true,
+    "strictPropertyInitialization": true,
+    "noImplicitThis": true,
+    "alwaysStrict": true,
+    "exactOptionalPropertyTypes": false,
+
+    /* ===================== Lint-style checks ===================== */
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitReturns": true,
+    "noUncheckedIndexedAccess": true,
+    "noPropertyAccessFromIndexSignature": false,
+
+    /* ===================== Interop & emit =====================
+       allowSyntheticDefaultImports + esModuleInterop are implied by
+       "module": "ESNext" + "moduleResolution": "bundler" in modern TS,
+       but listed explicitly for clarity and to survive future TS defaults
+       changes. */
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
+
+    /* ===================== Bundler / Vite interop =====================
+       - allowImportingTsExtensions: lets imports use `.ts` suffix
+         (Vite resolves them). Required by some tooling.
+       - noEmit: TS is only used for type-checking; Vite handles emit. */
+    "allowImportingTsExtensions": true,
     "noEmit": true,
+
+    /* ===================== JSX =====================
+       react-jsx = the automatic runtime (no `import React` needed). */
     "jsx": "react-jsx",
 
-    /* Path mapping */
+    /* ===================== Types =====================
+       "types": ["node"] restricts global types to @types/node only.
+       Without this, every @types/* in node_modules becomes globally
+       available, which can mask missing imports. Vitest's types are
+       referenced explicitly via tsconfig.dev.json or triple-slash
+       directives in test files. */
+    "types": ["node", "vitest/globals"],
+
+    /* ===================== Path mapping =====================
+       @/* → src/* lets imports read as `@/db/database` instead of
+       `../../../db/database`. The alias is mirrored in vite.config.ts
+       (resolve.alias) — keep them in sync. */
     "baseUrl": ".",
     "paths": {
       "@/*": ["src/*"]
-    },
-
-    /* Linting */
-    "strict": true,
-    "noUnusedLocals": true,
-    "noUnusedParameters": true,
-    "noFallthroughCasesInSwitch": true
+    }
   },
+
+  /* ===================== Files to type-check =====================
+     - src/           : all application source (including tests, so the
+                        contract tests get type-checked alongside the
+                        code they pin).
+     - vite.config.ts : the build config itself is type-checked.
+     Capacitor config is excluded because @capacitor/cli types are
+     heavy and only needed at sync time, not at app-build time. */
   "include": ["src", "vite.config.ts"]
 }
