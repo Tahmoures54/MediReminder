@@ -24,6 +24,7 @@
 
 export type DiagnosticLevel =
   | 'info'
+  | 'payment'
   | 'warn'
   | 'error'
   | 'window-error'
