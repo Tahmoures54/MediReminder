@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Capacitor } from '@capacitor/core';
+import { canAddMedication } from './utils/medicationAccess';
 import { Share } from '@capacitor/share';
 import { getMedicationCardProducts, purchaseMedicationCards, restorePendingMedicationCardPurchases, type MedicationCardProduct } from './services/bazaarBilling';
 import { LocalNotifications } from '@capacitor/local-notifications';
@@ -637,7 +638,7 @@ export default function App() {
     const hasFreeToken = await db.hasFreeMedicationToken();
     setPaidCardCount(currentPaidCardCount);
     setFreeTokenAvailable(hasFreeToken);
-    if (!hasFreeToken && currentPaidCardCount < 1) {
+    if (!canAddMedication(currentPaidCardCount, hasFreeToken)) {
       setPurchaseError('اعتبار شما تمام شده است. برای افزودن یا حذف دارو یک توکن تهیه کنید.');
       setShowPurchase(true);
       return;
