@@ -1,11 +1,35 @@
 /**
  * Bridge: React app ↔ Service Worker (web) ↔ Capacitor LocalNotifications (Android)
- * Final release: robust, battery-aware, accurate timing for mobile
+ *
+ * Architecture
+ * ============
+ *   Web (PWA):     postMessage → Service Worker schedules timers
+ *   Android:       Capacitor LocalNotifications — bounded pre-scheduled queue
+ *
+ * Safety invariants (pinned by alarms.test.ts):
+ *
+ *   1. Follow-up spacing ≥ Android Doze minimum (9 min) — see NATIVE_FOLLOW_UP_MS.
+ *   2. Pre-scheduled coverage ≥ 8h, refreshed before expiry.
+ *   3. Replacement scheduling precedes obsolete-slot removal — a failed
+ *      schedule leaves the previous reminder intact instead of having
+ *      none at all.
+ *   4. Shared queue is capped; every medication's slot-0 (first reminder)
+ *      is prioritized over any medication's follow-ups.
+ *   5. Per-medication cleanup matches by `extra.medicationId`, not by ID
+ *      range alone — covers legacy/stale IDs too.
+ *
+ * All anchor strings asserted by the contract test are preserved verbatim
+ * in the bodies below. Refactor with care.
  */
+
 import { Capacitor } from '@capacitor/core';
 import { LocalNotifications } from '@capacitor/local-notifications';
 import type { Medication } from '../db/database';
 import { NOTIFICATION_CHANNEL_ID } from './permissions';
+
+/* ==========================================================================
+ * Constants
+ * ========================================================================== */
 
 const ACTION_TYPE_ID = 'MED_ALARM_ACTIONS';
 
@@ -28,13 +52,28 @@ export const NATIVE_PENDING_REFRESH_MS = 4 * 60 * 60 * 1000;
 export const NATIVE_SCHEDULE_EXTRA_SLOTS = NATIVE_FOLLOW_UP_SLOTS;
 /** Keep the total queue below common Android/OEM pending-alarm pressure. */
 export const MAX_PENDING_NATIVE_NOTIFICATIONS = 450;
-/** حداکثر تعداد اعلان‌های زمان‌بندی‌شده در هر دسته برای جلوگیری از مشکلات OEM */
+/** Maximum scheduled notifications per `LocalNotifications.schedule` call. */
 const SCHEDULE_CHUNK_SIZE = 48;
-/** پراکندگی زمانی بین داروهای مختلف تا با محدودیت 9دقیقه‌ای Doze برخورد نکنند */
+/** Stable per-medication time offset so simultaneous alarms don't collide
+ *  and don't trip the 9-minute Doze minimum either. */
 const MED_STAGGER_MS = 20_000;
+/** Number of reserved notification IDs per medication (slots + slack). */
+const NOTIF_IDS_PER_MED = Math.max(NATIVE_FOLLOW_UP_SLOTS, NATIVE_SCHEDULE_EXTRA_SLOTS) + 4;
+/** Offset added to the base ID range so slot 0 never collides with a zero id. */
+const NOTIF_IDS_BASE_OFFSET = 100;
+/** Small leading delay (ms) for slot-0 fire so the handler can attach before
+ *  the notification is delivered. */
+const SLOT0_LEAD_MS = 900;
+/** Tiny additional delay (ms) for follow-up slots to avoid identical fire
+ *  times across medications that share the same stagger bucket. */
+const FOLLOWUP_JITTER_MS = 800;
+/** Reject scheduled times that would fire within this window of "now"
+ *  (avoids the OS reporting an impossible past time). */
+const MIN_FUTURE_MS = 500;
 
-// Prevent duplicate registration of action types
-let actionsRegistered = false;
+/* ==========================================================================
+ * Types
+ * ========================================================================== */
 
 export type SwMessage =
   | { type: 'ALARM_TAKEN'; medicationId: number | string }
@@ -43,15 +82,62 @@ export type SwMessage =
   | { type: 'ALARM_TRIGGERED'; medicationId: number | string }
   | { type: 'ALARMS_LIST'; alarms: unknown[] };
 
-// پیام‌های ارسالی به Service Worker
 type SwOutgoingMessage =
   | { type: 'SCHEDULE_ALARMS'; alarms: unknown[] }
   | { type: 'CANCEL_ALARM'; id: number | string }
   | { type: 'DISMISS_ALARM'; id: number | string };
 
-function isNative() {
+/** Discriminator for which scheduling branch produced a notification. */
+type ReminderKind = 'pending' | 'scheduled' | 'overdue';
+
+/** Shape of a fully-built native notification ready for `LocalNotifications.schedule`. */
+interface SchedNotification {
+  id: number;
+  title: string;
+  body: string;
+  schedule: { at: Date; allowWhileIdle: boolean };
+  channelId: string;
+  sound: string;
+  smallIcon?: string;
+  iconColor?: string;
+  actionTypeId: string;
+  extra: Record<string, unknown>;
+  autoCancel?: boolean;
+  ongoing?: boolean;
+}
+
+/* ==========================================================================
+ * Module state
+ * ========================================================================== */
+
+let actionsRegistered = false;
+
+/* ==========================================================================
+ * Platform helper
+ * ========================================================================== */
+
+function isNative(): boolean {
   return Capacitor.isNativePlatform();
 }
+
+/* ==========================================================================
+ * Notification ID ranges
+ * ========================================================================== */
+
+/**
+ * Returns the reserved notification ID range for a medication.
+ * Uses a stable per-medication base so the same slot index maps to the same
+ * ID across sync runs — this is what makes "schedule replaces previous"
+ * semantics work without an explicit clear first.
+ */
+function notifIdsFor(medId: number): number[] {
+  const base = Math.max(1, medId) * 1000 + NOTIF_IDS_BASE_OFFSET;
+  return Array.from({ length: NOTIF_IDS_PER_MED }, (_, i) => base + i);
+}
+
+/* ==========================================================================
+ * Action type registration
+ * ========================================================================== */
 
 export async function registerNotificationActions(): Promise<void> {
   if (!isNative() || actionsRegistered) return;
@@ -75,13 +161,9 @@ export async function registerNotificationActions(): Promise<void> {
   }
 }
 
-function notifIdsFor(medId: number): number[] {
-  // Use a stable range per medication to avoid collisions.
-  // 1000 IDs are reserved per medication; only ~40 are currently needed.
-  const base = Math.max(1, medId) * 1000 + 100;
-  const count = Math.max(NATIVE_FOLLOW_UP_SLOTS, NATIVE_SCHEDULE_EXTRA_SLOTS) + 4;
-  return Array.from({ length: count }, (_, i) => base + i);
-}
+/* ==========================================================================
+ * Cancel / dismiss — per medication
+ * ========================================================================== */
 
 export async function cancelMedNotifications(medId: number): Promise<void> {
   if (!Number.isFinite(medId)) return;
@@ -102,19 +184,21 @@ export async function cancelMedNotifications(medId: number): Promise<void> {
       LocalNotifications.getDeliveredNotifications(),
     ]);
     const pending = pendingResult.notifications.filter(
-      (notification) => ids.has(notification.id) || Number(notification.extra?.medicationId) === medId,
+      (notification) =>
+        ids.has(notification.id) || Number(notification.extra?.medicationId) === medId,
     );
     const delivered = deliveredResult.notifications.filter(
-      (notification) => ids.has(notification.id) || Number(notification.extra?.medicationId) === medId,
+      (notification) =>
+        ids.has(notification.id) || Number(notification.extra?.medicationId) === medId,
     );
 
+    // De-duplicate by ID (the reserved range and the metadata match can
+    // overlap for the same notification).
     const pendingToCancel = new Map<number, { id: number }>();
     for (const id of ids) pendingToCancel.set(id, { id });
     for (const notification of pending) pendingToCancel.set(notification.id, { id: notification.id });
-    const cancelList = [...pendingToCancel.values()];
-    for (let i = 0; i < cancelList.length; i += SCHEDULE_CHUNK_SIZE) {
-      await LocalNotifications.cancel({ notifications: cancelList.slice(i, i + SCHEDULE_CHUNK_SIZE) });
-    }
+
+    await cancelInChunks([...pendingToCancel.values()]);
     if (delivered.length > 0) {
       await LocalNotifications.removeDeliveredNotifications({ notifications: delivered });
     }
@@ -131,6 +215,19 @@ export async function cancelMedNotifications(medId: number): Promise<void> {
 export function dismissSwFollowUps(medId: number | string): void {
   postToSw({ type: 'DISMISS_ALARM', id: medId });
 }
+
+/** Cancels a list of notifications in SCHEDULE_CHUNK_SIZE batches. */
+async function cancelInChunks(items: { id: number }[]): Promise<void> {
+  for (let i = 0; i < items.length; i += SCHEDULE_CHUNK_SIZE) {
+    await LocalNotifications.cancel({
+      notifications: items.slice(i, i + SCHEDULE_CHUNK_SIZE),
+    });
+  }
+}
+
+/* ==========================================================================
+ * Service Worker bridge (web only)
+ * ========================================================================== */
 
 function postToSw(payload: SwOutgoingMessage): void {
   if (isNative()) return;
@@ -149,6 +246,10 @@ function postToSw(payload: SwOutgoingMessage): void {
   }
 }
 
+/* ==========================================================================
+ * Top-level sync entry point
+ * ========================================================================== */
+
 export async function syncAllAlarms(medications: Medication[]): Promise<void> {
   try {
     if (isNative()) {
@@ -162,10 +263,9 @@ export async function syncAllAlarms(medications: Medication[]): Promise<void> {
   }
 }
 
-/** آفست پایدار بر اساس id دارو تا آلارم‌های همزمان روی هم نیفتند */
-function medStagger(medId: number): number {
-  return (Math.max(1, medId) % 9) * MED_STAGGER_MS;
-}
+/* ==========================================================================
+ * Web sync
+ * ========================================================================== */
 
 function syncWeb(medications: Medication[]): void {
   const now = Date.now();
@@ -189,15 +289,22 @@ function syncWeb(medications: Medication[]): void {
   postToSw({ type: 'SCHEDULE_ALARMS', alarms });
 }
 
-async function syncNative(medications: Medication[]): Promise<void> {
-  const now = Date.now();
+/* ==========================================================================
+ * Native sync (Android)
+ * ========================================================================== */
 
-  // Reconcile orphaned notifications against the database-backed medication
-  // list on startup/resume. This also catches a process death between deleting
-  // the medication record and posting its explicit cancellation request.
-  const activeMedicationIds = new Set(
-    medications.filter((medication) => medication.id != null).map((medication) => Number(medication.id)),
-  );
+/** Stable per-medication stagger so simultaneous alarms don't pile up. */
+function medStagger(medId: number): number {
+  return (Math.max(1, medId) % 9) * MED_STAGGER_MS;
+}
+
+/**
+ * Reconciles the native notification store against the active medication
+ * list. Removes notifications whose `extra.medicationId` is no longer in
+ * the active set — covers the race where a deletion's explicit cancel
+ * never reached the plugin (process death between DB delete and cancel).
+ */
+async function reconcileOrphanedNotifications(activeMedicationIds: Set<number>): Promise<void> {
   try {
     const [pendingResult, deliveredResult] = await Promise.all([
       LocalNotifications.getPending(),
@@ -216,133 +323,211 @@ async function syncNative(medications: Medication[]): Promise<void> {
   } catch (error) {
     console.warn('[Alarms] orphan notification reconciliation failed', error);
   }
+}
 
-  // Do not cancel the currently working reminders before replacements are scheduled.
-  // If Android rejects a new schedule request, the previous reminder must remain.
-  const reservedIds = medications
-    .filter((m) => m.id != null)
-    .flatMap((m) => notifIdsFor(m.id!).map((id) => ({ id })));
+/* ---------- per-notification builder (DRY across the three branches) ---------- */
 
-  interface SchedNotification {
-    id: number;
-    title: string;
-    body: string;
-    schedule: { at: Date; allowWhileIdle: boolean };
-    channelId: string;
-    sound: string;
-    smallIcon?: string;
-    iconColor?: string;
-    actionTypeId: string;
-    extra: Record<string, unknown>;
-    autoCancel?: boolean;
-    ongoing?: boolean;
+interface NotificationBuildInput {
+  medication: Medication;
+  ids: number[];
+  stagger: number;
+  kind: ReminderKind;
+}
+
+/** Title for the slot-0 (first) reminder, varies by reminder kind. */
+function primaryTitle(kind: ReminderKind): string {
+  switch (kind) {
+    case 'pending':   return '💊 زمان مصرف دارو';
+    case 'scheduled': return '💊 زمان مصرف دارو';
+    case 'overdue':   return '💊 زمان مصرف دارو (معوق)';
   }
+}
 
-  const toSchedule: SchedNotification[] = [];
-
-  for (const m of medications) {
-    if (m.id == null) continue;
-    const ids = notifIdsFor(m.id);
-    const stagger = medStagger(m.id);
-
-    if (m.pendingDose) {
-      for (let slot = 0; slot < NATIVE_FOLLOW_UP_SLOTS; slot++) {
-        const atMs =
-          slot === 0
-            ? now + 900 + stagger
-            : now + slot * NATIVE_FOLLOW_UP_MS + stagger + 800;
-        toSchedule.push({
-          id: ids[slot],
-          title: slot === 0 ? '💊 زمان مصرف دارو' : '🔔 یادآوری مجدد — لطفاً تأیید کنید',
-          body: `${m.name} — ${m.dosage}\n${slot === 0 ? 'الان مصرف کنید و تأیید کنید.' : 'هنوز مصرف را تأیید نکرده‌اید.'}`,
-          schedule: { at: new Date(atMs), allowWhileIdle: true },
-          channelId: NOTIFICATION_CHANNEL_ID,
-          sound: 'medication_alarm.wav',
-          smallIcon: 'ic_stat_icon_config_sample',
-          iconColor: '#DC2626',
-          actionTypeId: ACTION_TYPE_ID,
-          extra: { medicationId: m.id, kind: 'pending', slot, scheduledAt: m.dueScheduledAt ?? m.nextDoseAt },
-          autoCancel: false,
-          ongoing: slot === 0,
-        });
-      }
-      continue;
-    }
-
-    if (m.running && m.nextDoseAt && m.nextDoseAt > now) {
-      for (let slot = 0; slot < NATIVE_SCHEDULE_EXTRA_SLOTS; slot++) {
-        const atMs = m.nextDoseAt + slot * NATIVE_FOLLOW_UP_MS + (slot === 0 ? 0 : stagger);
-        if (atMs <= now + 500) continue;
-        toSchedule.push({
-          id: ids[slot],
-          title: slot === 0 ? '💊 زمان مصرف دارو' : '🔔 یادآوری مجدد دارو',
-          body: `${m.name} — ${m.dosage}${slot > 0 ? '\nلطفاً تأیید کنید.' : ''}`,
-          schedule: { at: new Date(atMs), allowWhileIdle: true },
-          channelId: NOTIFICATION_CHANNEL_ID,
-          sound: 'medication_alarm.wav',
-          smallIcon: 'ic_stat_icon_config_sample',
-          iconColor: '#0891b2',
-          actionTypeId: ACTION_TYPE_ID,
-          extra: { medicationId: m.id, kind: 'scheduled', slot, scheduledAt: m.nextDoseAt },
-          autoCancel: false,
-          ongoing: false,
-        });
-      }
-      continue;
-    }
-
-    if (m.running && m.nextDoseAt && m.nextDoseAt <= now) {
-      for (let slot = 0; slot < NATIVE_FOLLOW_UP_SLOTS; slot++) {
-        const atMs =
-          slot === 0
-            ? now + 900 + stagger
-            : now + slot * NATIVE_FOLLOW_UP_MS + stagger + 800;
-        toSchedule.push({
-          id: ids[slot],
-          title: slot === 0 ? '💊 زمان مصرف دارو (معوق)' : '🔔 یادآوری مجدد — لطفاً تأیید کنید',
-          body: `${m.name} — ${m.dosage}\nزمان مصرف گذشته، لطفاً تأیید کنید.`,
-          schedule: { at: new Date(atMs), allowWhileIdle: true },
-          channelId: NOTIFICATION_CHANNEL_ID,
-          sound: 'medication_alarm.wav',
-          smallIcon: 'ic_stat_icon_config_sample',
-          iconColor: '#DC2626',
-          actionTypeId: ACTION_TYPE_ID,
-          extra: { medicationId: m.id, kind: 'overdue', slot, scheduledAt: m.nextDoseAt },
-          autoCancel: false,
-          ongoing: slot === 0,
-        });
-      }
-    }
+/** Title for slot > 0 (follow-up) reminders, varies by reminder kind. */
+function followupTitle(kind: ReminderKind): string {
+  switch (kind) {
+    case 'pending':   return '🔔 یادآوری مجدد — لطفاً تأیید کنید';
+    case 'scheduled': return '🔔 یادآوری مجدد دارو';
+    case 'overdue':   return '🔔 یادآوری مجدد — لطفاً تأیید کنید';
   }
+}
 
-  toSchedule.sort((a, b) => a.schedule.at.getTime() - b.schedule.at.getTime());
+/** Body text for the reminder, varies by kind and slot. */
+function bodyText(medication: Medication, kind: ReminderKind, slot: number): string {
+  const base = `${medication.name} — ${medication.dosage}`;
+  if (kind === 'overdue') return `${base}\nزمان مصرف گذشته، لطفاً تأیید کنید.`;
+  if (kind === 'pending') {
+    return `${base}\n${slot === 0 ? 'الان مصرف کنید و تأیید کنید.' : 'هنوز مصرف را تأیید نکرده‌اید.'}`;
+  }
+  // scheduled
+  return slot > 0 ? `${base}\nلطفاً تأیید کنید.` : base;
+}
 
-  // The queue is shared across all medications. Reserve the first alert for
-  // every medication before distributing follow-ups round-robin by slot, so
-  // a large medication list cannot silently crowd out another medicine's
-  // initial reminder. Unselected slots are canceled below and will be rebuilt
-  // on the next sync/resume.
-  let selectedNotifications = toSchedule;
-  if (toSchedule.length > MAX_PENDING_NATIVE_NOTIFICATIONS) {
-    const primary = toSchedule.filter((notification) => Number(notification.extra.slot) === 0);
-    const followUps = toSchedule
-      .filter((notification) => Number(notification.extra.slot) !== 0)
-      .sort((a, b) =>
-        Number(a.extra.slot) - Number(b.extra.slot) ||
-        a.schedule.at.getTime() - b.schedule.at.getTime()
-      );
-    selectedNotifications = [...primary, ...followUps]
-      .slice(0, MAX_PENDING_NATIVE_NOTIFICATIONS)
-      .sort((a, b) => a.schedule.at.getTime() - b.schedule.at.getTime());
-    console.warn('[Alarms] native queue capped to protect initial reminders', {
-      requested: toSchedule.length,
-      scheduled: selectedNotifications.length,
-      limit: MAX_PENDING_NATIVE_NOTIFICATIONS,
+/** Icon color: red for urgent (pending/overdue), teal for normal scheduled. */
+function iconColorFor(kind: ReminderKind): string {
+  return kind === 'scheduled' ? '#0891b2' : '#DC2626';
+}
+
+/**
+ * Builds the full follow-up slot list for a medication in one branch.
+ * Encapsulates the (slot 0 vs slot > 0) timing logic and the kind-specific
+ * title/body/color so the three callers in `syncNative` stay narrow.
+ */
+function buildFollowUpNotifications({
+  medication,
+  ids,
+  stagger,
+  kind,
+}: NotificationBuildInput): SchedNotification[] {
+  const slotCount =
+    kind === 'scheduled' ? NATIVE_SCHEDULE_EXTRA_SLOTS : NATIVE_FOLLOW_UP_SLOTS;
+  const anchor = medication.dueScheduledAt ?? medication.nextDoseAt;
+  const result: SchedNotification[] = [];
+
+  for (let slot = 0; slot < slotCount; slot++) {
+    const atMs =
+      slot === 0
+        ? Date.now() + SLOT0_LEAD_MS + stagger
+        : Date.now() + slot * NATIVE_FOLLOW_UP_MS + stagger + FOLLOWUP_JITTER_MS;
+    if (kind === 'scheduled' && atMs <= Date.now() + MIN_FUTURE_MS) continue;
+
+    result.push({
+      id: ids[slot],
+      title: slot === 0 ? primaryTitle(kind) : followupTitle(kind),
+      body: bodyText(medication, kind, slot),
+      schedule: { at: new Date(atMs), allowWhileIdle: true },
+      channelId: NOTIFICATION_CHANNEL_ID,
+      sound: 'medication_alarm.wav',
+      smallIcon: 'ic_stat_icon_config_sample',
+      iconColor: iconColorFor(kind),
+      actionTypeId: ACTION_TYPE_ID,
+      extra: {
+        medicationId: medication.id,
+        kind,
+        slot,
+        scheduledAt: anchor,
+      },
+      autoCancel: false,
+      ongoing: slot === 0 && kind !== 'scheduled',
     });
   }
+  return result;
+}
 
-  console.info('[Alarms] scheduling native', selectedNotifications.length, 'notifications');
+/**
+ * Builds the native schedule list for a single medication. Returns an empty
+ * array if the medication has nothing to schedule (paused, no future dose).
+ *
+ * Three branches:
+ *   1. `pendingDose` → 'pending' kind, fire immediately + follow-ups.
+ *   2. running + future `nextDoseAt` → 'scheduled' kind, fire at nextDoseAt
+ *      + follow-ups anchored on nextDoseAt.
+ *   3. running + past `nextDoseAt` → 'overdue' kind, fire immediately +
+ *      follow-ups.
+ */
+function buildMedicationNotifications(medication: Medication): SchedNotification[] {
+  if (medication.id == null) return [];
+  const ids = notifIdsFor(medication.id);
+  const stagger = medStagger(medication.id);
+  const now = Date.now();
 
+  if (medication.pendingDose) {
+    return buildFollowUpNotifications({ medication, ids, stagger, kind: 'pending' });
+  }
+
+  if (medication.running && medication.nextDoseAt && medication.nextDoseAt > now) {
+    // 'scheduled' uses an anchor relative to nextDoseAt, not "now".
+    return buildScheduledNotifications(medication, ids, stagger);
+  }
+
+  if (medication.running && medication.nextDoseAt && medication.nextDoseAt <= now) {
+    return buildFollowUpNotifications({ medication, ids, stagger, kind: 'overdue' });
+  }
+
+  return [];
+}
+
+/** 'scheduled' branch — anchors slots on `nextDoseAt`, not `now`. */
+function buildScheduledNotifications(
+  medication: Medication,
+  ids: number[],
+  stagger: number,
+): SchedNotification[] {
+  if (!medication.nextDoseAt) return [];
+  const result: SchedNotification[] = [];
+  const now = Date.now();
+
+  for (let slot = 0; slot < NATIVE_SCHEDULE_EXTRA_SLOTS; slot++) {
+    const atMs = medication.nextDoseAt + slot * NATIVE_FOLLOW_UP_MS + (slot === 0 ? 0 : stagger);
+    if (atMs <= now + MIN_FUTURE_MS) continue;
+
+    result.push({
+      id: ids[slot],
+      title: slot === 0 ? primaryTitle('scheduled') : followupTitle('scheduled'),
+      body: bodyText(medication, 'scheduled', slot),
+      schedule: { at: new Date(atMs), allowWhileIdle: true },
+      channelId: NOTIFICATION_CHANNEL_ID,
+      sound: 'medication_alarm.wav',
+      smallIcon: 'ic_stat_icon_config_sample',
+      iconColor: iconColorFor('scheduled'),
+      actionTypeId: ACTION_TYPE_ID,
+      extra: {
+        medicationId: medication.id,
+        kind: 'scheduled' as const,
+        slot,
+        scheduledAt: medication.nextDoseAt,
+      },
+      autoCancel: false,
+      ongoing: false,
+    });
+  }
+  return result;
+}
+
+/* ---------- queue cap (prioritize slot-0 over follow-ups) ---------- */
+
+/**
+ * Caps the queue to MAX_PENDING_NATIVE_NOTIFICATIONS. Slot-0 (first reminder)
+ * for every medication is reserved before any follow-up is admitted, so a
+ * large medication list cannot silently crowd out another medicine's
+ * initial reminder.
+ */
+function capQueue(toSchedule: SchedNotification[]): SchedNotification[] {
+  if (toSchedule.length <= MAX_PENDING_NATIVE_NOTIFICATIONS) return toSchedule;
+
+  const primary = toSchedule.filter((notification) => Number(notification.extra.slot) === 0);
+  const followUps = toSchedule
+    .filter((notification) => Number(notification.extra.slot) !== 0)
+    .sort(
+      (a, b) =>
+        Number(a.extra.slot) - Number(b.extra.slot) ||
+        a.schedule.at.getTime() - b.schedule.at.getTime(),
+    );
+
+  const capped = [...primary, ...followUps]
+    .slice(0, MAX_PENDING_NATIVE_NOTIFICATIONS)
+    .sort((a, b) => a.schedule.at.getTime() - b.schedule.at.getTime());
+
+  console.warn('[Alarms] native queue capped to protect initial reminders', {
+    requested: toSchedule.length,
+    scheduled: capped.length,
+    limit: MAX_PENDING_NATIVE_NOTIFICATIONS,
+  });
+  return capped;
+}
+
+/* ---------- schedule + obsolete-removal (preserves anchor strings) ---------- */
+
+/**
+ * Schedules `selectedNotifications` in SCHEDULE_CHUNK_SIZE batches and
+ * returns the set of IDs that were attempted (whether or not each chunk
+ * succeeded). Failed chunks do NOT remove their IDs from the desired set
+ * so obsolete-removal below does not cancel still-working reminders.
+ */
+async function scheduleInChunks(selectedNotifications: SchedNotification[]): Promise<{
+  desiredIds: Set<number>;
+  failedChunks: number;
+}> {
   const desiredIds = new Set(selectedNotifications.map((notification) => notification.id));
   let failedChunks = 0;
 
@@ -362,6 +547,17 @@ async function syncNative(medications: Medication[]): Promise<void> {
     }
   }
 
+  return { desiredIds, failedChunks };
+}
+
+/**
+ * Cancels reserved IDs that are no longer desired. Runs ONLY after the
+ * schedule attempt so a failed schedule leaves previous reminders intact.
+ */
+async function cancelObsoleteSlots(
+  reservedIds: { id: number }[],
+  desiredIds: Set<number>,
+): Promise<void> {
   // Only after attempting replacements, remove unused reserved slots. Desired IDs
   // are never cancelled here, including IDs in a chunk that failed to schedule.
   const obsoleteIds = reservedIds.filter(({ id }) => !desiredIds.has(id));
@@ -377,6 +573,36 @@ async function syncNative(medications: Medication[]): Promise<void> {
       });
     }
   }
+}
+
+/* ---------- top-level native sync ---------- */
+
+async function syncNative(medications: Medication[]): Promise<void> {
+  // Reconcile orphaned notifications against the database-backed medication
+  // list on startup/resume. This also catches a process death between deleting
+  // the medication record and posting its explicit cancellation request.
+  const activeMedicationIds = new Set(
+    medications
+      .filter((medication) => medication.id != null)
+      .map((medication) => Number(medication.id)),
+  );
+  await reconcileOrphanedNotifications(activeMedicationIds);
+
+  // Do not cancel the currently working reminders before replacements are scheduled.
+  // If Android rejects a new schedule request, the previous reminder must remain.
+  const reservedIds = medications
+    .filter((m) => m.id != null)
+    .flatMap((m) => notifIdsFor(m.id!).map((id) => ({ id })));
+
+  const toSchedule: SchedNotification[] = medications.flatMap(buildMedicationNotifications);
+  toSchedule.sort((a, b) => a.schedule.at.getTime() - b.schedule.at.getTime());
+
+  const selectedNotifications = capQueue(toSchedule);
+
+  console.info('[Alarms] scheduling native', selectedNotifications.length, 'notifications');
+
+  const { desiredIds, failedChunks } = await scheduleInChunks(selectedNotifications);
+  await cancelObsoleteSlots(reservedIds, desiredIds);
 
   if (failedChunks > 0) {
     console.error('[Alarms] reminder sync incomplete; previous notifications were preserved where possible', {
@@ -385,6 +611,10 @@ async function syncNative(medications: Medication[]): Promise<void> {
     });
   }
 }
+
+/* ==========================================================================
+ * SW message listener (web only)
+ * ========================================================================== */
 
 export function onSwMessage(handler: (msg: SwMessage) => void): () => void {
   if (isNative() || typeof navigator === 'undefined' || !('serviceWorker' in navigator)) {
@@ -399,8 +629,22 @@ export function onSwMessage(handler: (msg: SwMessage) => void): () => void {
   return () => navigator.serviceWorker.removeEventListener('message', listener);
 }
 
-/** Debounce helper for high-churn medication state updates. */
-export function createDebouncedSync(delayMs = 350) {
+/* ==========================================================================
+ * Debounced sync helper
+ * ========================================================================== */
+
+interface DebouncedSync {
+  schedule(medications: Medication[]): void;
+  flush(): Promise<void>;
+  cancel(): void;
+}
+
+/**
+ * Debounce helper for high-churn medication state updates. Coalesces a burst
+ * of state changes into a single sync, with a minimum interval between
+ * actual sync runs to avoid hammering the notification scheduler.
+ */
+export function createDebouncedSync(delayMs = 350): DebouncedSync {
   let timer: ReturnType<typeof setTimeout> | null = null;
   let latest: Medication[] = [];
   let lastSync = 0;
