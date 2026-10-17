@@ -303,7 +303,7 @@ describe('patchMedications', () => {
     const b = med({ id: 2, running: true, remaining: 200 });
     const patched = patchMedications([a, b], new Map([[1, { ...a, remaining: 50 }]]));
     expect(patched.map((m) => m.id)).toEqual([1, 2]);
-    expect(patched[0].remaining).toBe(50);
+    expect(patched[0]!.remaining).toBe(50);
     expect(patched[1]!.remaining).toBe(200);
   });
 
