@@ -875,7 +875,7 @@ export default function App() {
           }
 
           setMedications((v) => v.filter((x) => x.id !== id));
-          setPaidCardCount(await db.getPaidMedicationCardCount());
+          setPaidCardCount((current) => Math.max(0, current - 1));
           if (alertId.current === id) {
             alertId.current = null;
             stopAlarm();
