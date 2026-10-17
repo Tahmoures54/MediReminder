@@ -1,34 +1,186 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <!-- ===================== Reliability Permissions (v3.4.1) ===================== -->
-    <!-- نمایش اعلان‌ها (اندروید ۱۳+) -->
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  AndroidManifest.xml — Medication Reminder (Capacitor)
+  ====================================================================
+  This manifest declares only the permissions and core configuration
+  required by the medication-reminder feature set. Activity declarations
+  and the Capacitor application class are merged in from the host
+  project's main manifest at build time.
+
+  Permissions are grouped by the feature they serve, with Play Store
+  review implications called out inline. Sensitive permissions
+  (USE_EXACT_ALARM, FOREGROUND_SERVICE_SPECIAL_USE,
+  REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, USE_FULL_SCREEN_INTENT) all
+  require a justification in the Play Console "Data safety" and
+  "Permissions" section — see the comments below.
+-->
+<manifest
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- ==================================================================
+         1. Notifications & vibration (core reminder delivery)
+         ================================================================== -->
+
+    <!-- Required to post reminder notifications. Runtime permission on
+         Android 13+ (API 33); must be requested from the user via the
+         in-app rationale dialog before scheduling the first alarm. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
-    <!-- ویبره برای هشدار قوی -->
+    <!-- Haptic feedback for the strong alarm pattern. Normal permission
+         (auto-granted), no runtime request needed. -->
     <uses-permission android:name="android.permission.VIBRATE" />
 
-    <!-- Exact alarms:
-         USE_EXACT_ALARM — auto-granted when core feature is exact timing (Android 13+)
-         SCHEDULE_EXACT_ALARM — for Android 12 and as fallback path -->
-    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
-    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" android:maxSdkVersion="32" />
+    <!-- ==================================================================
+         2. Exact alarm timing
+         ==================================================================
+         Medication reminders are time-critical; the app's core purpose is
+         exact timing, so it qualifies for USE_EXACT_ALARM under Google
+         Play policy. Two complementary permissions are declared:
 
-    <!-- بازگردانی آلارم‌ها پس از ریبوت -->
+           * USE_EXACT_ALARM — auto-granted on Android 13+ for apps whose
+             core feature is exact timing. Avoids the user-facing
+             "Alarms & reminders" settings page. Subject to Play review.
+           * SCHEDULE_EXACT_ALARM — user-granted on Android 12 (API 31-32)
+             and available as a fallback on 13+ if USE_EXACT_ALARM is
+             denied. Capped at API 32 here because on 13+ we rely on
+             USE_EXACT_ALARM to avoid prompting the user twice.
+         ================================================================== -->
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+    <uses-permission
+        android:name="android.permission.SCHEDULE_EXACT_ALARM"
+        android:maxSdkVersion="32" />
+
+    <!-- ==================================================================
+         3. Alarm persistence across reboots
+         ================================================================== -->
+
+    <!-- Re-register scheduled alarms after device reboot. Without this,
+         every reminder scheduled before a reboot is silently lost. -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
-    <!-- جلوگیری از خواب CPU هنگام اجرای آلارم -->
+    <!-- Hold a partial wake lock while the alarm firing receiver runs so
+         the CPU does not suspend mid-processing. Always paired with a
+         BroadcastReceiver + AlarmManager.setExactAndAllowWhileIdle. -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
 
-    <!-- سرویس پیش‌زمینه (در صورت نیاز آینده) -->
+    <!-- ==================================================================
+         4. Foreground service (reserved for future "sticky reminder" mode)
+         ==================================================================
+         FOREGROUND_SERVICE_SPECIAL_USE is the only allowed subtype for
+         apps that do not fit the well-defined categories (media, call,
+         location, etc.). It is subject to strict Play review and requires
+         a `<property>` declaration under <application> naming the
+         subtype — see the application block below. If foreground services
+         are not yet used, comment these out to avoid unnecessary review.
+         ================================================================== -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
 
-    <!-- درخواست معافیت از بهینه‌سازی باتری -->
+    <!-- ==================================================================
+         5. Battery-optimization exemption request
+         ==================================================================
+         Asking the user to ignore battery optimization guarantees alarms
+         fire on doze mode. Use the in-app rationale dialog before
+         launching ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS. Play
+         review requires a clear user benefit justification.
+         ================================================================== -->
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
-    <!-- اعلان تمام‌صفحه هنگام قفل بودن گوشی -->
+    <!-- ==================================================================
+         6. Full-screen intent for lock-screen alarms
+         ==================================================================
+         Lets the reminder notification bypass the lock screen and appear
+         full-screen when the device is locked. On Android 14+ (API 34)
+         the user must manually grant this via Settings, so the app should
+         detect the grant state and fall back to a high-priority heads-up
+         notification if denied.
+         ================================================================== -->
     <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
 
-    <!-- لینک پشتیبانی واتساپ -->
+    <!-- ==================================================================
+         7. Network (WhatsApp support link + crash reporting)
+         ================================================================== -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <!-- ==================================================================
+         8. Optional hardware declarations
+         ==================================================================
+         Declare `required="false"` so the app can still be installed on
+         devices without vibration or telephony (tablets, some emulators).
+         ================================================================== -->
+    <uses-feature android:name="android.hardware.vibrate" android:required="false" />
+    <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
+
+    <!-- ==================================================================
+         9. Package visibility for WhatsApp deep-link
+         ==================================================================
+         Android 11+ (API 30) requires explicit <queries> to resolve
+         other apps' package names. Without this, `resolveActivity()`
+         for the WhatsApp Intent returns null on API 30+ even if WhatsApp
+         is installed. We declare both the public Intent action AND the
+         known package names to cover the legacy `com.whatsapp` and the
+         business variant `com.whatsapp.w4b`.
+         ================================================================== -->
+    <queries>
+        <package android:name="com.whatsapp" />
+        <package android:name="com.whatsapp.w4b" />
+        <intent>
+            <action android:name="android.intent.action.SEND" />
+            <data android:mimeType="text/plain" />
+        </intent>
+    </queries>
+
+    <!-- ==================================================================
+         10. Application block (host project merges activities/services here)
+         ==================================================================
+         The attributes below are the minimum recommended baseline for a
+         Capacitor app targeting Android 12+ (API 31+). Real activity /
+         service / receiver declarations come from the host project's
+         main manifest via manifest merger.
+         ================================================================== -->
+    <application
+        android:allowBackup="true"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="@xml/backup_rules"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/AppTheme"
+        android:enableOnBackInvokedCallback="true"
+        tools:targetApi="33">
+
+        <!-- Required declaration when FOREGROUND_SERVICE_SPECIAL_USE is
+             used. The subtype string is surfaced to Play reviewers; keep
+             it descriptive and aligned with the in-app feature name. -->
+        <property
+            android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+            android:value="Persistent medication reminder that must fire exactly on schedule even when the app is backgrounded." />
+
+        <!-- Boot receiver: re-schedules all active medication alarms after
+             device reboot. Exported because the system delivers
+             BOOT_COMPLETED to it. -->
+        <receiver
+            android:name=".MedicationBootReceiver"
+            android:enabled="true"
+            android:exported="true"
+            android:permission="android.permission.RECEIVE_BOOT_COMPLETED">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+                <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Alarm firing receiver: handles the exact-alarm callback, posts
+             the reminder notification, acquires a transient wake lock. -->
+        <receiver
+            android:name=".MedicationAlarmReceiver"
+            android:enabled="true"
+            android:exported="false" />
+
+    </application>
+
 </manifest>
