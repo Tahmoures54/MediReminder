@@ -291,7 +291,7 @@ describe('patchMedications', () => {
       ]),
     );
     expect(patched.map((m) => m.id)).toEqual([2]);
-    expect(patched[0].remaining).toBe(9);
+    expect(patched[0]!.remaining).toBe(9);
   });
 
   /* --------------------------------------------------------------------
@@ -304,7 +304,7 @@ describe('patchMedications', () => {
     const patched = patchMedications([a, b], new Map([[1, { ...a, remaining: 50 }]]));
     expect(patched.map((m) => m.id)).toEqual([1, 2]);
     expect(patched[0].remaining).toBe(50);
-    expect(patched[1].remaining).toBe(200);
+    expect(patched[1]!.remaining).toBe(200);
   });
 
   /* --------------------------------------------------------------------
