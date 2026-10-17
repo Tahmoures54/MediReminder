@@ -364,7 +364,7 @@ class Database {
   /** Returns whether the one-time free first-medication token is still unused. */
   async hasFreeMedicationToken(): Promise<boolean> {
     const result = await this.runMultiStoreTransaction<boolean>([STORE_NAME, STATE_STORE], 'readwrite', async (stores) => {
-      const stateStore = stores[STATE_STORE];
+      const stateStore = stores[STATE_STORE]!;
       const used = await requestToPromise<StateEntry<boolean> | undefined>(stateStore.get(STATE_KEY_FREE_TOKEN_USED));
       if (used?.value === true) return false;
       const medications = await requestToPromise<Medication[]>(stores[STORE_NAME]!.getAll());
@@ -396,8 +396,8 @@ class Database {
       [STORE_NAME, STATE_STORE],
       'readwrite',
       async (stores) => {
-        const medicationStore = stores[STORE_NAME];
-        const stateStore = stores[STATE_STORE];
+        const medicationStore = stores[STORE_NAME]!;
+        const stateStore = stores[STATE_STORE]!;
         const [medications, paidState, freeState] = await Promise.all([
           requestToPromise<Medication[]>(medicationStore.getAll()),
           requestToPromise<StateEntry<PaidCardsState> | undefined>(stateStore.get(STATE_KEY_PAID_CARDS)),
@@ -505,7 +505,7 @@ class Database {
       [STATE_STORE, PURCHASE_STORE],
       'readwrite',
       async (stores) => {
-        const stateStore = stores[STATE_STORE];
+        const stateStore = stores[STATE_STORE]!;
         const purchaseStore = stores[PURCHASE_STORE];
         if (!stateStore || !purchaseStore) {
           throw new Error('مخزن اطلاعات خرید در دسترس نیست.');
