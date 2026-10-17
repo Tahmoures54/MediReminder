@@ -78,35 +78,6 @@ function expectNotContains(file: SourceFile, fragment: string): void {
   }
 }
 
-/**
- * Asserts that every fragment appears in `file.content` in the given order.
- * Throws with the missing fragments (if any) and the first out-of-order pair.
- */
-function expectOrdered(file: SourceFile, fragments: readonly string[]): void {
-  const positions = fragments.map((fragment) => file.content.indexOf(fragment));
-
-  const missing = fragments.filter((_, i) => positions[i] === -1);
-  if (missing.length > 0) {
-    throw new Error(
-      `Missing fragment(s) in ${file.name}:\n  - ${missing.join('\n  - ')}\n` +
-      `File path: ${file.path}`,
-    );
-  }
-
-  for (let i = 1; i < positions.length; i++) {
-    if (positions[i] < positions[i - 1]) {
-      const earlier = fragments[i];
-      const later = fragments[i - 1];
-      throw new Error(
-        `Ordering violation in ${file.name}:\n` +
-        `  Expected "${later}" to appear before "${earlier}"\n` +
-        `  Got positions: ${later} → ${positions[i - 1]}, ${earlier} → ${positions[i]}\n` +
-        `File path: ${file.path}`,
-      );
-    }
-  }
-}
-
 /** Returns the 1-indexed line number of `fragment` in `file`, or -1. */
 function lineOf(file: SourceFile, fragment: string): number {
   const idx = file.content.indexOf(fragment);
