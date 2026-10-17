@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Medication } from '../db/database';
 import {
+  EARLY_WINDOW_MS,
   MISSED_AFTER_MS,
   normalize,
   patchMedications,
@@ -161,7 +162,7 @@ describe('statusFor', () => {
    * reclassify early doses as on-time.
    * ------------------------------------------------------------------ */
   it('classifies a dose taken just before the scheduled time as early', () => {
-    expect(statusFor(base, 1_000_000 - 1, 1_000_000)).toBe('early');
+    expect(statusFor(base, 1_000_000 - EARLY_WINDOW_MS - 1, 1_000_000)).toBe('early');
   });
 
   /* --------------------------------------------------------------------
