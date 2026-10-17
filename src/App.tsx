@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Capacitor } from '@capacitor/core';
+import { canAddMedication } from './utils/medicationAccess';
 import { Share } from '@capacitor/share';
 import { getMedicationCardProducts, purchaseMedicationCards, restorePendingMedicationCardPurchases, type MedicationCardProduct } from './services/bazaarBilling';
-import { getMedicationLimit } from './utils/medicationAccess';
 import { LocalNotifications } from '@capacitor/local-notifications';
 import { MedicationCard } from './components/MedicationCard';
 import { AddMedicationForm } from './components/AddMedicationForm';
@@ -119,6 +119,7 @@ export default function App() {
   });
   const [bootDone, setBootDone] = useState(false);
   const [paidCardCount, setPaidCardCount] = useState(0);
+  const [freeTokenAvailable, setFreeTokenAvailable] = useState(true);
   const [showPurchase, setShowPurchase] = useState(false);
   const [showTerms, setShowTerms] = useState(false);
   const [cardProducts, setCardProducts] = useState<MedicationCardProduct[]>([]);
@@ -252,8 +253,10 @@ export default function App() {
         // during deletion and closes already-delivered notifications too.
         await syncAllAlarms(loadedMedications);
         const purchasedCards = await db.getPaidMedicationCardCount();
+        const hasFreeToken = await db.hasFreeMedicationToken();
         if (!active) return;
         setPaidCardCount(purchasedCards);
+        setFreeTokenAvailable(hasFreeToken);
         setIsNative(native);
         setExactAlarmGranted(exactAlarm);
         setBatteryOptimizationIgnored(batteryIgnored);
@@ -632,9 +635,11 @@ export default function App() {
     // Read the persisted entitlement instead of relying only on React state,
     // which may be stale after returning from the external Bazaar payment UI.
     const currentPaidCardCount = await db.getPaidMedicationCardCount();
+    const hasFreeToken = await db.hasFreeMedicationToken();
     setPaidCardCount(currentPaidCardCount);
-    if (medications.length >= getMedicationLimit(currentPaidCardCount)) {
-      setPurchaseError('');
+    setFreeTokenAvailable(hasFreeToken);
+    if (!canAddMedication(currentPaidCardCount, hasFreeToken)) {
+      setPurchaseError('اعتبار شما تمام شده است. برای افزودن یا حذف دارو یک توکن تهیه کنید.');
       setShowPurchase(true);
       return;
     }
@@ -730,12 +735,13 @@ export default function App() {
     quantity: number;
     startImmediately: boolean;
   }) => {
-    // Re-read entitlement at submit time. This is the authoritative local value;
-    // UI state can lag behind an Android activity round-trip.
     const currentPaidCardCount = await db.getPaidMedicationCardCount();
+    const hasFreeToken = await db.hasFreeMedicationToken();
     setPaidCardCount(currentPaidCardCount);
-    if (medications.length >= getMedicationLimit(currentPaidCardCount)) {
+    setFreeTokenAvailable(hasFreeToken);
+    if (!canAddMedication(currentPaidCardCount, hasFreeToken)) {
       setShowAdd(false);
+      setPurchaseError('اعتبار شما تمام شده است. برای افزودن دارو یک توکن تهیه کنید.');
       setShowPurchase(true);
       return;
     }
@@ -756,10 +762,26 @@ export default function App() {
       updatedAt: now,
       history: [],
     };
-    const id = await db.addMedication(m);
-    setMedications((v) => sortMedications([...v, { ...m, id }]));
-    setShowAdd(false);
-    setEditing(null);
+    try {
+      const created = await db.addMedicationWithCredit(m);
+      setPaidCardCount(created.balance);
+      setFreeTokenAvailable(false);
+      setMedications((v) => sortMedications([...v, { ...m, id: created.id }]));
+      setShowAdd(false);
+      setEditing(null);
+    } catch (error) {
+      console.error('[App] failed to add medication / consume token', error);
+      const latestBalance = await db.getPaidMedicationCardCount().catch(() => currentPaidCardCount);
+      setPaidCardCount(latestBalance);
+      const stillFree = await db.hasFreeMedicationToken().catch(() => false);
+      if (latestBalance < 1 && !stillFree) {
+        setShowAdd(false);
+        setPurchaseError(error instanceof Error ? error.message : 'برای افزودن دارو توکن کافی ندارید.');
+        setShowPurchase(true);
+      } else {
+        window.alert(error instanceof Error ? error.message : 'ذخیره دارو انجام نشد؛ اعتبار شما تغییر نکرده است.');
+      }
+    }
   };
 
   const saveEdit = async (d: {
@@ -817,6 +839,13 @@ export default function App() {
 
   const remove = async (m: Medication) => {
     if (m.id == null) return;
+    const availableTokens = await db.getPaidMedicationCardCount();
+    setPaidCardCount(availableTokens);
+    if (availableTokens < 1) {
+      setPurchaseError('برای حذف دارو یک توکن لازم است. حذف دارو اعتبار را برنمی‌گرداند.');
+      setShowPurchase(true);
+      return;
+    }
     setConfirm({
       title: 'حذف دارو',
       message: `«${m.name}» حذف شود؟ این کار برگشت‌پذیر نیست.`,
@@ -846,6 +875,7 @@ export default function App() {
           }
 
           setMedications((v) => v.filter((x) => x.id !== id));
+          setPaidCardCount((current) => Math.max(0, current - 1));
           if (alertId.current === id) {
             alertId.current = null;
             stopAlarm();
@@ -1003,16 +1033,16 @@ export default function App() {
               className="order-1 flex min-h-12 items-center justify-center gap-2 rounded-2xl bg-gradient-to-b from-cyan-400 to-cyan-600 px-4 py-3 text-sm font-black text-slate-950 shadow-md shadow-cyan-950/40 transition active:scale-[0.98] hover:from-cyan-300 hover:to-cyan-500 min-[360px]:order-2"
             >
               <span className="text-lg leading-none" aria-hidden>{formVisible ? '×' : '+'}</span>
-              {formVisible ? 'بستن فرم' : medications.length >= getMedicationLimit(paidCardCount) ? 'خرید کارت دارو' : 'افزودن دارو'}
+              {formVisible ? 'بستن فرم' : !freeTokenAvailable && paidCardCount < 1 ? 'خرید توکن' : 'افزودن دارو'}
             </button>
           </div>
 
           <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 rounded-xl border border-cyan-400/15 bg-cyan-500/[0.06] px-3 py-2.5 text-xs leading-relaxed text-slate-400">
-            <span>ظرفیت ثبت:</span>
-            <span className="font-bold text-cyan-200">{getMedicationLimit(paidCardCount)} دارو</span>
+            <span>مانده اعتبار:</span>
+            <span className="font-bold text-cyan-200">{paidCardCount} توکن</span>
             <span className="text-slate-600">·</span>
             <span>داروی اول رایگان</span>
-            {paidCardCount > 0 ? <span className="text-cyan-100/70">· {paidCardCount} کارت اضافه خریداری‌شده</span> : null}
+            {paidCardCount > 0 ? <span className="text-cyan-100/70">· {paidCardCount} توکن قابل‌مصرف</span> : null}
           </div>
 
           {medications.length > 0 && (
@@ -1261,7 +1291,7 @@ export default function App() {
                 <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-cyan-400/10 text-xl sm:h-12 sm:w-12 sm:rounded-2xl sm:text-2xl">💊</div>
                 <div className="min-w-0 flex-1">
                   <h2 id="card-purchase-title" className="text-base font-black text-white sm:text-lg">افزودن کارت داروی جدید</h2>
-                  <p className="mt-1 text-xs leading-relaxed text-slate-300 sm:text-sm">کارت اول رایگان است. بسته دلخواه را انتخاب کنید تا ظرفیت ثبت همان تعداد داروی اضافه شود.</p>
+                  <p className="mt-1 text-xs leading-relaxed text-slate-300 sm:text-sm">داروی اول رایگان است؛ هر بار افزودن یا حذف دارو یک توکن مصرف می‌کند. حذف دارو توکن را برنمی‌گرداند.</p>
                 </div>
               </div>
             </div>
@@ -1281,15 +1311,15 @@ export default function App() {
                 >
                   <span className="min-w-0">
                     <span className="block text-sm font-bold text-white">{product.title}</span>
-                    <span className="mt-1 block text-xs text-slate-400">{product.cardCount} کارت اضافه</span>
+                    <span className="mt-1 block text-xs text-slate-400">{product.cardCount} توکن مصرفی</span>
                   </span>
                   <span className="shrink-0 text-sm font-black text-cyan-200">{product.price}</span>
                 </button>
               ))}
               {priceLoading && <p className="rounded-xl bg-white/[0.04] p-3 text-xs text-slate-400">در حال دریافت قیمت بسته‌ها از کافه‌بازار…</p>}
               {!priceLoading && cardProducts.length === 0 && !purchaseError && <p className="text-xs text-slate-400">بسته‌ای برای خرید در دسترس نیست.</p>}
-              <p className="pt-1 text-[11px] leading-relaxed text-slate-500">قیمت‌ها مستقیماً از بازار دریافت می‌شوند. خرید موفق، ظرفیت خریداری‌شده را به تعداد کارت‌های فعلی اضافه می‌کند.</p>
-              <p className="rounded-xl border border-amber-400/25 bg-amber-500/10 p-3 text-[11px] leading-relaxed text-amber-100">بسته‌های کارت دارو قابل خریدِ تکراری هستند و پس از پرداخت، ظرفیت به‌صورت محلی روی همین دستگاه ثبت می‌شود. چون برنامه حساب کاربری یا سرور پشتیبان ندارد، حذف برنامه یا پاک‌کردن داده‌های آن ممکن است ظرفیت خریداری‌شده را از بین ببرد.</p>
+              <p className="pt-1 text-[11px] leading-relaxed text-slate-500">قیمت‌ها مستقیماً از بازار دریافت می‌شوند. پس از خرید، تعداد توکن‌ها به اعتبار قابل‌مصرف شما اضافه می‌شود.</p>
+              <p className="rounded-xl border border-amber-400/25 bg-amber-500/10 p-3 text-[11px] leading-relaxed text-amber-100">بسته‌های توکن قابل خریدِ تکراری هستند و پس از پرداخت، مانده توکن‌ها به‌صورت محلی روی همین دستگاه ثبت می‌شود. چون برنامه حساب کاربری یا سرور پشتیبان ندارد، حذف برنامه یا پاک‌کردن داده‌های آن ممکن است مانده توکن‌های ذخیره‌شده را از بین ببرد.</p>
             </div>
             <button
                 type="button"
