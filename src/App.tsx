@@ -1038,11 +1038,11 @@ export default function App() {
           </div>
 
           <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 rounded-xl border border-cyan-400/15 bg-cyan-500/[0.06] px-3 py-2.5 text-xs leading-relaxed text-slate-400">
-            <span>ظرفیت ثبت:</span>
+            <span>مانده اعتبار:</span>
             <span className="font-bold text-cyan-200">{paidCardCount} توکن</span>
             <span className="text-slate-600">·</span>
             <span>داروی اول رایگان</span>
-            {paidCardCount > 0 ? <span className="text-cyan-100/70">· {paidCardCount} کارت اضافه خریداری‌شده</span> : null}
+            {paidCardCount > 0 ? <span className="text-cyan-100/70">· {paidCardCount} توکن قابل‌مصرف</span> : null}
           </div>
 
           {medications.length > 0 && (
@@ -1319,7 +1319,7 @@ export default function App() {
               {priceLoading && <p className="rounded-xl bg-white/[0.04] p-3 text-xs text-slate-400">در حال دریافت قیمت بسته‌ها از کافه‌بازار…</p>}
               {!priceLoading && cardProducts.length === 0 && !purchaseError && <p className="text-xs text-slate-400">بسته‌ای برای خرید در دسترس نیست.</p>}
               <p className="pt-1 text-[11px] leading-relaxed text-slate-500">قیمت‌ها مستقیماً از بازار دریافت می‌شوند. پس از خرید، تعداد توکن‌ها به اعتبار قابل‌مصرف شما اضافه می‌شود.</p>
-              <p className="rounded-xl border border-amber-400/25 bg-amber-500/10 p-3 text-[11px] leading-relaxed text-amber-100">بسته‌های کارت دارو قابل خریدِ تکراری هستند و پس از پرداخت، ظرفیت به‌صورت محلی روی همین دستگاه ثبت می‌شود. چون برنامه حساب کاربری یا سرور پشتیبان ندارد، حذف برنامه یا پاک‌کردن داده‌های آن ممکن است ظرفیت خریداری‌شده را از بین ببرد.</p>
+              <p className="rounded-xl border border-amber-400/25 bg-amber-500/10 p-3 text-[11px] leading-relaxed text-amber-100">بسته‌های توکن قابل خریدِ تکراری هستند و پس از پرداخت، مانده توکن‌ها به‌صورت محلی روی همین دستگاه ثبت می‌شود. چون برنامه حساب کاربری یا سرور پشتیبان ندارد، حذف برنامه یا پاک‌کردن داده‌های آن ممکن است مانده توکن‌های ذخیره‌شده را از بین ببرد.</p>
             </div>
             <button
                 type="button"
