@@ -51,7 +51,7 @@ suite('due medication persistence safety', () => {
   it('persists native due transition before showing the alert', () => {
     const block = sliceBetween(
       appSource,
-      'if (!m.pendingDose && claimDueTransition(m)) {',
+      'const received = LocalNotifications.addListener(\'localNotificationReceived\'',
       'else openAlert(m, true);',
     );
     ordered(block, ['await persist(due);', 'setMedications(', 'openAlert(due, true);']);
