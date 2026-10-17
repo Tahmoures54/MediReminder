@@ -1022,7 +1022,7 @@ export default function App() {
             </div>
           </div>
 
-          <div className="mt-4 grid grid-cols-1 gap-2 min-[360px]:grid-cols-[1fr_1.5fr]">
+          <div className="mt-4 grid grid-cols-1 gap-2">
             <button
               type="button"
               onClick={openAddMedication}
