@@ -46,7 +46,6 @@ const MAX_MESSAGE_LENGTH = 1800;
 const PERSIST_DEBOUNCE_MS = 400;
 const URL_REVOKE_DELAY_MS = 30_000;
 const VIEWER_Z_INDEX = 2147483646;
-const FLOATING_BUTTON_Z_INDEX = VIEWER_Z_INDEX - 1;
 
 /**
  * Regex patterns for PII / sensitive-value redaction. Each pattern is
@@ -566,33 +565,6 @@ function makeActionBtn(label: string, primary = false): HTMLButtonElement {
 }
 
 /* --------------------------------------------------------------------------
- * Floating button
- * -------------------------------------------------------------------------- */
-
-function createFloatingButton(): HTMLButtonElement {
-  const button = document.createElement('button');
-  button.type = 'button';
-  button.textContent = 'مشاهده گزارش خطا';
-  button.setAttribute('aria-label', 'مشاهده و کپی گزارش خطای MediReminder');
-  button.style.cssText = [
-    'position:fixed',
-    'right:12px',
-    'bottom:calc(14px + env(safe-area-inset-bottom))',
-    `z-index:${FLOATING_BUTTON_Z_INDEX}`,
-    'border:1px solid rgba(103,232,249,.55)',
-    'border-radius:12px',
-    'padding:10px 12px',
-    'background:#0e7490',
-    'color:#fff',
-    'font:700 12px sans-serif',
-    'box-shadow:0 4px 16px rgba(0,0,0,.28)',
-    'cursor:pointer',
-  ].join(';');
-  button.addEventListener('click', openViewer);
-  return button;
-}
-
-/* --------------------------------------------------------------------------
  * Initialization
  * -------------------------------------------------------------------------- */
 
@@ -601,7 +573,6 @@ function createFloatingButton(): HTMLButtonElement {
  *   - Restores previously persisted entries from localStorage.
  *   - Patches `console.warn` and `console.error` to also record into the log.
  *   - Captures `window.error` and `unhandledrejection` events.
- *   - Mounts a floating button to open the in-app viewer.
  *
  * Idempotent: calling it more than once is a no-op.
  * Browser-only: bails out on non-window environments (SSR, tests).
@@ -632,5 +603,4 @@ export function initializeDiagnostics(): void {
 
   recordDiagnostic('info', 'Diagnostic logging initialized.');
 
-  document.body.appendChild(createFloatingButton());
 }
