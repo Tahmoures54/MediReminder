@@ -739,7 +739,7 @@ export default function App() {
     const hasFreeToken = await db.hasFreeMedicationToken();
     setPaidCardCount(currentPaidCardCount);
     setFreeTokenAvailable(hasFreeToken);
-    if (!hasFreeToken && currentPaidCardCount < 1) {
+    if (!canAddMedication(currentPaidCardCount, hasFreeToken)) {
       setShowAdd(false);
       setPurchaseError('اعتبار شما تمام شده است. برای افزودن دارو یک توکن تهیه کنید.');
       setShowPurchase(true);
