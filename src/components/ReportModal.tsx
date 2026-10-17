@@ -76,6 +76,7 @@ const STATUS_BADGES: readonly StatusBadgeConfig[] = [
   { key: 'late',    label: 'با تأخیر',      className: 'text-orange-300'  },
   { key: 'missed',  label: 'از دست رفته',   className: 'text-rose-300'    },
   { key: 'skipped', label: 'رد شده',        className: 'text-slate-300'   },
+  { key: 'snoozed', label: 'تعویق‌یافته',   className: 'text-blue-300'     },
 ] as const;
 
 /* ==========================================================================
@@ -183,6 +184,7 @@ function computeStats(sortedHistory: HistoryRecord[]): ReportStats {
     late: 0,
     missed: 0,
     skipped: 0,
+    snoozed: 0,
   };
 
   // Single pass — replaces six separate filter() calls in the original.
@@ -197,7 +199,7 @@ function computeStats(sortedHistory: HistoryRecord[]): ReportStats {
   // intentional decision, not a compliance event.
   const scored = counts['on-time'] + counts.early + counts.late + counts.missed;
   const score = scored > 0 ? Math.round(((counts['on-time'] + counts.early) / scored) * 100) : 0;
-  const lastDose = total > 0 ? formatDateTime(sortedHistory[0].takenAt) : '—';
+  const lastDose = total > 0 ? formatDateTime(sortedHistory[0]!.takenAt) : '—';
 
   return { total, counts, score, lastDose };
 }
@@ -218,7 +220,7 @@ function buildReportText(
     : 'هنوز سابقه‌ای ثبت نشده است.';
 
   const adherence = stats.total > 0 ? `${stats.score}٪` : 'قابل محاسبه نیست';
-  const { 'on-time': onTime, early, late, missed, skipped } = stats.counts;
+  const { 'on-time': onTime, early, late, missed, skipped, snoozed } = stats.counts;
 
   return [
     'گزارش مصرف دارو',
@@ -227,7 +229,7 @@ function buildReportText(
     `بیماری مرتبط: ${medication.condition?.trim() || 'ثبت نشده'}`,
     `تعداد سوابق: ${stats.total}`,
     `به‌موقع: ${onTime} | زودتر: ${early} | با تأخیر: ${late}`,
-    `از دست رفته: ${missed} | رد شده: ${skipped}`,
+    `از دست رفته: ${missed} | رد شده: ${skipped} | تعویق‌یافته: ${snoozed}`,
     `درصد ثبت به‌موقع/زودتر از زمان: ${adherence}`,
     `آخرین سابقه: ${stats.lastDose}`,
     '',
