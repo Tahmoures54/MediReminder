@@ -26,7 +26,6 @@ import {
 import { playAlarm, stopAlarm, triggerHaptics } from './utils/audio';
 import {
   onSwMessage,
-  registerNotificationActions,
   cancelMedNotifications,
   dismissSwFollowUps,
   createDebouncedSync,
