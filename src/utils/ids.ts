@@ -69,6 +69,9 @@ export function toMedId(value: MedIdInput): MedId | null {
   // loose equality is intentional and safe.
   if (value == null) return null;
 
+  // Reject objects and arrays before Number() coercion (Number([]) is 0).
+  if (typeof value !== 'number' && typeof value !== 'string') return null;
+
   // Reject empty strings explicitly — `Number('')` would return 0.
   if (value === '') return null;
 
