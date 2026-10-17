@@ -111,11 +111,11 @@ function expectOrderedIn(source: string, fragments: readonly string[]): void {
   }
 
   for (let i = 1; i < positions.length; i++) {
-    if (positions[i] < positions[i - 1]) {
+    if (positions[i]! < positions[i - 1]!) {
       throw new Error(
         `Ordering violation:\n` +
         `  Expected "${fragments[i - 1]}" to appear before "${fragments[i]}"\n` +
-        `  Got positions: ${positions[i - 1]} → ${positions[i]}`,
+        `  Got positions: ${positions[i - 1]!} → ${positions[i]!}`,
       );
     }
   }
