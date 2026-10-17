@@ -14,6 +14,23 @@ interface Props {
   onShowReport: () => void;
   onTake: () => void;
   onSnooze: () => void;
+  /** When true, disable all actions (e.g. while a parent request is in-flight). */
+  busy?: boolean;
+}
+
+/** Spoken form of a duration in seconds, e.g. "۴ ساعت و ۳۰ دقیقه". */
+function speakRemaining(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds <= 0) return 'کمتر از یک ثانیه';
+  const d = Math.floor(seconds / 86400);
+  const h = Math.floor((seconds % 86400) / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = Math.floor(seconds % 60);
+  const parts: string[] = [];
+  if (d) parts.push(`${d} روز`);
+  if (h) parts.push(`${h} ساعت`);
+  if (m) parts.push(`${m} دقیقه`);
+  if (s && !d) parts.push(`${s} ثانیه`);
+  return parts.join(' و ') || 'کمتر از یک دقیقه';
 }
 
 export function MedicationCard({
@@ -26,26 +43,38 @@ export function MedicationCard({
   onShowReport,
   onTake,
   onSnooze,
+  busy = false,
 }: Props) {
   const quantity = medication.quantity ?? 0;
-  const intervalHours = medication.intervalHours ?? 0;
-  const dosage = medication.dosage ?? '—';
-  const name = medication.name ?? 'بدون نام';
+  // Fallback to 8h so a corrupted record never renders "هر ۰ ساعت".
+  const intervalHours = medication.intervalHours && medication.intervalHours > 0
+    ? medication.intervalHours
+    : 8;
+  const dosage = medication.dosage?.trim() || '—';
+  const name = medication.name?.trim() || 'داروی بدون نام';
   const condition = medication.condition?.trim() || 'بیماری مشخص نشده';
 
-  const remaining = Math.max(0, medication.remaining ?? 0);
-  const interval = Math.max(1, medication.interval ?? 1);
-  const progress = Math.min(100, Math.max(0, (remaining / interval) * 100));
   const due = Boolean(medication.pendingDose);
   const running = Boolean(medication.running);
   const empty = quantity <= 0;
   const low = !empty && quantity <= LOW_STOCK_THRESHOLD;
+
+  const remaining = Math.max(0, medication.remaining ?? 0);
+  const interval = Math.max(1, medication.interval ?? 1);
+  // Standard progress-bar semantics: 0% = just started, 100% = due.
+  // This is what "progress" means to both sighted and screen-reader users.
+  const elapsedRatio = due ? 1 : Math.min(1, Math.max(0, 1 - remaining / interval));
+  const progressPct = Math.round(elapsedRatio * 100);
+
   const next = medication.nextDoseAt
     ? new Date(medication.nextDoseAt).toLocaleTimeString('fa-IR', {
         hour: '2-digit',
         minute: '2-digit',
+        hour12: false,
       })
-    : '—';
+    : null;
+
+  const spokenRemaining = speakRemaining(remaining);
 
   return (
     <article
@@ -70,6 +99,16 @@ export function MedicationCard({
         aria-hidden
       />
       <div className="pointer-events-none absolute inset-0 med-card-shine" aria-hidden />
+
+      {/* SR-only live region so screen readers hear state transitions
+          (start/stop/due) even when the alert popup is dismissed. */}
+      <div className="sr-only" aria-live="polite" aria-atomic="true">
+        {due
+          ? `زمان مصرف ${name} رسیده است`
+          : running
+            ? `${name}: در حال شمارش، ${spokenRemaining} باقی مانده`
+            : `${name}: تایمر متوقف است`}
+      </div>
 
       <div className="relative px-5 pt-5 pb-4">
         <div className="flex items-start justify-between gap-3">
@@ -109,17 +148,22 @@ export function MedicationCard({
               )}
             </div>
 
-            <h3 className="break-words text-[1.35rem] font-black leading-snug tracking-tight text-white sm:text-[1.45rem]">
+            <h3 className="line-clamp-2 break-words text-[1.35rem] font-black leading-snug tracking-tight text-white sm:text-[1.45rem]">
               {name}
             </h3>
-            <p className="mt-1.5 truncate text-sm text-slate-400">برای {condition}</p>
+            <p
+              className="mt-1.5 truncate text-sm text-slate-400"
+              title={medication.condition?.trim() || undefined}
+            >
+              برای {condition}
+            </p>
           </div>
 
           <div className="flex shrink-0 gap-1.5">
-            <IconButton onClick={onEdit} label={`ویرایش ${name}`} title="ویرایش">
+            <IconButton onClick={onEdit} label={`ویرایش ${name}`} title="ویرایش" disabled={busy}>
               ✎
             </IconButton>
-            <IconButton onClick={onShowReport} label={`گزارش ${name}`} title="گزارش مصرف">
+            <IconButton onClick={onShowReport} label={`گزارش ${name}`} title="گزارش مصرف" disabled={busy}>
               ▤
             </IconButton>
           </div>
@@ -161,13 +205,16 @@ export function MedicationCard({
                   running ? 'text-cyan-200' : 'text-slate-500'
                 )}
                 role="timer"
-                aria-label={`${formatTime(remaining)} باقی مانده`}
-                aria-live={running ? 'off' : 'polite'}
+                aria-label={spokenRemaining}
               >
                 {formatTime(remaining)}
               </div>
               <p className="mt-2 text-xs text-slate-400">
-                {running ? `دوز بعدی حدود ${next}` : 'تایمر متوقف است — برای شروع، دکمه شروع را بزنید'}
+                {running && next
+                  ? `دوز بعدی حدود ${next}`
+                  : running
+                    ? 'در حال شمارش'
+                    : 'تایمر متوقف است — برای شروع، دکمه شروع را بزنید'}
               </p>
             </>
           )}
@@ -176,17 +223,22 @@ export function MedicationCard({
         <div
           className="mt-4 mb-4 h-1.5 overflow-hidden rounded-full bg-white/10"
           role="progressbar"
-          aria-valuenow={due ? 100 : Math.round(progress)}
+          aria-valuenow={progressPct}
           aria-valuemin={0}
           aria-valuemax={100}
-          aria-label="پیشرفت تایمر"
+          aria-valuetext={due ? 'زمان مصرف رسیده' : `${spokenRemaining} باقی مانده`}
+          aria-label="پیشرفت تا دوز بعدی"
         >
           <div
             className={cn(
               'h-full rounded-full transition-[width] duration-700 ease-out',
-              due ? 'bg-rose-400' : running ? 'bg-gradient-to-l from-cyan-300 to-teal-400' : 'bg-slate-600'
+              due
+                ? 'bg-rose-400'
+                : running
+                  ? 'bg-gradient-to-l from-cyan-300 to-teal-400'
+                  : 'bg-slate-600'
             )}
-            style={{ width: `${due ? 100 : progress}%` }}
+            style={{ width: `${progressPct}%` }}
           />
         </div>
 
@@ -194,12 +246,14 @@ export function MedicationCard({
           <div className="grid grid-cols-2 gap-2.5">
             <ActionButton
               onClick={onTake}
+              disabled={busy}
               className="bg-emerald-400 text-slate-950 shadow-lg shadow-emerald-950/30 hover:bg-emerald-300 active:bg-emerald-500"
             >
               ✅ مصرف کردم
             </ActionButton>
             <ActionButton
               onClick={onSnooze}
+              disabled={busy}
               className="bg-amber-400 text-slate-950 shadow-lg shadow-amber-950/30 hover:bg-amber-300 active:bg-amber-500"
             >
               ⏰ ۱۰ دقیقه بعد
@@ -209,6 +263,7 @@ export function MedicationCard({
           <div className="grid grid-cols-3 gap-2">
             <ActionButton
               onClick={onToggle}
+              disabled={busy}
               className={cn(
                 'col-span-1 shadow-md',
                 running
@@ -220,6 +275,7 @@ export function MedicationCard({
             </ActionButton>
             <ActionButton
               onClick={onReset}
+              disabled={busy}
               className="bg-white/10 text-slate-100 ring-1 ring-white/10 hover:bg-white/15 active:bg-white/20"
               ariaLabel="ریست تایمر"
             >
@@ -227,6 +283,7 @@ export function MedicationCard({
             </ActionButton>
             <ActionButton
               onClick={onDelete}
+              disabled={busy}
               className="bg-rose-500/90 text-white hover:bg-rose-400 active:bg-rose-600 shadow-rose-950/20"
               ariaLabel={`حذف ${name}`}
             >
@@ -268,17 +325,20 @@ function IconButton({
   label,
   title,
   children,
+  disabled = false,
 }: {
   onClick: () => void;
   label: string;
   title: string;
   children: ReactNode;
+  disabled?: boolean;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className="tap-target rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-slate-200 transition hover:bg-white/10 active:scale-95 active:bg-white/15 touch-manipulation"
+      disabled={disabled}
+      className="tap-target rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-slate-200 transition hover:bg-white/10 active:scale-95 active:bg-white/15 touch-manipulation disabled:cursor-not-allowed disabled:opacity-50"
       aria-label={label}
       title={title}
     >
@@ -292,21 +352,25 @@ function ActionButton({
   className,
   children,
   ariaLabel,
+  disabled = false,
 }: {
   onClick: () => void;
   className?: string;
   children: ReactNode;
   ariaLabel?: string;
+  disabled?: boolean;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
+      disabled={disabled}
       aria-label={ariaLabel}
       className={cn(
         'tap-target rounded-2xl py-3.5 text-[14px] font-bold transition-all active:scale-[0.97]',
         'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-400',
         'touch-manipulation select-none',
+        'disabled:cursor-not-allowed disabled:opacity-50',
         className
       )}
     >
