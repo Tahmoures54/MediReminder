@@ -414,7 +414,8 @@ class Database {
             value: { count: balance - 1, tokens: Array.isArray(paidState?.value?.tokens) ? paidState.value.tokens : [] },
           } satisfies StateEntry<PaidCardsState>);
         }
-        const id = await requestToPromise<number>(idRequest);
+        const id = await requestToPromise<IDBValidKey>(idRequest);
+        if (typeof id !== 'number') throw new Error('افزودن دارو ناموفق بود؛ شناسه معتبر دریافت نشد.');
         return { id, free, balance: free ? balance : balance - 1 };
       },
     );
