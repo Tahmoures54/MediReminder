@@ -68,7 +68,7 @@ vi.mock('@capacitor/local-notifications', () => ({
 }));
 
 import { checkExactAlarmPermission } from './permissions';
-import type { LocalNotifications as LocalNotificationsType } from '@capacitor/local-notifications';
+type LocalNotificationsType = typeof import('@capacitor/local-notifications').LocalNotifications;
 
 /* --------------------------------------------------------------------------
  * Test helpers
