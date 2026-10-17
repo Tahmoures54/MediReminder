@@ -411,6 +411,9 @@ class Database {
       async (stores) => {
         const stateStore = stores[STATE_STORE];
         const purchaseStore = stores[PURCHASE_STORE];
+        if (!stateStore || !purchaseStore) {
+          throw new Error('مخزن اطلاعات خرید در دسترس نیست.');
+        }
 
         // Read both records in parallel for speed.
         const [existingPurchase, paidState] = await Promise.all([
