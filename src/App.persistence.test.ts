@@ -36,14 +36,14 @@ suite('due medication persistence safety', () => {
       'A due transition is not shown as committed until IndexedDB confirms it.',
       'if (updates.size) setMedications',
     );
-    ordered(block, ['await persist(due);', 'updates.set(due.id, due);', 'openAlert(due, true);']);
+    ordered(block, ['await persist(due);', 'updates.set(id, due);', 'openAlert(due, true);']);
   });
 
   it('persists due transition before UI update on resume', () => {
     const block = sliceBetween(
       appSource,
-      'failed to persist due medication on resume; retry will be allowed',
-      '\n        }',
+      'if (m.running && m.nextDoseAt && m.nextDoseAt <= now && !m.pendingDose && claimDueTransition(m)) {',
+      '\n      }\n    } catch (e)',
     );
     ordered(block, ['await persist(due);', 'setMedications(', 'openAlert(due, true);']);
   });
@@ -51,7 +51,7 @@ suite('due medication persistence safety', () => {
   it('persists native due transition before showing the alert', () => {
     const block = sliceBetween(
       appSource,
-      'failed to persist native due medication; retry will be allowed',
+      'if (!m.pendingDose && claimDueTransition(m)) {',
       'else openAlert(m, true);',
     );
     ordered(block, ['await persist(due);', 'setMedications(', 'openAlert(due, true);']);
