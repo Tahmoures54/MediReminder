@@ -113,8 +113,8 @@ export function NotificationPopup({
       ).filter((el) => el.offsetParent !== null);
       if (focusable.length === 0) return;
 
-      const first = focusable[0];
-      const last = focusable[focusable.length - 1];
+      const first = focusable[0]!;
+      const last = focusable[focusable.length - 1]!;
       const active = document.activeElement as HTMLElement | null;
       const inside = active && dialogRef.current.contains(active);
 
