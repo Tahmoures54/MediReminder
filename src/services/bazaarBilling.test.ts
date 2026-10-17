@@ -154,8 +154,11 @@ describe('Bazaar consumable purchase behavior', () => {
     mocks.purchaseProduct.mockResolvedValue({ state: 'CANCELLED' });
 
     const result = purchaseMedicationCards('medireminder_tokens_10');
+    // Attach the rejection assertion before advancing timers so Vitest does not
+    // report the expected cancellation as an unhandled rejection.
+    const rejection = expect(result).rejects.toThrow('خرید را لغو کردید');
     await vi.advanceTimersByTimeAsync(10_000);
-    await expect(result).rejects.toThrow('خرید را لغو کردید');
+    await rejection;
 
     expect(balance).toBe(0);
     expect(mocks.grantPaidMedicationCards).not.toHaveBeenCalled();
