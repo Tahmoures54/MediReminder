@@ -1025,14 +1025,6 @@ export default function App() {
           <div className="mt-4 grid grid-cols-1 gap-2 min-[360px]:grid-cols-[1fr_1.5fr]">
             <button
               type="button"
-              onClick={openSupportWhatsApp}
-              className="order-2 flex min-h-12 items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/[0.05] px-3 py-3 text-sm font-semibold text-slate-200 transition active:scale-[0.98] hover:bg-white/10 min-[360px]:order-1"
-            >
-              <span aria-hidden>💬</span>
-              پشتیبانی
-            </button>
-            <button
-              type="button"
               onClick={openAddMedication}
               className="order-1 flex min-h-12 items-center justify-center gap-2 rounded-2xl bg-gradient-to-b from-cyan-400 to-cyan-600 px-4 py-3 text-sm font-black text-slate-950 shadow-md shadow-cyan-950/40 transition active:scale-[0.98] hover:from-cyan-300 hover:to-cyan-500 min-[360px]:order-2"
             >
@@ -1190,50 +1182,13 @@ export default function App() {
           )}
         </div>
 
-        <section
-          aria-labelledby="support-app-title"
-          className="mt-7 overflow-hidden rounded-3xl border border-amber-300/20 bg-gradient-to-br from-amber-400/[0.13] via-orange-400/[0.08] to-cyan-400/[0.08] p-4 shadow-lg shadow-black/10"
-        >
-          <div className="flex items-start gap-3">
-            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-amber-200/15 bg-amber-300/10 text-2xl" aria-hidden>
-              💛
-            </div>
-            <div className="min-w-0 flex-1">
-              <h2 id="support-app-title" className="text-sm font-black text-amber-100">
-                همراه سلامت باشید
-              </h2>
-              <p className="mt-2 text-xs leading-6 text-slate-200">
-                با خرید بسته‌های کارت دارو از داخل برنامه، امکان ثبت داروهای بیشتری را فراهم کنید؛
-                یا با معرفی «یادآور هوشمند دارو» به دوستان و خانواده، به آشنایی افراد بیشتری با برنامه کمک کنید.
-                خرید اختیاری است و معرفی برنامه رایگان است.
-              </p>
-              <div className="mt-3 flex flex-col gap-2 min-[380px]:flex-row">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setPurchaseError('');
-                    setShowPurchase(true);
-                  }}
-                  className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-gradient-to-b from-amber-300 to-amber-500 px-3 py-2 text-xs font-black text-slate-950 transition hover:from-amber-200 hover:to-amber-400 active:scale-[0.98]"
-                >
-                  <span aria-hidden>🛍️</span>
-                  مشاهده کارت‌های دارو
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void shareApp()}
-                  className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl border border-cyan-200/20 bg-cyan-300/10 px-3 py-2 text-xs font-bold text-cyan-100 transition hover:bg-cyan-300/15 active:scale-[0.98]"
-                >
-                  <span aria-hidden>↗</span>
-                  معرفی به دیگران
-                </button>
-              </div>
-            </div>
-          </div>
-        </section>
-
         <footer className="mt-5 space-y-2 pb-2 text-center text-[11px] text-slate-500">
-          <button type="button" onClick={() => setShowTerms(true)} className="rounded-md px-2 py-1 font-bold text-cyan-300 underline underline-offset-4">قوانین استفاده و سلب مسئولیت</button>
+          <nav aria-label="پیوندهای کمکی" className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1">
+            <button type="button" onClick={openSupportWhatsApp} className="rounded-md px-1 py-1 text-slate-400 underline underline-offset-4 hover:text-cyan-200">پشتیبانی</button>
+            <button type="button" onClick={() => window.open(`https://wa.me/${SUPPORT_WHATSAPP_URL.split('/').pop()?.split('?')[0] ?? ''}?text=${encodeURIComponent('سلام، می‌خواهم خطایی را در برنامه یادآور هوشمند دارو گزارش کنم.\nشرح خطا: ')}`, '_blank', 'noopener,noreferrer')} className="rounded-md px-1 py-1 text-slate-400 underline underline-offset-4 hover:text-cyan-200">گزارش خطا</button>
+            <button type="button" onClick={() => { setPurchaseError(''); setShowPurchase(true); }} className="rounded-md px-1 py-1 text-slate-400 underline underline-offset-4 hover:text-cyan-200">حمایت از برنامه</button>
+            <button type="button" onClick={() => setShowTerms(true)} className="rounded-md px-1 py-1 text-cyan-300 underline underline-offset-4">قوانین استفاده و سلب مسئولیت</button>
+          </nav>
           <p className="text-slate-600">یادآور هوشمند دارو · نسخه {APP_VERSION}</p>
         </footer>
       </div>
@@ -1322,6 +1277,7 @@ export default function App() {
               ))}
               {priceLoading && <p className="rounded-xl bg-white/[0.04] p-3 text-xs text-slate-400">در حال دریافت قیمت بسته‌ها از کافه‌بازار…</p>}
               {!priceLoading && cardProducts.length === 0 && !purchaseError && <p className="text-xs text-slate-400">بسته‌ای برای خرید در دسترس نیست.</p>}
+              <p className="pt-1 text-[11px] leading-relaxed text-slate-400">اگر مایلید از ادامه توسعه برنامه حمایت کنید، خرید بسته‌های توکن از همین صفحه اختیاری است.</p>
               <p className="pt-1 text-[11px] leading-relaxed text-slate-500">قیمت‌ها مستقیماً از بازار دریافت می‌شوند. پس از خرید، تعداد توکن‌ها به اعتبار قابل‌مصرف شما اضافه می‌شود.</p>
               <p className="rounded-xl border border-amber-400/25 bg-amber-500/10 p-3 text-[11px] leading-relaxed text-amber-100">بسته‌های توکن قابل خریدِ تکراری هستند و پس از پرداخت، مانده توکن‌ها به‌صورت محلی روی همین دستگاه ثبت می‌شود. چون برنامه حساب کاربری یا سرور پشتیبان ندارد، حذف برنامه یا پاک‌کردن داده‌های آن ممکن است مانده توکن‌های ذخیره‌شده را از بین ببرد.</p>
             </div>
