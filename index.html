@@ -1,17 +1,83 @@
 <!doctype html>
+<!--
+  index.html — MediReminder PWA shell
+  ===================================
+  Loaded by:
+    - The browser (PWA at https://medireminder.app or wherever deployed)
+    - The Capacitor WebView on Android and iOS (webDir: 'dist')
+
+  Critical invariants
+  ===================
+    1. <html lang="fa" dir="rtl"> MUST stay — screen readers and the bidi
+       algorithm depend on it. Removing it breaks Persian text rendering
+       for the entire app.
+
+    2. The viewport meta MUST keep `viewport-fit=cover` so env(safe-area-*)
+       insets have non-zero values on notched devices. Without it, the
+       alarm modal's top padding collapses under the status bar.
+
+    3. The inline <style> block runs before the JS bundle. It paints the
+       dark background immediately to prevent a white flash (FOUC) before
+       React mounts. Do NOT move it to an external CSS file.
+
+    4. <link rel="manifest" crossorigin="use-credentials"> — the
+       `use-credentials` is required because the manifest is served from
+       the same origin but the service worker fetch must include cookies
+       for the install prompt to fire reliably on iOS.
+
+    5. theme-color is duplicated: one with `media="(prefers-color-scheme:
+       dark)"` for browsers that respect the media query, one without for
+       Safari (which ignores the media variant). Keep both.
+
+  Accessibility
+  =============
+    - <noscript> content uses system-ui font and high-contrast colors so
+      it is legible without any CSS bundle.
+    - The 💊 emoji is decorative; the <h1> provides the text alternative.
+    - Skip-to-content link is not needed because the SPA renders a single
+      focusable region after mount.
+-->
 <html lang="fa" dir="rtl">
   <head>
     <meta charset="UTF-8" />
-    <!-- Mobile-first viewport: prevent iOS zoom on input focus (16px min), support safe areas, disable user zoom for app-like feel but allow accessibility -->
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, minimum-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content" />
+
+    <!--
+      Mobile-first viewport.
+        - maximum-scale=5.0  : allow accessibility zoom (WCAG 1.4.4) but
+                               cap at 5x to avoid layout breakage.
+        - minimum-scale=1.0  : prevent the user from zooming OUT past the
+                               design width.
+        - viewport-fit=cover: extend into safe-area insets (notches).
+        - interactive-widget=resizes-content : on Android, make the
+                               on-screen keyboard resize the viewport
+                               instead of overlaying it (prevents input
+                               occlusion when the alarm modal is open).
+    -->
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=5.0, minimum-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content"
+    />
+
+    <!-- Dark color scheme hint — affects form controls, scrollbar, and
+         the browser chrome on supporting user agents. -->
     <meta name="color-scheme" content="dark" />
+
+    <!-- Disable auto-detection of phone numbers, email addresses, and
+         postal addresses — without this, iOS Safari turns medication
+         dosage strings like "10mg" into clickable (broken) links. -->
     <meta name="format-detection" content="telephone=no, email=no, address=no" />
+
+    <!-- Legacy mobile meta tags — no longer required by modern browsers
+         but kept for compatibility with older Android webviews. -->
     <meta name="HandheldFriendly" content="true" />
     <meta name="MobileOptimized" content="width" />
 
     <title>یادآور هوشمند دارو — MediReminder</title>
 
-    <!-- Icons: correct sizes and types -->
+    <!-- ===================== Icons ===================== -->
+    <!-- All icon files MUST exist in /public at build time. Vite copies
+         them to /dist as-is. Missing files produce 404s that hurt Lighthouse
+         PWA score. -->
     <link rel="icon" href="/favicon.ico" sizes="any" />
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
     <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png" />
@@ -20,9 +86,13 @@
     <link rel="mask-icon" href="/icon-512.png" color="#0891b2" />
     <link rel="manifest" href="/manifest.json" crossorigin="use-credentials" />
 
-    <!-- PWA / Mobile theming -->
+    <!-- ===================== PWA / Mobile theming ===================== -->
+    <!-- theme-color: the media-query variant is respected by Chrome and
+         Firefox; the plain variant is the only one Safari honors. Keep both. -->
     <meta name="theme-color" content="#0891b2" media="(prefers-color-scheme: dark)" />
     <meta name="theme-color" content="#0891b2" />
+
+    <!-- iOS standalone mode (Add to Home Screen). -->
     <meta name="apple-mobile-web-app-title" content="یادآور هوشمند دارو" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -31,13 +101,16 @@
     <meta name="msapplication-TileColor" content="#0f172a" />
     <meta name="msapplication-config" content="none" />
 
-    <!-- SEO / Description -->
-    <meta name="description" content="یادآور هوشمند دارو — آفلاین، امن و با هشدار مکرر تا تأیید مصرف. بدون نیاز به اینترنت، تمام داده‌ها روی دستگاه شما." />
+    <!-- ===================== SEO / Description ===================== -->
+    <meta
+      name="description"
+      content="یادآور هوشمند دارو — آفلاین، امن و با هشدار مکرر تا تأیید مصرف. بدون نیاز به اینترنت، تمام داده‌ها روی دستگاه شما."
+    />
     <meta name="keywords" content="دارو, یادآور, سلامت, PWA, اعلان, MediReminder" />
     <meta name="author" content="MediReminder" />
     <meta name="robots" content="index, follow" />
 
-    <!-- Open Graph -->
+    <!-- ===================== Open Graph ===================== -->
     <meta property="og:title" content="یادآور هوشمند دارو — MediReminder" />
     <meta property="og:description" content="یادآور هوشمند دارو با اعلان مکرر، تایمر و پیگیری موجودی — آفلاین و امن" />
     <meta property="og:type" content="website" />
@@ -47,17 +120,30 @@
     <meta property="og:locale" content="fa_IR" />
     <meta property="og:site_name" content="یادآور هوشمند دارو" />
 
-    <!-- Preload critical assets -->
+    <!-- ===================== Performance: preload ===================== -->
+    <!-- Preload the 192px icon because it is the largest critical asset
+         used by the manifest and Apple touch icon. Avoids a waterfall
+         fetch after the manifest parses. -->
     <link rel="preload" href="/icon-192.png" as="image" type="image/png" />
-    
-    <!-- Prevent FOUC for dark theme -->
+
+    <!-- ===================== Critical inline CSS (FOUC prevention) ===================== -->
+    <!-- This block MUST stay inline. Moving it to an external file would
+         introduce a white flash on slow connections before the CSS loads.
+         The dark background paints immediately from the inline style. -->
     <style>
       html { background-color: #0f172a; }
       body { background-color: #0f172a; margin: 0; }
       #root { min-height: 100vh; min-height: 100dvh; }
-      /* Prevent iOS rubber-band overscroll for app-like feel */
-      html, body { overscroll-behavior-y: none; -webkit-overflow-scrolling: touch; }
-      /* Safe area support */
+
+      /* Prevent iOS rubber-band overscroll so the app feels native. */
+      html, body {
+        overscroll-behavior-y: none;
+        -webkit-overflow-scrolling: touch;
+      }
+
+      /* Expose safe-area insets as CSS custom properties so any component
+         can consume them via var(--sat), var(--sar), etc. The fallback
+         `0px` ensures a sane default on devices without notches. */
       :root {
         --sat: env(safe-area-inset-top, 0px);
         --sar: env(safe-area-inset-right, 0px);
@@ -68,15 +154,22 @@
   </head>
   <body>
     <div id="root"></div>
+
+    <!--
+      <noscript> fallback. Rendered if JavaScript is disabled or fails to
+      load. Uses only system fonts and high-contrast colors so it is
+      legible without any CSS bundle.
+    -->
     <noscript>
       <div style="display:flex;min-height:100vh;align-items:center;justify-content:center;background:#0f172a;color:#e5e7eb;padding:24px;text-align:center;font-family:system-ui">
         <div>
-          <div style="font-size:48px">💊</div>
+          <div style="font-size:48px" aria-hidden="true">💊</div>
           <h1 style="margin-top:16px;font-size:20px;font-weight:bold;color:#22d3ee">یادآور هوشمند دارو</h1>
           <p style="margin-top:8px;color:#94a3b8">برای استفاده از این برنامه، لطفاً JavaScript را فعال کنید.</p>
         </div>
       </div>
     </noscript>
+
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
