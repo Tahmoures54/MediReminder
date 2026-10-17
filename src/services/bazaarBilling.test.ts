@@ -64,13 +64,13 @@ describe('Bazaar consumable purchase behavior', () => {
     mocks.initialize.mockReset().mockResolvedValue({ connected: true });
     mocks.getProducts.mockReset().mockResolvedValue({ products: [] });
     mocks.getPurchaseInfo.mockReset().mockImplementation(async () => ({ purchases: [...owned] }));
-    mocks.purchaseProduct.mockReset().mockImplementation(async ({ productId, payload }) => {
+    mocks.purchaseProduct.mockReset().mockImplementation(async ({ productId, payload }: { productId: string; payload: string }) => {
       const token = `purchase-${++purchaseSequence}`;
       const item = { purchaseToken: token, productId, payload };
       owned.push(item);
       return { state: 'PURCHASED', purchase: item };
     });
-    mocks.consumeProduct.mockReset().mockImplementation(async ({ token }) => {
+    mocks.consumeProduct.mockReset().mockImplementation(async ({ token }: { token: string }) => {
       owned = owned.filter((purchase) => purchase.purchaseToken !== token);
       return {};
     });
