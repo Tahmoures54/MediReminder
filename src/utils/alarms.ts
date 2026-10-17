@@ -390,9 +390,11 @@ function buildFollowUpNotifications({
         ? Date.now() + SLOT0_LEAD_MS + stagger
         : Date.now() + slot * NATIVE_FOLLOW_UP_MS + stagger + FOLLOWUP_JITTER_MS;
     if (kind === 'scheduled' && atMs <= Date.now() + MIN_FUTURE_MS) continue;
+    const notificationId = ids[slot];
+    if (notificationId == null) continue;
 
     result.push({
-      id: ids[slot],
+      id: notificationId,
       title: slot === 0 ? primaryTitle(kind) : followupTitle(kind),
       body: bodyText(medication, kind, slot),
       schedule: { at: new Date(atMs), allowWhileIdle: true },
@@ -460,9 +462,11 @@ function buildScheduledNotifications(
   for (let slot = 0; slot < NATIVE_SCHEDULE_EXTRA_SLOTS; slot++) {
     const atMs = medication.nextDoseAt + slot * NATIVE_FOLLOW_UP_MS + (slot === 0 ? 0 : stagger);
     if (atMs <= now + MIN_FUTURE_MS) continue;
+    const notificationId = ids[slot];
+    if (notificationId == null) continue;
 
     result.push({
-      id: ids[slot],
+      id: notificationId,
       title: slot === 0 ? primaryTitle('scheduled') : followupTitle('scheduled'),
       body: bodyText(medication, 'scheduled', slot),
       schedule: { at: new Date(atMs), allowWhileIdle: true },
