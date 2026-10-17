@@ -45,7 +45,7 @@ const NOTIFICATION_SMALL_ICON = 'ic_stat_icon_config_sample';
 const NOTIFICATION_SOUND = 'medication_alarm.wav';
 
 /** Splash screen visible duration (ms). Tuned to feel responsive without flicker. */
-const SPLASH_DURATION_MS = 1200;
+const SPLASH_DURATION_MS = 400;
 /** Android splash resource name (lives in `res/drawable/splash.png`). */
 const SPLASH_ANDROID_RESOURCE = 'splash';
 
