@@ -42,13 +42,13 @@ function ordered(fragments: readonly string[]): void {
 
   // Detect the first out-of-order pair for a precise failure message.
   for (let i = 1; i < positions.length; i++) {
-    if (positions[i] < positions[i - 1]) {
+    if (positions[i]! < positions[i - 1]!) {
       const earlier = fragments[i];
       const later = fragments[i - 1];
       throw new Error(
         `Ordering violation in useDoseActions.ts:\n` +
         `  Expected "${later}" to appear before "${earlier}"\n` +
-        `  Got positions: ${later} → ${positions[i - 1]}, ${earlier} → ${positions[i]}`,
+        `  Got positions: ${later} → ${positions[i - 1]!}, ${earlier} → ${positions[i]!}`,
       );
     }
   }
