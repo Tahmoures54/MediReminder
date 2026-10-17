@@ -1,7 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Capacitor } from '@capacitor/core';
 import { canAddMedication } from './utils/medicationAccess';
-import { Share } from '@capacitor/share';
 import { getMedicationCardProducts, purchaseMedicationCards, restorePendingMedicationCardPurchases, type MedicationCardProduct } from './services/bazaarBilling';
 import { LocalNotifications } from '@capacitor/local-notifications';
 import { MedicationCard } from './components/MedicationCard';
@@ -61,32 +59,6 @@ function openSupportWhatsApp() {
   window.open(SUPPORT_WHATSAPP_URL, '_blank', 'noopener,noreferrer');
 }
 
-async function shareApp() {
-  const shareUrl = 'https://cafebazaar.ir/app/com.tahmoures54.medireminder';
-  const shareTitle = 'یادآور هوشمند دارو';
-  const shareText = 'یادآور هوشمند دارو؛ برای تنظیم زمان مصرف داروها و دریافت یادآوری روی گوشی.';
-
-  try {
-    if (Capacitor.isNativePlatform()) {
-      await Share.share({ title: shareTitle, text: shareText, url: shareUrl, dialogTitle: 'معرفی یادآور هوشمند دارو' });
-      return;
-    }
-    if (typeof navigator.share === 'function') {
-      await navigator.share({ title: shareTitle, text: shareText, url: shareUrl });
-      return;
-    }
-    await navigator.clipboard.writeText(`${shareText} ${shareUrl}`);
-    window.alert('پیوند معرفی برنامه کپی شد؛ می‌توانید آن را برای دوستانتان بفرستید.');
-  } catch (error) {
-    if (error instanceof Error && error.name === 'AbortError') return;
-    try {
-      await navigator.clipboard.writeText(`${shareText} ${shareUrl}`);
-      window.alert('پیوند معرفی برنامه کپی شد؛ می‌توانید آن را برای دوستانتان بفرستید.');
-    } catch {
-      window.alert('برای معرفی برنامه، این پیوند را کپی کنید: ' + shareUrl);
-    }
-  }
-}
 
 async function getCapacitorApp() {
   try {
