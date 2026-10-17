@@ -96,6 +96,7 @@ const PURCHASE_STORE = 'localPurchases';
 
 const STATE_KEY_DEVICE_ID = 'deviceId';
 const STATE_KEY_PAID_CARDS = 'paidMedicationCards';
+const STATE_KEY_FREE_TOKEN_USED = 'freeMedicationTokenUsed';
 
 const FALLBACK_INTERVAL_HOURS = 1;
 const SECONDS_PER_HOUR = 3600;
@@ -279,11 +280,25 @@ class Database {
     const tx = db.transaction(storeNames, mode);
     const stores: Record<string, IDBObjectStore> = {};
     for (const name of storeNames) stores[name] = tx.objectStore(name);
-    const result = work(stores);
-    await transactionToPromise(tx);
-    if (result instanceof IDBRequest) return result.result as T;
-    if (result instanceof Promise) return (await result) as T;
-    return result as T | void;
+    const completion = transactionToPromise(tx);
+    try {
+      const result = work(stores);
+      if (result instanceof IDBRequest) {
+        await completion;
+        return result.result as T;
+      }
+      if (result instanceof Promise) {
+        const value = await result;
+        await completion;
+        return value as T;
+      }
+      await completion;
+      return result as T | void;
+    } catch (error) {
+      try { tx.abort(); } catch { /* transaction may already be finished */ }
+      await completion.catch(() => {});
+      throw error;
+    }
   }
 
   /* --------------------------- medications ---------------------------- */
@@ -322,10 +337,89 @@ class Database {
     await this.runTransaction(STORE_NAME, 'readwrite', (store) => store.put(value));
   }
 
+  /**
+   * Deletes a medication and consumes one paid token in the same IndexedDB
+   * transaction. A failed write rolls back both changes; no partial deletion
+   * or token deduction can be committed.
+   */
   async deleteMedication(id: number): Promise<void> {
     const key = Number(id);
     if (!Number.isFinite(key)) return;
-    await this.runTransaction(STORE_NAME, 'readwrite', (store) => store.delete(key));
+    await this.runMultiStoreTransaction<void>([STORE_NAME, STATE_STORE], 'readwrite', async (stores) => {
+      const medicationStore = stores[STORE_NAME];
+      const stateStore = stores[STATE_STORE];
+      const medication = await requestToPromise<Medication | undefined>(medicationStore.get(key));
+      if (!medication) return;
+      const paidState = await requestToPromise<StateEntry<PaidCardsState> | undefined>(stateStore.get(STATE_KEY_PAID_CARDS));
+      const currentCount = Math.max(0, Math.floor(Number(paidState?.value?.count) || 0));
+      if (currentCount < 1) throw new Error('برای حذف دارو یک توکن لازم است. ابتدا بسته توکن تهیه کنید.');
+      stateStore.put({
+        key: STATE_KEY_PAID_CARDS,
+        value: { count: currentCount - 1, tokens: Array.isArray(paidState?.value?.tokens) ? paidState.value.tokens : [] },
+      } satisfies StateEntry<PaidCardsState>);
+      medicationStore.delete(key);
+    });
+  }
+
+  /** Returns whether the one-time free first-medication token is still unused. */
+  async hasFreeMedicationToken(): Promise<boolean> {
+    return this.runMultiStoreTransaction<boolean>([STORE_NAME, STATE_STORE], 'readwrite', async (stores) => {
+      const stateStore = stores[STATE_STORE];
+      const used = await requestToPromise<StateEntry<boolean> | undefined>(stateStore.get(STATE_KEY_FREE_TOKEN_USED));
+      if (used?.value === true) return false;
+      const medications = await requestToPromise<Medication[]>(stores[STORE_NAME].getAll());
+      // Migration: any installation that already contains medication has
+      // necessarily used its historical free first card.
+      if (medications.length > 0) {
+        stateStore.put({ key: STATE_KEY_FREE_TOKEN_USED, value: true } satisfies StateEntry<boolean>);
+        return false;
+      }
+      return true;
+    });
+  }
+
+  /**
+   * Adds a medication and charges one token atomically, except for the
+   * one-time free first medication. This is the only supported UI creation
+   * path so concurrent submits cannot overspend or create uncharged cards.
+   */
+  async addMedicationWithCredit(medication: Medication): Promise<{ id: number; free: boolean; balance: number }> {
+    const now = Date.now();
+    const value = sanitizeMedication({
+      ...medication,
+      createdAt: medication.createdAt ?? now,
+      updatedAt: now,
+      history: medication.history ?? [],
+    });
+    const result = await this.runMultiStoreTransaction<{ id: number; free: boolean; balance: number }>(
+      [STORE_NAME, STATE_STORE],
+      'readwrite',
+      async (stores) => {
+        const medicationStore = stores[STORE_NAME];
+        const stateStore = stores[STATE_STORE];
+        const [medications, paidState, freeState] = await Promise.all([
+          requestToPromise<Medication[]>(medicationStore.getAll()),
+          requestToPromise<StateEntry<PaidCardsState> | undefined>(stateStore.get(STATE_KEY_PAID_CARDS)),
+          requestToPromise<StateEntry<boolean> | undefined>(stateStore.get(STATE_KEY_FREE_TOKEN_USED)),
+        ]);
+        const balance = Math.max(0, Math.floor(Number(paidState?.value?.count) || 0));
+        const free = freeState?.value !== true && medications.length === 0;
+        if (!free && balance < 1) throw new Error('اعتبار شما تمام شده است. برای افزودن دارو یک توکن تهیه کنید.');
+        const idRequest = medicationStore.add(value);
+        if (free) {
+          stateStore.put({ key: STATE_KEY_FREE_TOKEN_USED, value: true } satisfies StateEntry<boolean>);
+        } else {
+          stateStore.put({
+            key: STATE_KEY_PAID_CARDS,
+            value: { count: balance - 1, tokens: Array.isArray(paidState?.value?.tokens) ? paidState.value.tokens : [] },
+          } satisfies StateEntry<PaidCardsState>);
+        }
+        const id = await requestToPromise<number>(idRequest);
+        return { id, free, balance: free ? balance : balance - 1 };
+      },
+    );
+    if (!result || typeof result.id !== 'number') throw new Error('افزودن دارو ناموفق بود؛ شناسه دریافت نشد.');
+    return result;
   }
 
   async replaceAllMedications(medications: Medication[]): Promise<void> {
