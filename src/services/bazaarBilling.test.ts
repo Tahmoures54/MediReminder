@@ -28,13 +28,11 @@ import { fileURLToPath } from 'node:url';
 
 const BILLING_PATH = new URL('./bazaarBilling.ts', import.meta.url);
 const DATABASE_PATH = new URL('../db/database.ts', import.meta.url);
-const BILLING_DOCS_PATH = new URL('../../BAZAAR_BILLING.md', import.meta.url);
-const RESTORE_DOCS_PATH = new URL('../../RESTORE_APP.md', import.meta.url);
+const README_PATH = new URL('../../README.md', import.meta.url);
 
 const billingSource = readFileSync(fileURLToPath(BILLING_PATH), 'utf8');
 const databaseSource = readFileSync(fileURLToPath(DATABASE_PATH), 'utf8');
-const billingDocs = readFileSync(fileURLToPath(BILLING_DOCS_PATH), 'utf8');
-const restoreDocs = readFileSync(fileURLToPath(RESTORE_DOCS_PATH), 'utf8');
+const readme = readFileSync(fileURLToPath(README_PATH), 'utf8');
 
 /* --------------------------------------------------------------------------
  * Inspection helpers
@@ -48,8 +46,7 @@ interface SourceFile {
 
 const billing: SourceFile = { name: 'bazaarBilling.ts', content: billingSource, path: fileURLToPath(BILLING_PATH) };
 const database: SourceFile = { name: 'database.ts', content: databaseSource, path: fileURLToPath(DATABASE_PATH) };
-const billingDocsFile: SourceFile = { name: 'BAZAAR_BILLING.md', content: billingDocs, path: fileURLToPath(BILLING_DOCS_PATH) };
-const restoreDocsFile: SourceFile = { name: 'RESTORE_APP.md', content: restoreDocs, path: fileURLToPath(RESTORE_DOCS_PATH) };
+const readmeFile: SourceFile = { name: 'README.md', content: readme, path: fileURLToPath(README_PATH) };
 
 /**
  * Asserts that `file.content` includes `fragment`.
@@ -250,20 +247,20 @@ describe('Bazaar consumable medication-card purchase — safety contracts', () =
    * ====================================================================== */
 
   describe('documentation accuracy', () => {
-    it('BAZAAR_BILLING.md describes the consumable model and the local-recovery limitation', () => {
-      expectContains(billingDocsFile, '**مصرف‌شدنی (Consumable)**');
-      expectContains(billingDocsFile, 'نمی‌تواند اعتبار محلی آن خرید را از کافه‌بازار بازسازی کند');
+    it('README.md describes the consumable model and the local-recovery limitation', () => {
+      expectContains(readmeFile, 'مصرف کند');
+      expectContains(readmeFile, 'بازیابی این اعتبار از بازار **تضمین‌شده نیست**');
     });
 
-    it('RESTORE_APP.md warns that consumable credits are not guaranteed restorable', () => {
-      expectContains(restoreDocsFile, 'مصرف‌شدنی');
-      expectContains(restoreDocsFile, 'تضمین‌شده قابل بازیابی نیست');
+    it('README.md warns that consumable credits are not guaranteed restorable', () => {
+      expectContains(readmeFile, 'مصرف');
+      expectContains(readmeFile, 'تضمین‌شده نیست');
     });
 
-    it('BAZAAR_BILLING.md does not contradict the implementation with the forbidden claim', () => {
+    it('README.md does not contradict the implementation with the forbidden claim', () => {
       // The implementation explicitly consumes card packs; the docs must not
       // claim products are never consumed.
-      expectNotContains(billingDocsFile, 'محصولات یک‌بار خرید هرگز `consume` نمی‌شوند');
+      expectNotContains(readmeFile, 'محصولات یک‌بار خرید هرگز `consume` نمی‌شوند');
     });
   });
 
