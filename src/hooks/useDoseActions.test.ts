@@ -29,8 +29,8 @@ const source = readFileSync(fileURLToPath(SOURCE_PATH), 'utf8');
  * The error message lists the missing fragments and out-of-order pairs so
  * a failure points directly at the offending contract.
  */
-function ordered(fragments: readonly string[]): void {
-  const positions = fragments.map((fragment) => source.indexOf(fragment));
+function ordered(fragments: readonly string[], text = source): void {
+  const positions = fragments.map((fragment) => text.indexOf(fragment));
 
   const missing = fragments.filter((_, i) => positions[i] === -1);
   if (missing.length > 0) {
@@ -75,6 +75,11 @@ describe('useDoseActions — dose action safety contracts', () => {
    * with a user-facing alert and never reach the history-record branch.
    * -------------------------------------------------------------------- */
   describe('stock-empty guard', () => {
+    const takeDoseSource = source.slice(
+      source.indexOf('const takeDose = useCallback('),
+      source.indexOf('/* ----------------------------- snooze'),
+    );
+
     it('blocks dose recording when stock is empty before claiming the dose cycle', () => {
       // The guard must precede: actionKey computation, history record build,
       // and (transitively) the persist call. If the guard slips after the
@@ -86,7 +91,7 @@ describe('useDoseActions — dose action safety contracts', () => {
         'return;',
         'const now = Date.now();',
         'const record: HistoryRecord',
-      ]);
+      ], takeDoseSource);
       contains('دوزی ثبت نشد');
     });
 
@@ -94,7 +99,7 @@ describe('useDoseActions — dose action safety contracts', () => {
       // After the alert + return, the function must not fall through to
       // any state mutation. We assert the alert is immediately followed by
       // `return;` on the next non-trivial statement.
-      ordered(['if (m.quantity <= 0)', 'window.alert(', 'return;']);
+      ordered(['if (m.quantity <= 0)', 'window.alert(', 'return;'], takeDoseSource);
     });
   });
 
