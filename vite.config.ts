@@ -47,7 +47,6 @@ const SRC_DIR = 'src';
 /** Public assets directory — files here are copied verbatim to dist/. */
 const PUBLIC_DIR = 'public';
 /** Build output directory — MUST match `webDir` in capacitor.config.ts. */
-const OUT_DIR = 'dist';
 
 /** Dev server port. */
 const DEV_PORT = 5173;
