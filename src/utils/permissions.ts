@@ -61,11 +61,6 @@ export type AppNotificationPermission =
   | 'prompt-with-rationale'
   | 'unavailable';
 
-/** Shape of `LocalNotifications.checkPermissions()` result we consume. */
-interface PermissionResult {
-  display?: string;
-}
-
 /** Shape of the optional exact-alarm probe on LocalNotifications. */
 interface ExactAlarmProbe {
   checkExactNotificationSetting?: () => Promise<{ exact_alarm?: string }>;
