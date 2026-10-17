@@ -14,32 +14,54 @@ interface Props {
   onDismiss?: () => void;
 }
 
+// iPadOS 13+ reports "MacIntel" with touch points — include it in iOS detection.
+function detectIsIOS(): boolean {
+  if (typeof navigator === 'undefined') return false;
+  if (Capacitor.isNativePlatform()) return Capacitor.getPlatform() === 'ios';
+  if (/iPad|iPhone|iPod/.test(navigator.userAgent)) return true;
+  // navigator.platform is deprecated but the only reliable iPadOS 13+ signal.
+  return navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1;
+}
+
 export function PermissionsBanner({
   permission,
   exactAlarmGranted = true,
-  batteryOptimizationIgnored = false,
+  batteryOptimizationIgnored = true,
   onRequest,
   onRequestExactAlarm,
   onOpenBatterySettings,
   onOpenAppSettings,
   onDismiss,
 }: Props) {
-  if (permission === 'granted' && exactAlarmGranted && batteryOptimizationIgnored) return null;
-  if (permission === 'granted' && exactAlarmGranted && !onOpenBatterySettings) return null;
-  if (permission === 'granted' && exactAlarmGranted) {
+  const isNative = Capacitor.isNativePlatform();
+  const platform = Capacitor.getPlatform();
+  const isAndroid = platform === 'android';
+  const isIOS = detectIsIOS();
+
+  const denied = permission === 'denied';
+  const granted = permission === 'granted';
+  const exactAlarmMissing = isAndroid && exactAlarmGranted === false;
+  const batteryNeedsHelp = isAndroid && !batteryOptimizationIgnored;
+
+  // All clear on the permission front.
+  if (granted && !exactAlarmMissing && !batteryNeedsHelp) return null;
+
+  // Battery-only guidance. Show it even without an openBatterySettings callback
+  // — the manual instructions are still useful.
+  if (granted && !exactAlarmMissing && batteryNeedsHelp) {
     return (
       <div
-        role="region"
+        role="status"
         aria-label="راهنمای باتری"
         className="mt-3 rounded-2xl border border-cyan-500/25 bg-gradient-to-br from-cyan-500/10 via-slate-900/40 to-slate-950/40 px-3.5 py-3 text-xs text-cyan-50/90"
       >
-        <div className="flex flex-wrap items-center gap-2 justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <p className="leading-relaxed">
             برای کارکرد پایدار در پس‌زمینه: باتری اپ را روی{' '}
             <strong className="text-cyan-100">بدون محدودیت</strong> بگذارید
-            {Capacitor.getPlatform() === 'android' && (
-              <span className="text-cyan-200/70"> (شیائومی/سامسونگ: قفل در Recent + Autostart)</span>
-            )}
+            <span className="text-cyan-200/70">
+              {' '}(شیائومی/سامسونگ: قفل در Recent + Autostart)
+            </span>
           </p>
           <div className="flex gap-2">
             {onOpenBatterySettings && (
@@ -62,24 +84,21 @@ export function PermissionsBanner({
             )}
           </div>
         </div>
+        {!onOpenBatterySettings && (
+          <p className="mt-2 rounded-lg bg-cyan-950/40 p-2 text-[11px] leading-relaxed text-cyan-200/80">
+            📱 مسیر دستی: تنظیمات → برنامه‌ها → یادآور دارو → باتری → «بدون محدودیت»
+          </p>
+        )}
       </div>
     );
   }
 
-  const isNative = Capacitor.isNativePlatform();
-  const platform = Capacitor.getPlatform();
-  const isAndroid = platform === 'android';
-  const isIOS =
-    platform === 'ios' ||
-    (!isNative &&
-      typeof navigator !== 'undefined' &&
-      /iPad|iPhone|iPod/.test(navigator.userAgent));
-  const denied = permission === 'denied';
-  const exactAlarmMissing = isAndroid && exactAlarmGranted === false;
+  // Main permission / exact-alarm / mixed guidance.
+  const needsNotificationAction = !granted && !denied;
 
   return (
     <div
-      role="region"
+      role="status"
       aria-label="راهنمای تنظیمات اعلان"
       className="mt-4 rounded-3xl border border-amber-500/35 bg-gradient-to-br from-amber-500/15 via-orange-500/10 to-slate-950/40 p-4 text-sm text-amber-50 shadow-lg shadow-amber-950/20 ring-1 ring-amber-400/10 backdrop-blur-sm animate-slide-in-from-top"
     >
@@ -88,23 +107,35 @@ export function PermissionsBanner({
           🔔
         </span>
         <div className="flex-1 space-y-2.5">
-          <h3 className="font-bold text-amber-200 text-[15px]">برای یادآوری دقیق و مطمئن، تنظیمات لازم است</h3>
+          <h3 className="text-[15px] font-bold text-amber-200">
+            {denied
+              ? 'اعلان‌ها مسدود شده — برای یادآوری دارو فعالشان کنید'
+              : exactAlarmMissing
+                ? 'آلارم دقیق فعال نیست — برای دقت ثانیه‌ای لازم است'
+                : 'برای یادآوری دقیق و مطمئن، تنظیمات لازم است'}
+          </h3>
 
           {denied ? (
-            <p className="leading-relaxed text-amber-100/90 text-[13px]">
+            <p className="text-[13px] leading-relaxed text-amber-100/90">
               مجوز اعلان قبلاً رد شده است. برای کارکرد دقیق در پس‌زمینه، از تنظیمات سیستم اعلان‌های «یادآور دارو» را
               فعال کنید.
             </p>
+          ) : granted ? (
+            <p className="text-[13px] leading-relaxed text-amber-100/90">
+              مجوز اعلان‌ها داده شده است؛ فقط چند تنظیم دیگر اندروید برای دقت آلارم باقی مانده.
+            </p>
           ) : (
-            <p className="leading-relaxed text-amber-100/90 text-[13px]">
+            <p className="text-[13px] leading-relaxed text-amber-100/90">
               برای یادآوری حتی وقتی برنامه بسته است یا گوشی قفل است، مجوز اعلان را بدهید. این برای دقت نهایی ضروری است.
             </p>
           )}
 
           <ul className="list-inside list-disc space-y-1.5 text-xs leading-relaxed text-amber-100/80 marker:text-amber-300">
-            <li>
-              مجوز <strong className="text-amber-100">اعلان‌ها</strong> را فعال کنید
-            </li>
+            {!granted && (
+              <li>
+                مجوز <strong className="text-amber-100">اعلان‌ها</strong> را فعال کنید
+              </li>
+            )}
             {isAndroid && (
               <>
                 {exactAlarmMissing && (
@@ -112,10 +143,10 @@ export function PermissionsBanner({
                     مجوز <strong>آلارم دقیق</strong> را در تنظیمات اندروید فعال کنید (برای دقت ثانیه‌ای)
                   </li>
                 )}
-                {!batteryOptimizationIgnored && (
+                {batteryNeedsHelp && (
                   <li>
-                    باتری را روی <strong className="text-amber-100">بدون محدودیت</strong> بگذارید — تنظیمات → باتری → عدم
-                    بهینه‌سازی
+                    باتری را روی <strong className="text-amber-100">بدون محدودیت</strong> بگذارید — تنظیمات → باتری →
+                    عدم بهینه‌سازی
                   </li>
                 )}
                 <li>صدا و ویبره کانال «هشدار مصرف دارو» را باز بگذارید</li>
@@ -136,7 +167,7 @@ export function PermissionsBanner({
           </ul>
 
           <div className="flex flex-wrap gap-2 pt-2">
-            {!denied && (
+            {needsNotificationAction && (
               <button
                 type="button"
                 onClick={onRequest}
@@ -154,7 +185,7 @@ export function PermissionsBanner({
                 ⏰ فعال‌سازی آلارم دقیق
               </button>
             )}
-            {isAndroid && !batteryOptimizationIgnored && onOpenBatterySettings && (
+            {batteryNeedsHelp && onOpenBatterySettings && (
               <button
                 type="button"
                 onClick={onOpenBatterySettings}
@@ -167,7 +198,7 @@ export function PermissionsBanner({
               <button
                 type="button"
                 onClick={onOpenAppSettings}
-                className="tap-target rounded-xl border border-amber-400/40 bg-amber-500/15 px-4 py-3 text-sm font-semibold text-amber-100 transition hover:bg-amber-500/25 active:scale-[0.96]"
+                className="tap-target rounded-xl bg-amber-400 px-5 py-3 text-sm font-bold text-slate-950 shadow-md transition hover:bg-amber-300 active:scale-[0.96] touch-manipulation"
               >
                 ⚙️ باز کردن تنظیمات اپ
               </button>
@@ -181,7 +212,9 @@ export function PermissionsBanner({
             )}
             {denied && !isNative && (
               <p className="w-full rounded-lg bg-amber-950/40 p-2.5 text-xs leading-relaxed text-amber-200/80">
-                🌐 در مرورگر، روی آیکون قفل کنار آدرس بزنید → تنظیمات سایت → اعلان‌ها → Allow
+                {isIOS
+                  ? '📱 iOS: تنظیمات → اعلان‌ها → یادآور دارو → اجازه دادن'
+                  : '🌐 در مرورگر، روی آیکون قفل کنار آدرس بزنید → تنظیمات سایت → اعلان‌ها → Allow'}
               </p>
             )}
             {onDismiss && (
