@@ -21,6 +21,9 @@ export const BUILD_DATE = (import.meta.env?.VITE_BUILD_DATE as string | undefine
 export const BUILD_CHANNEL: 'dev' | 'beta' | 'final' =
   (import.meta.env?.VITE_RELEASE_CHANNEL as 'dev' | 'beta' | 'final' | undefined) ?? 'dev';
 
+/** True only for the final production release channel. */
+export const IS_FINAL_RELEASE = BUILD_CHANNEL === 'final';
+
 /** In-app re-alert while a dose is still pending and the popup was dismissed. */
 export const IN_APP_NAG_MS = 45_000;
 
