@@ -59,12 +59,6 @@ interface PurchaseResult {
   };
 }
 
-/** Discriminated outcome of a single grant-and-consume cycle. */
-interface GrantOutcome {
-  grantedCards: number;
-  consumed: boolean;
-}
-
 /* --------------------------------------------------------------------------
  * Catalog
  * -------------------------------------------------------------------------- */
